@@ -13,8 +13,12 @@ dependencies:
 - geopandas
 - netcdf4
 - h5netcdf
-- rioxarray
+- dask
+- xarray
+- flox
+- bottleneck
 - deprecated
+- pycountry
 
 - ipykernel
 - pip

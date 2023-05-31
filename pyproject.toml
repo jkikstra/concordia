@@ -18,6 +18,8 @@ classifiers = [
 dependencies = [
   "ptolemy-iamc>=0.3",
   "aneris-iamc>=0.2.6",
+  "pandas-indexing>=0.2.7",
+  "pycountry",
 ]
 dynamic = ["version"]
 
