@@ -3,7 +3,7 @@
 
 from importlib.metadata import version as _version
 
-from .utils import RegionMapping, VariableDefinitions
+from .utils import RegionMapping, VariableDefinitions, combine_countries
 
 
 try:

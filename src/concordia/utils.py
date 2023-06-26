@@ -1,10 +1,12 @@
 from dataclasses import dataclass
+from itertools import chain, repeat
 from pathlib import Path
 from typing import Optional
 
 import pandas as pd
 import pandas_indexing.accessors
 from pandas import DataFrame
+from pandas_indexing import concat, isin
 
 
 @dataclass
@@ -13,7 +15,11 @@ class VariableDefinitions:
 
     @classmethod
     def from_csv(cls, path):
-        return cls(pd.read_csv(path, index_col=list(range(3))))
+        return cls(
+            pd.read_csv(path, index_col=list(range(3))).loc[
+                isin(variable=lambda s: ~s.str.startswith("#"))
+            ]
+        )
 
     @property
     def variable_index(self):
@@ -101,7 +107,12 @@ class VariableDefinitions:
             if non_matching_units.any():
                 errors = (
                     df.index.to_frame(index=False)
-                    .loc[non_matching_units, ["model", "scenario", "variable", "unit"]]
+                    .loc[
+                        non_matching_units,
+                        lambda df: df.columns.intersection(
+                            ["model", "scenario", "variable", "sector", "gas", "unit"]
+                        ),
+                    ]
                     .assign(**{"expected unit": data_units[non_matching_units]})
                     .drop_duplicates()
                 )
@@ -150,14 +161,36 @@ class RegionMapping:
             [self.data.index, self.data.values], names=["country", "region"]
         )
 
-    def aggregate(self, df: DataFrame, level="country") -> DataFrame:
+    def aggregate(self, df: DataFrame, level="country", agg_func="sum") -> DataFrame:
         if level != "country":
             df = df.rename_axis(index={level: "country"})
         return (
-            df.idx.semijoin(self.index, how="right")
+            df.idx.semijoin(self.index, how="left")
             .groupby(
                 [n if n != "country" else "region" for n in df.index.names],
                 dropna=False,
             )
-            .sum()
+            .agg(agg_func)
         )
+
+
+def combine_countries(df, level="country", agg_func="sum", **countries):
+    index = pd.MultiIndex.from_tuples(
+        chain(
+            *(
+                zip(repeat(new_name), individual_countries)
+                for new_name, individual_countries in countries.items()
+            )
+        ),
+        names=[level, "old"],
+    )
+
+    new = (
+        df.rename_axis(index={level: "old"})
+        .idx.semijoin(index, how="right")
+        .groupby(df.index.names)
+        .agg(agg_func)
+    )
+    return concat(
+        [df.loc[~isin(**{level: index.idx.project("old")})], new]
+    ).sort_index()
