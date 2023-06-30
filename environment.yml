@@ -19,6 +19,8 @@ dependencies:
 - bottleneck
 - deprecated
 - pycountry
+- dominate
+- python-slugify
 
 - ipykernel
 - pip
