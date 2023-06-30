@@ -135,18 +135,24 @@ class RegionMapping:
         return cls(pd.concat(rm.data for rm in rms))
 
     @classmethod
-    def from_regiondef(cls, path):
+    def from_regiondef(
+        cls,
+        path,
+        country_column="ISO Code",
+        region_column="Native Region Code",
+        **kwargs,
+    ):
         path = Path(path)
         match path.suffix:
             case ".csv":
-                df = pd.read_csv(path)
+                df = pd.read_csv(path, **kwargs)
             case ".xlsx":
-                df = pd.read_csv(path)
+                df = pd.read_excel(path, **kwargs)
             case suffix:
                 raise ValueError(f"Unknown file suffix: {suffix}")
 
         return cls(
-            df.set_index("ISO Code")["Native Region Code"]
+            df.set_index(country_column)[region_column]
             .rename_axis("country")
             .rename(index=str.lower)
             .rename("region")
