@@ -27,11 +27,11 @@ class VariableDefinitions:
 
     @property
     def index_global(self):
-        return self.data.index[self.data["global"]].idx.project(["gas", "sector"])
+        return self.data.index[self.data["global"]].pix.project(["gas", "sector"])
 
     @property
     def index_regional(self):
-        return self.data.index[~self.data["global"]].idx.project(["gas", "sector"])
+        return self.data.index[~self.data["global"]].pix.project(["gas", "sector"])
 
     def load_data(
         self,
@@ -103,7 +103,7 @@ class VariableDefinitions:
         )
         if timeseries:
             data_units = self.data["unit"].values[ri]
-            non_matching_units = df.index.idx.project("unit") != data_units
+            non_matching_units = df.index.pix.project("unit") != data_units
             if non_matching_units.any():
                 errors = (
                     df.index.to_frame(index=False)
@@ -122,7 +122,7 @@ class VariableDefinitions:
                 )
 
         if levels is not None:
-            return df.idx.project(levels)
+            return df.pix.project(levels)
         return df
 
 
@@ -171,7 +171,7 @@ class RegionMapping:
         if level != "country":
             df = df.rename_axis(index={level: "country"})
         return (
-            df.idx.semijoin(self.index, how="left")
+            df.pix.semijoin(self.index, how="left")
             .groupby(
                 [n if n != "country" else "region" for n in df.index.names],
                 dropna=False,
@@ -193,10 +193,10 @@ def combine_countries(df, level="country", agg_func="sum", **countries):
 
     new = (
         df.rename_axis(index={level: "old"})
-        .idx.semijoin(index, how="right")
+        .pix.semijoin(index, how="right")
         .groupby(df.index.names)
         .agg(agg_func)
     )
     return concat(
-        [df.loc[~isin(**{level: index.idx.project("old")})], new]
+        [df.loc[~isin(**{level: index.pix.project("old")})], new]
     ).sort_index()
