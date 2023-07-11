@@ -25,6 +25,14 @@ from dominate.util import raw
 from slugify import slugify
 
 
+try:
+    import seaborn as sns
+
+    has_seaborn = True
+except ImportError:
+    has_seaborn = False
+
+
 HEADING_TAGS = [h1, h2, h3, h4, h5, h6]
 
 
@@ -32,6 +40,8 @@ def as_data_url(fig, format="png", close=False):
     buf = BytesIO()
     if isinstance(fig, plt.Axes):
         fig = fig.get_figure()
+    elif has_seaborn and isinstance(fig, sns.axisgrid.Grid):
+        fig = fig.fig
     fig.savefig(buf, format=format)
     plt.close(fig)
 
@@ -40,7 +50,11 @@ def as_data_url(fig, format="png", close=False):
 
 
 def embed_image(fig, close=True):
-    if isinstance(fig, (plt.Axes, plt.Figure)):
+    if (
+        isinstance(fig, (plt.Axes, plt.Figure))
+        or has_seaborn
+        and isinstance(fig, sns.axisgrid.Grid)
+    ):
         return img(src=as_data_url(fig, close=close))
     else:
         raise NotImplementedError("Has not been implemented, yet")
@@ -167,7 +181,7 @@ _csscode = dedent(
     align-self: start;
     }
 
-    /* 3. ScrollSpy active styles (see JS tab for activation) */
+    /* 3. ScrollSpy active styles */
     .section-nav li.active > a {
     color: #333;
     font-weight: 500;
@@ -224,7 +238,7 @@ _csscode = dedent(
     }
 
     ul.compact li {
-    padding: .25em;
+    padding-right: .25em;
     display: inline;
     margin: 0;
     }
@@ -237,7 +251,7 @@ _csscode = dedent(
     /** page layout **/
     body {
     display: grid;
-    grid-template-columns: 1fr 15em;
+    grid-template-columns: 1fr 30vh;
     max-width: 100em;
     width: 90%;
     margin: 0 auto;

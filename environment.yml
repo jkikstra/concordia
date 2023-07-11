@@ -21,6 +21,8 @@ dependencies:
 - pycountry
 - dominate
 - python-slugify
+- seaborn
+- tqdm
 
 - ipykernel
 - pip
