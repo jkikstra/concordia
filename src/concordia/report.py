@@ -169,92 +169,83 @@ _jscode = dedent(
 
 _csscode = dedent(
     """
-    /* 1. Enable smooth scrolling */
     html {
-    scroll-behavior: smooth;
+        scroll-behavior: smooth;
     }
 
-    /* 2. Make nav sticky */
-    body > nav {
-    position: sticky;
-    top: 2rem;
-    align-self: start;
+    body {
+        display: grid;
+        grid-template-columns: 1fr minmax(18rem, 0.3fr);
+        padding-left: 5rem;
+        margin: 0 auto;
     }
 
-    /* 3. ScrollSpy active styles */
-    .section-nav li.active > a {
-    color: #333;
-    font-weight: 500;
-    }
+    body > .section-nav {
+        position: sticky;
+        top: 0;
+        align-self: start;
+        justify-self: right;
 
-    /* Sidebar Navigation */
-    .section-nav {
-    padding-left: 0;
-    border-left: 1px solid #efefef;
+        height: 100vh;
+        overflow: auto;
+
+        padding: 1rem  0.25rem 1rem 0;
+        border-left: 1px solid #efefef;
     }
 
     .section-nav a {
-    text-decoration: none;
-    display: block;
-    padding: .125rem 0;
-    color: #ccc;
-    transition: all 50ms ease-in-out; /* 💡 This small transition makes setting of the active state smooth */
+        display: block;
+        text-decoration: none;
+        padding: .125rem 0;
+        color: #ccc;
+        transition: all 50ms ease-in-out; /* 💡 This small transition makes setting of the active state smooth */
     }
 
     .section-nav a:hover,
     .section-nav a:focus {
-    color: #666;
+        color: #666;
     }
 
-    /** Poor man's reset **/
-    * {
-    box-sizing: border-box;
+    .section-nav li.active > a {
+        color: #333;
+        font-weight: 500;
     }
 
-    html, body {
-    background: #fff;
+    .section-nav ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+    }
+    .section-nav li {
+        margin-left: 1rem;
     }
 
-    body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
-    }
-
-    nav ul {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    }
-    nav li {
-    margin-left: 1rem;
-    }
-
-    h1 {
-    font-weight: 300;
-    }
-
-    /** compact nav lists **/
     ul.compact {
-    margin-left: 1rem;
+        margin-left: 1rem;
     }
 
     ul.compact li {
-    padding-right: .25em;
-    display: inline;
-    margin: 0;
+        padding-right: .25em;
+        display: inline;
+        margin: 0;
     }
 
     ul.compact a {
-    display: inline;
-    padding: 0;
+        display: inline;
+        padding: 0;
     }
 
-    /** page layout **/
-    body {
-    display: grid;
-    grid-template-columns: 1fr 30vh;
-    max-width: 100em;
-    width: 90%;
-    margin: 0 auto;
+    * {
+        box-sizing: border-box;
     }
+
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+    }
+
+    h1 {
+        font-weight: 300;
+    }
+
 """
 )
