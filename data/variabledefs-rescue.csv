@@ -1,120 +1,125 @@
-variable,gas,sector,unit,global
-CEDS+|9+ Sectors|Emissions|BC|Agricultural Waste Burning,BC,Agricultural Waste Burning,Mt BC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|BC|Agriculture,BC,Agriculture,Mt BC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|BC|Aircraft,BC,Aircraft,Mt BC/yr,TRUE
-CEDS+|9+ Sectors|Emissions|BC|Energy Sector,BC,Energy Sector,Mt BC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|BC|Forest Burning,BC,Forest Burning,Mt BC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|BC|Grassland Burning,BC,Grassland Burning,Mt BC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|BC|Industrial Sector,BC,Industrial Sector,Mt BC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|BC|International Shipping,BC,International Shipping,Mt BC/yr,TRUE
-# CEDS+|9+ Sectors|Emissions|BC|Peat Burning,BC,Peat Burning,Mt BC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|BC|Residential Commercial Other,BC,Residential Commercial Other,Mt BC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|BC|Solvents Production and Application,BC,Solvents Production and Application,Mt BC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|BC|Transportation Sector,BC,Transportation Sector,Mt BC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|BC|Waste,BC,Waste,Mt BC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CH4|Agricultural Waste Burning,CH4,Agricultural Waste Burning,Mt CH4/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CH4|Agriculture,CH4,Agriculture,Mt CH4/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CH4|Aircraft,CH4,Aircraft,Mt CH4/yr,TRUE
-CEDS+|9+ Sectors|Emissions|CH4|Energy Sector,CH4,Energy Sector,Mt CH4/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CH4|Forest Burning,CH4,Forest Burning,Mt CH4/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CH4|Grassland Burning,CH4,Grassland Burning,Mt CH4/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CH4|Industrial Sector,CH4,Industrial Sector,Mt CH4/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CH4|International Shipping,CH4,International Shipping,Mt CH4/yr,TRUE
-# CEDS+|9+ Sectors|Emissions|CH4|Peat Burning,CH4,Peat Burning,Mt CH4/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CH4|Residential Commercial Other,CH4,Residential Commercial Other,Mt CH4/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CH4|Solvents Production and Application,CH4,Solvents Production and Application,Mt CH4/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CH4|Transportation Sector,CH4,Transportation Sector,Mt CH4/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CH4|Waste,CH4,Waste,Mt CH4/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CO2|Aggregate - Agriculture and LUC,CO2,Aggregate - Agriculture and LUC,Mt CO2/yr,TRUE
-CEDS+|9+ Sectors|Emissions|CO2|Aircraft,CO2,Aircraft,Mt CO2/yr,TRUE
-CEDS+|9+ Sectors|Emissions|CO2|Energy Sector,CO2,Energy Sector,Mt CO2/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CO2|Industrial Sector,CO2,Industrial Sector,Mt CO2/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CO2|International Shipping,CO2,International Shipping,Mt CO2/yr,TRUE
-CEDS+|9+ Sectors|Emissions|CO2|Residential Commercial Other,CO2,Residential Commercial Other,Mt CO2/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CO2|Solvents Production and Application,CO2,Solvents Production and Application,Mt CO2/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CO2|Transportation Sector,CO2,Transportation Sector,Mt CO2/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CO2|Waste,CO2,Waste,Mt CO2/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CO2|CDR Afforestation,CO2,CDR Afforestation,Mt CO2/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CO2|CDR BECCS,CO2,CDR BECCS,Mt CO2/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CO2|CDR DACCS,CO2,CDR DACCS,Mt CO2/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CO2|CDR EW,CO2,CDR EW,Mt CO2/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CO2|CDR Industry,CO2,CDR Industry,Mt CO2/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CO2|CDR OAE,CO2,CDR OAE,Mt CO2/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CO|Agricultural Waste Burning,CO,Agricultural Waste Burning,Mt CO/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CO|Agriculture,CO,Agriculture,Mt CO/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CO|Aircraft,CO,Aircraft,Mt CO/yr,TRUE
-CEDS+|9+ Sectors|Emissions|CO|Energy Sector,CO,Energy Sector,Mt CO/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CO|Forest Burning,CO,Forest Burning,Mt CO/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CO|Grassland Burning,CO,Grassland Burning,Mt CO/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CO|Industrial Sector,CO,Industrial Sector,Mt CO/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CO|International Shipping,CO,International Shipping,Mt CO/yr,TRUE
-# CEDS+|9+ Sectors|Emissions|CO|Peat Burning,CO,Peat Burning,Mt CO/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CO|Residential Commercial Other,CO,Residential Commercial Other,Mt CO/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CO|Solvents Production and Application,CO,Solvents Production and Application,Mt CO/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CO|Transportation Sector,CO,Transportation Sector,Mt CO/yr,FALSE
-CEDS+|9+ Sectors|Emissions|CO|Waste,CO,Waste,Mt CO/yr,FALSE
-CEDS+|9+ Sectors|Emissions|NH3|Agricultural Waste Burning,NH3,Agricultural Waste Burning,Mt NH3/yr,FALSE
-CEDS+|9+ Sectors|Emissions|NH3|Agriculture,NH3,Agriculture,Mt NH3/yr,FALSE
-CEDS+|9+ Sectors|Emissions|NH3|Aircraft,NH3,Aircraft,Mt NH3/yr,TRUE
-CEDS+|9+ Sectors|Emissions|NH3|Energy Sector,NH3,Energy Sector,Mt NH3/yr,FALSE
-CEDS+|9+ Sectors|Emissions|NH3|Forest Burning,NH3,Forest Burning,Mt NH3/yr,FALSE
-CEDS+|9+ Sectors|Emissions|NH3|Grassland Burning,NH3,Grassland Burning,Mt NH3/yr,FALSE
-CEDS+|9+ Sectors|Emissions|NH3|Industrial Sector,NH3,Industrial Sector,Mt NH3/yr,FALSE
-CEDS+|9+ Sectors|Emissions|NH3|International Shipping,NH3,International Shipping,Mt NH3/yr,TRUE
-# CEDS+|9+ Sectors|Emissions|NH3|Peat Burning,NH3,Peat Burning,Mt NH3/yr,FALSE
-CEDS+|9+ Sectors|Emissions|NH3|Residential Commercial Other,NH3,Residential Commercial Other,Mt NH3/yr,FALSE
-CEDS+|9+ Sectors|Emissions|NH3|Solvents Production and Application,NH3,Solvents Production and Application,Mt NH3/yr,FALSE
-CEDS+|9+ Sectors|Emissions|NH3|Transportation Sector,NH3,Transportation Sector,Mt NH3/yr,FALSE
-CEDS+|9+ Sectors|Emissions|NH3|Waste,NH3,Waste,Mt NH3/yr,FALSE
-CEDS+|9+ Sectors|Emissions|NOx|Agricultural Waste Burning,NOx,Agricultural Waste Burning,Mt NOx/yr,FALSE
-CEDS+|9+ Sectors|Emissions|NOx|Agriculture,NOx,Agriculture,Mt NOx/yr,FALSE
-CEDS+|9+ Sectors|Emissions|NOx|Aircraft,NOx,Aircraft,Mt NOx/yr,TRUE
-CEDS+|9+ Sectors|Emissions|NOx|Energy Sector,NOx,Energy Sector,Mt NOx/yr,FALSE
-CEDS+|9+ Sectors|Emissions|NOx|Forest Burning,NOx,Forest Burning,Mt NOx/yr,FALSE
-CEDS+|9+ Sectors|Emissions|NOx|Grassland Burning,NOx,Grassland Burning,Mt NOx/yr,FALSE
-CEDS+|9+ Sectors|Emissions|NOx|Industrial Sector,NOx,Industrial Sector,Mt NOx/yr,FALSE
-CEDS+|9+ Sectors|Emissions|NOx|International Shipping,NOx,International Shipping,Mt NOx/yr,TRUE
-# CEDS+|9+ Sectors|Emissions|NOx|Peat Burning,NOx,Peat Burning,Mt NOx/yr,FALSE
-CEDS+|9+ Sectors|Emissions|NOx|Residential Commercial Other,NOx,Residential Commercial Other,Mt NOx/yr,FALSE
-CEDS+|9+ Sectors|Emissions|NOx|Solvents Production and Application,NOx,Solvents Production and Application,Mt NOx/yr,FALSE
-CEDS+|9+ Sectors|Emissions|NOx|Transportation Sector,NOx,Transportation Sector,Mt NOx/yr,FALSE
-CEDS+|9+ Sectors|Emissions|NOx|Waste,NOx,Waste,Mt NOx/yr,FALSE
-CEDS+|9+ Sectors|Emissions|OC|Agricultural Waste Burning,OC,Agricultural Waste Burning,Mt OC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|OC|Agriculture,OC,Agriculture,Mt OC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|OC|Aircraft,OC,Aircraft,Mt OC/yr,TRUE
-CEDS+|9+ Sectors|Emissions|OC|Energy Sector,OC,Energy Sector,Mt OC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|OC|Forest Burning,OC,Forest Burning,Mt OC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|OC|Grassland Burning,OC,Grassland Burning,Mt OC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|OC|Industrial Sector,OC,Industrial Sector,Mt OC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|OC|International Shipping,OC,International Shipping,Mt OC/yr,TRUE
-# CEDS+|9+ Sectors|Emissions|OC|Peat Burning,OC,Peat Burning,Mt OC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|OC|Residential Commercial Other,OC,Residential Commercial Other,Mt OC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|OC|Solvents Production and Application,OC,Solvents Production and Application,Mt OC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|OC|Transportation Sector,OC,Transportation Sector,Mt OC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|OC|Waste,OC,Waste,Mt OC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|Sulfur|Agricultural Waste Burning,Sulfur,Agricultural Waste Burning,Mt SO2/yr,FALSE
-CEDS+|9+ Sectors|Emissions|Sulfur|Agriculture,Sulfur,Agriculture,Mt SO2/yr,FALSE
-CEDS+|9+ Sectors|Emissions|Sulfur|Aircraft,Sulfur,Aircraft,Mt SO2/yr,TRUE
-CEDS+|9+ Sectors|Emissions|Sulfur|Energy Sector,Sulfur,Energy Sector,Mt SO2/yr,FALSE
-CEDS+|9+ Sectors|Emissions|Sulfur|Forest Burning,Sulfur,Forest Burning,Mt SO2/yr,FALSE
-CEDS+|9+ Sectors|Emissions|Sulfur|Grassland Burning,Sulfur,Grassland Burning,Mt SO2/yr,FALSE
-CEDS+|9+ Sectors|Emissions|Sulfur|Industrial Sector,Sulfur,Industrial Sector,Mt SO2/yr,FALSE
-CEDS+|9+ Sectors|Emissions|Sulfur|International Shipping,Sulfur,International Shipping,Mt SO2/yr,TRUE
-# CEDS+|9+ Sectors|Emissions|Sulfur|Peat Burning,Sulfur,Peat Burning,Mt SO2/yr,FALSE
-CEDS+|9+ Sectors|Emissions|Sulfur|Residential Commercial Other,Sulfur,Residential Commercial Other,Mt SO2/yr,FALSE
-CEDS+|9+ Sectors|Emissions|Sulfur|Solvents Production and Application,Sulfur,Solvents Production and Application,Mt SO2/yr,FALSE
-CEDS+|9+ Sectors|Emissions|Sulfur|Transportation Sector,Sulfur,Transportation Sector,Mt SO2/yr,FALSE
-CEDS+|9+ Sectors|Emissions|Sulfur|Waste,Sulfur,Waste,Mt SO2/yr,FALSE
-CEDS+|9+ Sectors|Emissions|VOC|Agricultural Waste Burning,VOC,Agricultural Waste Burning,Mt VOC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|VOC|Agriculture,VOC,Agriculture,Mt VOC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|VOC|Aircraft,VOC,Aircraft,Mt VOC/yr,TRUE
-CEDS+|9+ Sectors|Emissions|VOC|Energy Sector,VOC,Energy Sector,Mt VOC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|VOC|Forest Burning,VOC,Forest Burning,Mt VOC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|VOC|Grassland Burning,VOC,Grassland Burning,Mt VOC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|VOC|Industrial Sector,VOC,Industrial Sector,Mt VOC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|VOC|International Shipping,VOC,International Shipping,Mt VOC/yr,TRUE
-# CEDS+|9+ Sectors|Emissions|VOC|Peat Burning,VOC,Peat Burning,Mt VOC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|VOC|Residential Commercial Other,VOC,Residential Commercial Other,Mt VOC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|VOC|Solvents Production and Application,VOC,Solvents Production and Application,Mt VOC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|VOC|Transportation Sector,VOC,Transportation Sector,Mt VOC/yr,FALSE
-CEDS+|9+ Sectors|Emissions|VOC|Waste,VOC,Waste,Mt VOC/yr,FALSE
+variable,gas,sector,unit,global,has_history
+CEDS+|9+ Sectors|Emissions|BC|Agricultural Waste Burning,BC,Agricultural Waste Burning,Mt BC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|BC|Agriculture,BC,Agriculture,Mt BC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|BC|Aircraft,BC,Aircraft,Mt BC/yr,TRUE,TRUE
+CEDS+|9+ Sectors|Emissions|BC|Energy Sector,BC,Energy Sector,Mt BC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|BC|Forest Burning,BC,Forest Burning,Mt BC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|BC|Grassland Burning,BC,Grassland Burning,Mt BC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|BC|Industrial Sector,BC,Industrial Sector,Mt BC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|BC|International Shipping,BC,International Shipping,Mt BC/yr,TRUE,TRUE
+CEDS+|9+ Sectors|Emissions|BC|Peat Burning,BC,Peat Burning,Mt BC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|BC|Residential Commercial Other,BC,Residential Commercial Other,Mt BC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|BC|Solvents Production and Application,BC,Solvents Production and Application,Mt BC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|BC|Transportation Sector,BC,Transportation Sector,Mt BC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|BC|Waste,BC,Waste,Mt BC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CH4|Agricultural Waste Burning,CH4,Agricultural Waste Burning,Mt CH4/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CH4|Agriculture,CH4,Agriculture,Mt CH4/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CH4|Aircraft,CH4,Aircraft,Mt CH4/yr,TRUE,TRUE
+CEDS+|9+ Sectors|Emissions|CH4|Energy Sector,CH4,Energy Sector,Mt CH4/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CH4|Forest Burning,CH4,Forest Burning,Mt CH4/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CH4|Grassland Burning,CH4,Grassland Burning,Mt CH4/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CH4|Industrial Sector,CH4,Industrial Sector,Mt CH4/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CH4|International Shipping,CH4,International Shipping,Mt CH4/yr,TRUE,TRUE
+CEDS+|9+ Sectors|Emissions|CH4|Peat Burning,CH4,Peat Burning,Mt CH4/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CH4|Residential Commercial Other,CH4,Residential Commercial Other,Mt CH4/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CH4|Solvents Production and Application,CH4,Solvents Production and Application,Mt CH4/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CH4|Transportation Sector,CH4,Transportation Sector,Mt CH4/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CH4|Waste,CH4,Waste,Mt CH4/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CO2|Aggregate - Agriculture and LUC,CO2,Aggregate - Agriculture and LUC,Mt CO2/yr,TRUE,TRUE
+CEDS+|9+ Sectors|Emissions|CO2|Aircraft,CO2,Aircraft,Mt CO2/yr,TRUE,TRUE
+CEDS+|9+ Sectors|Emissions|CO2|Energy Sector,CO2,Energy Sector,Mt CO2/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CO2|Industrial Sector,CO2,Industrial Sector,Mt CO2/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CO2|International Shipping,CO2,International Shipping,Mt CO2/yr,TRUE,TRUE
+CEDS+|9+ Sectors|Emissions|CO2|Residential Commercial Other,CO2,Residential Commercial Other,Mt CO2/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CO2|Solvents Production and Application,CO2,Solvents Production and Application,Mt CO2/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CO2|Transportation Sector,CO2,Transportation Sector,Mt CO2/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CO2|Waste,CO2,Waste,Mt CO2/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CO2|CDR Afforestation,CO2,CDR Afforestation,Mt CO2/yr,FALSE,FALSE
+CEDS+|9+ Sectors|Emissions|CO2|CDR BECCS,CO2,CDR BECCS,Mt CO2/yr,FALSE,FALSE
+CEDS+|9+ Sectors|Emissions|CO2|CDR DACCS,CO2,CDR DACCS,Mt CO2/yr,FALSE,FALSE
+CEDS+|9+ Sectors|Emissions|CO2|CDR EW,CO2,CDR EW,Mt CO2/yr,FALSE,FALSE
+CEDS+|9+ Sectors|Emissions|CO2|CDR Industry,CO2,CDR Industry,Mt CO2/yr,FALSE,FALSE
+CEDS+|9+ Sectors|Emissions|CO2|CDR OAE,CO2,CDR OAE,Mt CO2/yr,FALSE,FALSE
+CEDS+|9+ Sectors|Emissions|CO|Agricultural Waste Burning,CO,Agricultural Waste Burning,Mt CO/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CO|Agriculture,CO,Agriculture,Mt CO/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CO|Aircraft,CO,Aircraft,Mt CO/yr,TRUE,TRUE
+CEDS+|9+ Sectors|Emissions|CO|Energy Sector,CO,Energy Sector,Mt CO/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CO|Forest Burning,CO,Forest Burning,Mt CO/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CO|Grassland Burning,CO,Grassland Burning,Mt CO/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CO|Industrial Sector,CO,Industrial Sector,Mt CO/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CO|International Shipping,CO,International Shipping,Mt CO/yr,TRUE,TRUE
+CEDS+|9+ Sectors|Emissions|CO|Peat Burning,CO,Peat Burning,Mt CO/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CO|Residential Commercial Other,CO,Residential Commercial Other,Mt CO/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CO|Solvents Production and Application,CO,Solvents Production and Application,Mt CO/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CO|Transportation Sector,CO,Transportation Sector,Mt CO/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|CO|Waste,CO,Waste,Mt CO/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|NH3|Agricultural Waste Burning,NH3,Agricultural Waste Burning,Mt NH3/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|NH3|Agriculture,NH3,Agriculture,Mt NH3/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|NH3|Aircraft,NH3,Aircraft,Mt NH3/yr,TRUE,TRUE
+CEDS+|9+ Sectors|Emissions|NH3|Energy Sector,NH3,Energy Sector,Mt NH3/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|NH3|Forest Burning,NH3,Forest Burning,Mt NH3/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|NH3|Grassland Burning,NH3,Grassland Burning,Mt NH3/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|NH3|Industrial Sector,NH3,Industrial Sector,Mt NH3/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|NH3|International Shipping,NH3,International Shipping,Mt NH3/yr,TRUE,TRUE
+CEDS+|9+ Sectors|Emissions|NH3|Peat Burning,NH3,Peat Burning,Mt NH3/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|NH3|Residential Commercial Other,NH3,Residential Commercial Other,Mt NH3/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|NH3|Solvents Production and Application,NH3,Solvents Production and Application,Mt NH3/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|NH3|Transportation Sector,NH3,Transportation Sector,Mt NH3/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|NH3|Waste,NH3,Waste,Mt NH3/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|NOx|Agricultural Waste Burning,NOx,Agricultural Waste Burning,Mt NOx/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|NOx|Agriculture,NOx,Agriculture,Mt NOx/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|NOx|Aircraft,NOx,Aircraft,Mt NOx/yr,TRUE,TRUE
+CEDS+|9+ Sectors|Emissions|NOx|Energy Sector,NOx,Energy Sector,Mt NOx/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|NOx|Forest Burning,NOx,Forest Burning,Mt NOx/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|NOx|Grassland Burning,NOx,Grassland Burning,Mt NOx/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|NOx|Industrial Sector,NOx,Industrial Sector,Mt NOx/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|NOx|International Shipping,NOx,International Shipping,Mt NOx/yr,TRUE,TRUE
+CEDS+|9+ Sectors|Emissions|NOx|Peat Burning,NOx,Peat Burning,Mt NOx/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|NOx|Residential Commercial Other,NOx,Residential Commercial Other,Mt NOx/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|NOx|Solvents Production and Application,NOx,Solvents Production and Application,Mt NOx/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|NOx|Transportation Sector,NOx,Transportation Sector,Mt NOx/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|NOx|Waste,NOx,Waste,Mt NOx/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|OC|Agricultural Waste Burning,OC,Agricultural Waste Burning,Mt OC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|OC|Agriculture,OC,Agriculture,Mt OC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|OC|Aircraft,OC,Aircraft,Mt OC/yr,TRUE,TRUE
+CEDS+|9+ Sectors|Emissions|OC|Energy Sector,OC,Energy Sector,Mt OC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|OC|Forest Burning,OC,Forest Burning,Mt OC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|OC|Grassland Burning,OC,Grassland Burning,Mt OC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|OC|Industrial Sector,OC,Industrial Sector,Mt OC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|OC|International Shipping,OC,International Shipping,Mt OC/yr,TRUE,TRUE
+CEDS+|9+ Sectors|Emissions|OC|Peat Burning,OC,Peat Burning,Mt OC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|OC|Residential Commercial Other,OC,Residential Commercial Other,Mt OC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|OC|Solvents Production and Application,OC,Solvents Production and Application,Mt OC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|OC|Transportation Sector,OC,Transportation Sector,Mt OC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|OC|Waste,OC,Waste,Mt OC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|Sulfur|Agricultural Waste Burning,Sulfur,Agricultural Waste Burning,Mt SO2/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|Sulfur|Agriculture,Sulfur,Agriculture,Mt SO2/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|Sulfur|Aircraft,Sulfur,Aircraft,Mt SO2/yr,TRUE,TRUE
+CEDS+|9+ Sectors|Emissions|Sulfur|Energy Sector,Sulfur,Energy Sector,Mt SO2/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|Sulfur|Forest Burning,Sulfur,Forest Burning,Mt SO2/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|Sulfur|Grassland Burning,Sulfur,Grassland Burning,Mt SO2/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|Sulfur|Industrial Sector,Sulfur,Industrial Sector,Mt SO2/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|Sulfur|International Shipping,Sulfur,International Shipping,Mt SO2/yr,TRUE,TRUE
+CEDS+|9+ Sectors|Emissions|Sulfur|Peat Burning,Sulfur,Peat Burning,Mt SO2/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|Sulfur|Residential Commercial Other,Sulfur,Residential Commercial Other,Mt SO2/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|Sulfur|Solvents Production and Application,Sulfur,Solvents Production and Application,Mt SO2/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|Sulfur|Transportation Sector,Sulfur,Transportation Sector,Mt SO2/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|Sulfur|Waste,Sulfur,Waste,Mt SO2/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|VOC|Agricultural Waste Burning,VOC,Agricultural Waste Burning,Mt VOC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|VOC|Agriculture,VOC,Agriculture,Mt VOC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|VOC|Aircraft,VOC,Aircraft,Mt VOC/yr,TRUE,TRUE
+CEDS+|9+ Sectors|Emissions|VOC|Energy Sector,VOC,Energy Sector,Mt VOC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|VOC|Forest Burning,VOC,Forest Burning,Mt VOC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|VOC|Grassland Burning,VOC,Grassland Burning,Mt VOC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|VOC|Industrial Sector,VOC,Industrial Sector,Mt VOC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|VOC|International Shipping,VOC,International Shipping,Mt VOC/yr,TRUE,TRUE
+CEDS+|9+ Sectors|Emissions|VOC|Peat Burning,VOC,Peat Burning,Mt VOC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|VOC|Residential Commercial Other,VOC,Residential Commercial Other,Mt VOC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|VOC|Solvents Production and Application,VOC,Solvents Production and Application,Mt VOC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|VOC|Transportation Sector,VOC,Transportation Sector,Mt VOC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|VOC|Waste,VOC,Waste,Mt VOC/yr,FALSE,TRUE
+CEDS+|9+ Sectors|Emissions|HFC,HFC,Total,Mt CO2eq/yr,TRUE,TRUE
+CEDS+|9+ Sectors|Emissions|C2F6,C2F6,Total,kt C2F6/yr,TRUE,TRUE
+CEDS+|9+ Sectors|Emissions|CF4,CF4,Total,kt CF4/yr,TRUE,TRUE
+CEDS+|9+ Sectors|Emissions|SF6,SF6,Total,kt SF6/yr,TRUE,TRUE
+CEDS+|9+ Sectors|Emissions|N2O,N2O,Total,kt N2O/yr,TRUE,TRUE
