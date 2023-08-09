@@ -4,7 +4,7 @@
 from importlib.metadata import version as _version
 
 from .report import add_sticky_toc, embed_image
-from .utils import RegionMapping, VariableDefinitions, combine_countries
+from .utils import RegionMapping, VariableDefinitions, combine_countries, CondordiaMagics
 
 
 try:

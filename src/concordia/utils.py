@@ -8,7 +8,25 @@ import pandas as pd
 import pandas_indexing.accessors
 from pandas import DataFrame
 from pandas_indexing import concat, isin
+from IPython.core.magic import Magics, magics_class, cell_magic
 
+@magics_class
+class CondordiaMagics(Magics):
+
+    @cell_magic
+    def execute_or_lazy_load(self, line, cell):
+        """
+        Evaluates first line argument. If True, executes cell, otherwise executes remaining arguments
+        """
+        parts = line.split('#')[0].split()
+        if self.shell.ev(parts[0]):
+            self.shell.run_cell(cell)
+        elif len(parts) > 1:
+            print(f'Running: {cmd}')
+            cmd = ' '.join(parts[1:])
+            self.shell.run_cell(cmd)
+        else:
+            return print('Skipped')
 
 @dataclass
 class VariableDefinitions:
