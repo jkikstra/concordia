@@ -160,7 +160,9 @@ class VariableDefinitions:
 
         if (li == -1).any():
             # Need to expand nan values
-            nanlevels = df.index.names.difference(self.variable_index.names).difference(["unit"])
+            nanlevels = df.index.names.difference(self.variable_index.names).difference(
+                ["unit"]
+            )
 
             variations = pd.MultiIndex.from_product(
                 chain(
@@ -221,14 +223,26 @@ class RegionMapping:
             [self.data.index, self.data.values], names=["country", "region"]
         )
 
-    def aggregate(self, df: DataFrame, level="country", agg_func="sum") -> DataFrame:
+    def aggregate(
+        self,
+        df: DataFrame,
+        level="country",
+        agg_func="sum",
+        dropna: bool = False,
+        keepworld: bool = False,
+    ) -> DataFrame:
         if level != "country":
             df = df.rename_axis(index={level: "country"})
+        index = self.index
+        if keepworld:
+            index = index.append(
+                pd.MultiIndex.from_tuples([("World", "World")], names=index.names)
+            )
         return (
-            df.pix.semijoin(self.index, how="left")
+            df.pix.semijoin(index, how="left")
             .groupby(
                 [n if n != "country" else "region" for n in df.index.names],
-                dropna=False,
+                dropna=dropna,
             )
             .agg(agg_func)
         )
