@@ -39,7 +39,8 @@ CEDS+|9+ Sectors|Emissions|CO2|CDR BECCS,CO2,CDR BECCS,Mt CO2/yr,FALSE,FALSE
 CEDS+|9+ Sectors|Emissions|CO2|CDR DACCS,CO2,CDR DACCS,Mt CO2/yr,FALSE,FALSE
 CEDS+|9+ Sectors|Emissions|CO2|CDR EW,CO2,CDR EW,Mt CO2/yr,FALSE,FALSE
 CEDS+|9+ Sectors|Emissions|CO2|CDR Industry,CO2,CDR Industry,Mt CO2/yr,FALSE,FALSE
-CEDS+|9+ Sectors|Emissions|CO2|CDR OAE,CO2,CDR OAE,Mt CO2/yr,FALSE,FALSE
+CEDS+|9+ Sectors|Emissions|CO2|CDR OAE Uptake Ocean,CO2,CDR OAE,Mt CO2/yr,FALSE,FALSE
+CEDS+|9+ Sectors|Emissions|CO2|CDR OAE Calcination Emissions,CO2,Emissions OAE,Mt CO2/yr,FALSE,FALSE
 CEDS+|9+ Sectors|Emissions|CO|Agricultural Waste Burning,CO,Agricultural Waste Burning,Mt CO/yr,FALSE,TRUE
 CEDS+|9+ Sectors|Emissions|CO|Agriculture,CO,Agriculture,Mt CO/yr,FALSE,TRUE
 CEDS+|9+ Sectors|Emissions|CO|Aircraft,CO,Aircraft,Mt CO/yr,TRUE,TRUE
