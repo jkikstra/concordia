@@ -22,8 +22,8 @@ class CondordiaMagics(Magics):
         if self.shell.ev(parts[0]):
             self.shell.run_cell(cell)
         elif len(parts) > 1:
-            print(f'Running: {cmd}')
             cmd = ' '.join(parts[1:])
+            print(f'Running: {cmd}')
             self.shell.run_cell(cmd)
         else:
             return print('Skipped')
