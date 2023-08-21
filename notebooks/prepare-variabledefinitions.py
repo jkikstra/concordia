@@ -18,6 +18,7 @@ from pathlib import Path
 import pandas as pd
 from pandas_indexing import extractlevel, isin
 
+
 # %%
 base_path = Path(
     "/Users/coroa/Library/CloudStorage/OneDrive-SharedLibraries-IIASA/RESCUE - WP 1/data"
@@ -46,7 +47,9 @@ variables = (
 )
 
 # %%
-variabledefs = extractlevel(variables, "CEDS+|9+ Sectors|Emissions|{gas}|{sector}|Unharmonized")
+variabledefs = extractlevel(
+    variables, "CEDS+|9+ Sectors|Emissions|{gas}|{sector}|Unharmonized"
+)
 
 # %% [markdown]
 # Mark variables as global or regional:

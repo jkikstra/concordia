@@ -149,8 +149,7 @@ def build_toc(doc, tag=h1, toc_level=3, compact=False, slug_prefix=""):
 def add_sticky_toc(
     doc, max_level: int = 3, min_level: int = 1, compact: bool = False
 ) -> None:
-    """
-    Add a sticky table of contents to `doc`
+    """Add a sticky table of contents to `doc`
 
     Searches for heading tags h1 to h6 and wraps them into section tags. The sections
     get slugified ids and a toc on the right side allows scrolling to them quickly.
@@ -186,8 +185,7 @@ def add_plotly_header(doc):
 def add_hypothesis(
     doc, ident: str, domain: str = "annotate.climateanalytics.org"
 ) -> None:
-    """
-    Add hypothes.is web client to integrate a shared annotation system
+    """Add hypothes.is web client to integrate a shared annotation system.
 
     Arguments
     ---------

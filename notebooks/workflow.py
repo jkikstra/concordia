@@ -17,25 +17,31 @@
 # %autoreload 2
 
 # %%
-import re
-import yaml
-import pycountry
 import logging
+import re
 from pathlib import Path
 
 import pandas as pd
+import pycountry
 import xarray as xr
-import pandas_indexing.accessors
-from aneris.harmonize import Harmonizer
+import yaml
+from concordia import (
+    CondordiaMagics,
+    RegionMapping,
+    VariableDefinitions,
+    combine_countries,
+)
+from IPython import get_ipython
+from pandas import DataFrame
+from pandas_indexing import concat, isin, ismatch, semijoin
+from pandas_indexing.units import set_openscm_registry_as_default
+
+from aneris import logger
 from aneris.downscaling import Downscaler
 from aneris.grid import Gridder
-from pandas import DataFrame
-from pandas_indexing import isin, semijoin, concat, ismatch
-from IPython import get_ipython
-from aneris import logger
+from aneris.harmonize import Harmonizer
 
-from concordia import VariableDefinitions, RegionMapping, combine_countries, CondordiaMagics
-from pandas_indexing.units import set_openscm_registry_as_default
+
 # %%
 fh = logging.FileHandler("debug.log", mode="w")
 fh.setLevel(logging.DEBUG)
@@ -75,7 +81,7 @@ version = "2023-08-21"
 #
 
 # %%
-with open("config.yaml", "r") as stream:
+with open("config.yaml") as stream:
     config = yaml.safe_load(stream)
 
 # %%
@@ -136,7 +142,10 @@ hist_ceds = (
 
 # %%
 hist_global = (
-    pd.read_excel(base_path / "historical/rescue/global_trajectories.xlsx", index_col=list(range(5)))
+    pd.read_excel(
+        base_path / "historical/rescue/global_trajectories.xlsx",
+        index_col=list(range(5)),
+    )
     .rename_axis(index=str.lower)
     .rename_axis(index={"region": "country"})
     .rename(index=lambda s: s.removesuffix("|Unharmonized"), level="variable")
@@ -149,7 +158,8 @@ hist_gfed = pd.read_csv(
 
 # %%
 hist = (
-    concat([hist_ceds, hist_global, hist_gfed]).droplevel(["model", "scenario"])
+    concat([hist_ceds, hist_global, hist_gfed])
+    .droplevel(["model", "scenario"])
     .pipe(combine_countries, **country_combinations)
     .pipe(
         variabledefs.load_data,
@@ -163,20 +173,22 @@ hist.head()
 with ur.context("AR4GWP100"):
     model = (
         pd.read_csv(
-            base_path / "iam_files/rescue/REMIND-MAgPIE-CEDS-RESCUE-Tier1-Extension-2023-07-27.csv",
+            base_path
+            / "iam_files/rescue/REMIND-MAgPIE-CEDS-RESCUE-Tier1-Extension-2023-07-27.csv",
             index_col=list(range(5)),
             sep=";",
         )
         .drop(["Unnamed: 21"], axis=1)
         .rename(
-            index={"Mt CO2-equiv/yr": "Mt CO2eq/yr", "Mt NOX/yr": "Mt NOx/yr", "kt HFC134a-equiv/yr": "kt HFC134a/yr"},
+            index={
+                "Mt CO2-equiv/yr": "Mt CO2eq/yr",
+                "Mt NOX/yr": "Mt NOx/yr",
+                "kt HFC134a-equiv/yr": "kt HFC134a/yr",
+            },
             level="Unit",
         )
         .pix.convert_unit({"kt HFC134a/yr": "Mt CO2eq/yr"}, level="Unit")
-        .rename(
-            index=lambda s: s.removesuffix("|Total"),
-            level="Variable"
-        )
+        .rename(index=lambda s: s.removesuffix("|Total"), level="Variable")
         .pipe(
             variabledefs.load_data,
             extend_missing=True,
@@ -186,7 +198,10 @@ with ur.context("AR4GWP100"):
 model.pix
 
 # %%
-harm_overrides = pd.read_excel(base_path / "iam_files" / "rescue" / "harmonization_overrides.xlsx", index_col=list(range(3))).method
+harm_overrides = pd.read_excel(
+    base_path / "iam_files" / "rescue" / "harmonization_overrides.xlsx",
+    index_col=list(range(3)),
+).method
 harm_overrides
 
 # %%
@@ -231,9 +246,9 @@ model_agg = pd.concat(
 
 # %%
 luc_sectors = [
-    "Agricultural Waste Burning", 
-    "Grassland Burning", 
-    "Forest Burning", 
+    "Agricultural Waste Burning",
+    "Grassland Burning",
+    "Forest Burning",
     "Peat Burning",
     "Agriculture",
     "Aggregate - Agriculture and LUC",
@@ -289,7 +304,9 @@ harmonized = concat(
 harmonized.to_csv(harmonized_path)
 
 # %%
-harmonized.loc[(harmonized < 0).any(axis=1)].loc[~ismatch(sector="CDR*") & ~isin(method="aggregate")]
+harmonized.loc[(harmonized < 0).any(axis=1)].loc[
+    ~ismatch(sector="CDR*") & ~isin(method="aggregate")
+]
 
 
 # %%
@@ -323,6 +340,7 @@ def make_totals(df):
     if "method" in original_levels:  # need to process harm
         ret = ret.pix.assign(method="aggregate", order=original_levels)
     return ret
+
 
 model_agg = concat([model_agg, make_totals(model_agg)])
 hist_agg = concat([hist_agg, make_totals(hist_agg)])
@@ -361,6 +379,7 @@ hfc_distribution = (
     .rename(columns=int)
 )
 
+
 def split_hfc(df):
     return concat(
         [
@@ -370,6 +389,8 @@ def split_hfc(df):
             .rename_axis(index={"hfc": "gas"}),
         ]
     )
+
+
 data = concat(
     [
         split_hfc(model_agg).pix.format(
@@ -448,20 +469,27 @@ downscaled_path = out_path / f"downscaled-only-{version}.csv"
 # %% [markdown]
 # The regionmapping has several countries which are not part of the original gdp data, therefore we remove those countries (and effectively split the regional emissions among fewer countries). The missing countries are:
 
+
 # %%
 def iso_to_name(x):
     cntry = pycountry.countries.get(alpha_3=x.upper())
     return cntry.name if cntry is not None else x
+
+
 regionmapping.data.index.difference(gdp.pix.unique("country")).map(iso_to_name)
 
 # %%
 # Remove countries from regionmapping that the GDP proxy does not have
-regionmapping_trimmed = RegionMapping(regionmapping.data.loc[isin(country=gdp.pix.unique("country"))])
+regionmapping_trimmed = RegionMapping(
+    regionmapping.data.loc[isin(country=gdp.pix.unique("country"))]
+)
 
 # %%
 # %%execute_or_lazy_load execute_downscaling downscaled = pd.read_csv(downscaled_path, index_col=list(range(8))).rename(columns=int)
 downscaler = Downscaler(
-    harmonized.pix.semijoin(variabledefs.index_regional, how="inner").loc[~isin(region="World")].droplevel("method"),
+    harmonized.pix.semijoin(variabledefs.index_regional, how="inner")
+    .loc[~isin(region="World")]
+    .droplevel("method"),
     hist.pix.semijoin(variabledefs.index_regional, how="inner"),
     base_year,
     regionmapping_trimmed.data,
@@ -470,7 +498,9 @@ downscaler = Downscaler(
 )
 methods = downscaler.methods()
 downscaled = downscaler.downscale(methods).sort_index()
-downscaled = downscaled.pix.assign(method=methods.pix.semijoin(downscaled.index, how="right")) 
+downscaled = downscaled.pix.assign(
+    method=methods.pix.semijoin(downscaled.index, how="right")
+)
 downscaled.to_csv(downscaled_path)
 
 # %%
@@ -486,17 +516,17 @@ proxy_dir = base_path / "gridding_process_files" / "proxy_rasters"
 proxy_cfg = pd.concat(
     [
         DataFrame(
-             {
-                 "path": proxy_dir.glob("aircraft_*.nc"),
-                 "name": "em-AIR-anthro",
-                 "separate_shares": False,
-                 "global_only": True,
-             }
+            {
+                "path": proxy_dir.glob("aircraft_*.nc"),
+                "name": "em-AIR-anthro",
+                "separate_shares": False,
+                "global_only": True,
+            }
         ),
         DataFrame(
             {
-                "path": proxy_dir.glob("shipping_*.nc"), 
-                 "name": "em-SHP-anthro",
+                "path": proxy_dir.glob("shipping_*.nc"),
+                "name": "em-SHP-anthro",
                 "separate_shares": False,
                 "global_only": True,
             }
@@ -587,17 +617,19 @@ sector_mapping = {
     "SLV": "Solvents Production and Application",
     "TRA": "Transportation Sector",
     "WST": "Waste",
-#    "CDR Afforestation", 
-#    "CDR BECCS",
-    "DAC_CDR": "CDR DACCS", 
-#    "CDR EW", 
-    "IND_CDR": "CDR Industry", 
-    "OAE_CDR": "CDR OAE", 
+    #    "CDR Afforestation",
+    #    "CDR BECCS",
+    "DAC_CDR": "CDR DACCS",
+    #    "CDR EW",
+    "IND_CDR": "CDR Industry",
+    "OAE_CDR": "CDR OAE",
     "OAE": "Emissions OAE",
 }
 
 # %%
-harmonized.pix.unique("sector").difference(sector_mapping.values()) # sectors not included in gridding
+harmonized.pix.unique("sector").difference(
+    sector_mapping.values()
+)  # sectors not included in gridding
 
 # %% [markdown]
 # ## Getting Countries Right
@@ -608,6 +640,8 @@ harmonized.pix.unique("sector").difference(sector_mapping.values()) # sectors no
 # http://localhost:8787, which seems to have slightly better scheduling
 # characteristics
 from dask.distributed import Client
+
+
 client = Client()
 
 # %%
@@ -631,10 +665,11 @@ data_for_gridding = downscaled.droplevel("region")
 # We also generate data for sectors only with global resolution, so we add those back in
 
 # %%
-global_sectors = variabledefs.data[variabledefs.data["global"] & variabledefs.data["gridded"]].pix.unique('sector')
-global_data = (
-        harmonized.loc[isin(sector=global_sectors, region='World')]
-        .rename_axis(index={"region": "country"})
+global_sectors = variabledefs.data[
+    variabledefs.data["global"] & variabledefs.data["gridded"]
+].pix.unique("sector")
+global_data = harmonized.loc[isin(sector=global_sectors, region="World")].rename_axis(
+    index={"region": "country"}
 )
 data_for_gridding = concat([data_for_gridding, global_data])
 
@@ -652,7 +687,7 @@ data_for_gridding.head()
 not_supported_sectors = [
     "CDR Afforestation",
     "CDR BECCS",
-    "CDR EW", 
+    "CDR EW",
 ]
 data_for_gridding = data_for_gridding.loc[~isin(sector=not_supported_sectors)]
 
@@ -663,7 +698,9 @@ data_for_gridding = data_for_gridding.loc[~isin(sector=not_supported_sectors)]
 kg_per_mt = 1e9
 s_per_yr = 365 * 24 * 60 * 60
 data_for_gridding = (
-    data_for_gridding.rename(index=lambda s: re.sub("Mt (.*)/yr", r"kg \1/s", s), level="unit")
+    data_for_gridding.rename(
+        index=lambda s: re.sub("Mt (.*)/yr", r"kg \1/s", s), level="unit"
+    )
     * kg_per_mt
     / s_per_yr
 )
@@ -676,7 +713,9 @@ data_for_gridding.to_csv(data_for_gridding_path)
 # ## Execute Gridding
 
 # %%
-scen = data_for_gridding.pix.semijoin(data_for_gridding.pix.unique(["model", "scenario"])[2:10], how="right") # TODO: Only 2nd and 3rd pathways
+scen = data_for_gridding.pix.semijoin(
+    data_for_gridding.pix.unique(["model", "scenario"])[2:10], how="right"
+)  # TODO: Only 2nd and 3rd pathways
 
 # %%
 _ = Gridder(
@@ -714,4 +753,9 @@ gridder.proxy_cfg
 
 # %%
 # %%execute_or_lazy_load execute_gridding
-tasks  = gridder.grid(skip_check=True, chunk_proxy_dims={'level': "auto"}, iter_levels=['model', 'scenario'], verify_output=True)
+tasks = gridder.grid(
+    skip_check=True,
+    chunk_proxy_dims={"level": "auto"},
+    iter_levels=["model", "scenario"],
+    verify_output=True,
+)
