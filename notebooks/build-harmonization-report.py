@@ -13,13 +13,17 @@
 # ---
 
 # %%
+# %load_ext autoreload
+# %autoreload 2
+
+# %%
 import pandas as pd
 from pandas_indexing import isin, concat, ismatch
 import pandas_indexing.accessors
 from dominate.tags import div
 from dominate import document
 from concordia import embed_image, add_sticky_toc
-from concordia.report import HEADING_TAGS
+from concordia.report import HEADING_TAGS, add_plotly_header
 from concordia.utils import RegionMapping, combine_countries
 import seaborn as sns
 from tqdm import tqdm
@@ -108,9 +112,18 @@ cmip6_hist = regionmapping.aggregate(
 # %%
 hist = concat([hist, cmip6_hist])
 
+# %%
+import plotly.express as px
 
 # %%
-def plot_harm(sel, scenario=None, levels=["gas", "sector", "region"]):
+import plotly.io as pio
+
+# %%
+pio.templates.default = "ggplot2"
+
+
+# %%
+def plot_harm(sel, scenario=None, levels=["gas", "sector", "region"], useplotly=False):
     model_sel = sel if scenario is None else sel & isin(scenario=scenario)
     h = harm.loc[model_sel]
     data = concat(
@@ -134,6 +147,27 @@ def plot_harm(sel, scenario=None, levels=["gas", "sector", "region"]):
         )
 
     (non_unique,) = non_uniques
+    methods = pd.Series(h.index.pix.project("method"), h.index.pix.project(non_unique))
+
+    if useplotly:
+        g = px.line(
+            data.pix.to_tidy(),
+            x="year",
+            y="value",
+            color="key",
+            facet_col=non_unique,
+            facet_col_wrap=4,
+            labels=dict(value=data.pix.unique("unit").item(), key=None),
+        )
+        g.update_yaxes(matches=None)
+
+        def add_method(text):
+            name, label = text.split("=")
+            return f"{name} = {label}, method = {methods[label]}"
+
+        g.for_each_annotation(lambda a: a.update(text=add_method(a.text)))
+        return g
+
     g = sns.relplot(
         data.rename_axis(columns="year").stack().to_frame("value").reset_index(),
         kind="line",
@@ -145,9 +179,8 @@ def plot_harm(sel, scenario=None, levels=["gas", "sector", "region"]):
         facet_kws=dict(sharey=False),
         legend=False,
         height=2,
-        aspect=1.5
+        aspect=1.5,
     ).set(ylabel=data.pix.unique("unit").item())
-    methods = pd.Series(h.index.pix.project("method"), h.index.pix.project(non_unique))
     for label, ax in g.axes_dict.items():
         ax.set_title(f"{non_unique} = {label}, method = {methods[label]}", fontsize=9)
     return g
@@ -163,7 +196,15 @@ plot_harm(
 g = plot_harm(
     isin(sector="Total", gas="CO2"),
     scenario="RESCUE-Tier1-Extension-2023-07-27-PkBudg_cp0400-OAE_off",
+    useplotly=True
 )
+
+# %%
+g.update_layout(height=700, width=1500)
+g.update_xaxes(tick0=2000, dtick=20, tickmode="auto")
+
+# %%
+embed_image(g)
 
 
 # %% [markdown]
@@ -180,7 +221,7 @@ def what_changed(next, prev):
 
 
 # %%
-def make_doc(order, scenario=None, compact=False):
+def make_doc(order, scenario=None, compact=False, useplotly=False):
     if scenario is None:
         ((m, s),) = harm.pix.unique(["model", "scenario"])
     else:
@@ -199,6 +240,7 @@ def make_doc(order, scenario=None, compact=False):
             ax = plot_harm(
                 isin(**dict(zip(index.names, idx)), ignore_missing_levels=True),
                 scenario=scenario,
+                useplotly=useplotly
             )
         except ValueError as e:
             print(f"During plot_harm(isin(**{dict(zip(index.names, idx))}, ignore_missing_levels=True), {scenario=})")
@@ -208,6 +250,7 @@ def make_doc(order, scenario=None, compact=False):
         prev_idx = idx
 
     add_sticky_toc(doc, max_level=2, compact=compact)
+    add_plotly_header(doc)
     return doc
 
 
@@ -234,19 +277,21 @@ for scenario in harm.pix.unique("scenario"):
 
 # %%
 def make_scenario_facets(scenario):
-    fn = out_path / f"harmonization-{version}-facet-{shorten(scenario)}.html"
+    fn = f"harmonization-{version}-facet-{shorten(scenario)}.html"
     with open(fn, "w", encoding="utf-8") as f:
-        print(make_doc(order=["gas", "sector"], scenario=scenario), file=f)
+        print(make_doc(order=["gas", "sector"], scenario=scenario, useplotly=False), file=f)
     return fn
 files.extend(
-    Parallel(n_jobs=min(10, len(harm.pix.unique("scenario"))), verbose=10)(
+    Parallel(n_jobs=1 #min(10, len(harm.pix.unique("scenario")))
+            , verbose=10)(
         delayed(make_scenario_facets)(scenario)
-        for scenario in harm.pix.unique("scenario")
+        for scenario in harm.pix.unique("scenario")[:1]
     )
 )   
 
 # %%
-files
+scenario = harm.pix.unique("scenario")[0]
+# !open "harmonization-{version}-facet-{shorten(scenario)}.html"
 
 # %%
 for fn in files:
