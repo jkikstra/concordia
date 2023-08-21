@@ -10,7 +10,7 @@ __pycache__/
 *.swp
 
 # ipython notebooks
-.ipynb
+notebooks/*.ipynb
 
 # Distribution / packaging
 .Python
@@ -110,3 +110,5 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+/collab-report-comments
