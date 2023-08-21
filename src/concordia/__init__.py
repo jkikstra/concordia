@@ -3,8 +3,13 @@
 
 from importlib.metadata import version as _version
 
-from .report import add_sticky_toc, embed_image
-from .utils import RegionMapping, VariableDefinitions, combine_countries, CondordiaMagics
+from .report import add_hypothesis, add_plotly_header, add_sticky_toc, embed_image
+from .utils import (
+    CondordiaMagics,
+    RegionMapping,
+    VariableDefinitions,
+    combine_countries,
+)
 
 
 try:

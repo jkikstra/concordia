@@ -78,6 +78,9 @@ select = [
 known-first-party = ["aneris"]
 lines-after-imports = 2
 
+[tool.jupytext]
+formats = "ipynb,py:percent"
+
 [tool.pytest.ini_options]
 # Specify command line options as you would do when invoking pytest directly.
 # e.g. --cov-report html (or xml) for html/xml output or --junitxml junit.xml
