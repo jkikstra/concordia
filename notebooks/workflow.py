@@ -36,11 +36,10 @@ from aneris import logger
 
 from concordia import VariableDefinitions, RegionMapping, combine_countries, CondordiaMagics
 from pandas_indexing.units import set_openscm_registry_as_default
-
 # %%
-fh = logging.FileHandler('debug.log', mode='w')
+fh = logging.FileHandler("debug.log", mode="w")
 fh.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 fh.setFormatter(formatter)
 logger().addHandler(fh)
 
@@ -54,10 +53,10 @@ ur = set_openscm_registry_as_default()
 # # Set which parts of the workflow you would like to execute and how the file names should be tagged
 
 # %%
-execute_harmonization = False
-execute_downscaling = False
+execute_harmonization = True
+execute_downscaling = True
 execute_gridding = True
-version = "2023-08-18"
+version = "2023-08-21"
 
 # %% [markdown]
 # # Read model and historic data including overrides
@@ -231,7 +230,14 @@ model_agg = pd.concat(
 #
 
 # %%
-luc_sectors = ["Agricultural Waste Burning", "Grassland Burning", "Forest Burning"] # TODO: don"t we need Peat Burning here as well?
+luc_sectors = [
+    "Agricultural Waste Burning", 
+    "Grassland Burning", 
+    "Forest Burning", 
+    "Peat Burning",
+    "Agriculture",
+    "Aggregate - Agriculture and LUC",
+]
 
 
 # %%
@@ -459,11 +465,12 @@ downscaler = Downscaler(
     hist.pix.semijoin(variabledefs.index_regional, how="inner"),
     base_year,
     regionmapping_trimmed.data,
+    luc_sectors=luc_sectors,
     gdp=gdp,
 )
 methods = downscaler.methods()
 downscaled = downscaler.downscale(methods).sort_index()
-downscaled = downscaled.pix.assign(method=methods.pix.semijoin(downscaled.index, how="right"))
+downscaled = downscaled.pix.assign(method=methods.pix.semijoin(downscaled.index, how="right")) 
 downscaled.to_csv(downscaled_path)
 
 # %%
@@ -491,7 +498,7 @@ proxy_cfg = pd.concat(
                 "path": proxy_dir.glob("shipping_*.nc"), 
                  "name": "em-SHP-anthro",
                 "separate_shares": False,
-                 "global_only": True,
+                "global_only": True,
             }
         ),
         DataFrame(
@@ -523,7 +530,7 @@ proxy_cfg = pd.concat(
     name=lambda df: df.path.map(lambda p: p.stem.split("_")[1]) + "-" + df.name,
     template="{name}_emissions_{model}-{scenario}_201501-210012",
 )
-_PROXY_CFG = proxy_cfg.copy() # for debugging help not to overwrite name
+_PROXY_CFG = proxy_cfg.copy()  # for debugging help not to overwrite name
 proxy_cfg.tail()
 
 # %% [raw]
@@ -661,6 +668,10 @@ data_for_gridding = (
     / s_per_yr
 )
 
+# %%
+data_for_gridding_path = out_path / f"data_for_gridding-{version}.csv"
+data_for_gridding.to_csv(data_for_gridding_path)
+
 # %% [markdown]
 # ## Execute Gridding
 
@@ -683,7 +694,7 @@ proxy_cfg_test = _PROXY_CFG.copy().iloc[idx]
 proxy_cfg_test
 
 # %%
-proxy_cfg.iloc[idx]['name'].iloc[2:]
+proxy_cfg.iloc[idx]["name"].iloc[2:]
 
 # %%
 # cfg = proxy_cfg_test
@@ -704,4 +715,3 @@ gridder.proxy_cfg
 # %%
 # %%execute_or_lazy_load execute_gridding
 tasks  = gridder.grid(skip_check=True, chunk_proxy_dims={'level': "auto"}, iter_levels=['model', 'scenario'], verify_output=True)
-
