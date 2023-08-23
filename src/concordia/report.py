@@ -15,6 +15,7 @@ from dominate.tags import (
     h6,
     img,
     li,
+    meta,
     nav,
     script,
     section,
@@ -23,6 +24,16 @@ from dominate.tags import (
 )
 from dominate.util import raw
 from slugify import slugify
+
+
+try:
+    import plotly.graph_objects as go
+    import plotly.io as pio
+    from plotly.offline import get_plotlyjs
+
+    has_plotly = True
+except ImportError:
+    has_plotly = False
 
 
 try:
@@ -56,6 +67,8 @@ def embed_image(fig, close=True):
         and isinstance(fig, sns.axisgrid.Grid)
     ):
         return img(src=as_data_url(fig, close=close))
+    elif has_plotly and isinstance(fig, go.Figure):
+        return raw(pio.to_html(fig, include_plotlyjs=False, full_html=False))
     else:
         raise NotImplementedError("Has not been implemented, yet")
 
@@ -133,13 +146,75 @@ def build_toc(doc, tag=h1, toc_level=3, compact=False, slug_prefix=""):
     return toc_list
 
 
-def add_sticky_toc(doc, max_level=3, compact=False):
+def add_sticky_toc(
+    doc, max_level: int = 3, min_level: int = 1, compact: bool = False
+) -> None:
+    """
+    Add a sticky table of contents to `doc`
+
+    Searches for heading tags h1 to h6 and wraps them into section tags. The sections
+    get slugified ids and a toc on the right side allows scrolling to them quickly.
+
+    Arguments
+    ---------
+    doc
+        Dominate-based document to operate on
+    max_level : int, default 3
+        Last heading level to include into toc
+    min_level : int, default 1
+        First heading level
+    compact : bool, default False
+        Whether to put the last heading level on a single line
+    """
     with doc.head:
         script(raw(_jscode), type="text/javascript")
         style(raw(_csscode), type="text/css")
 
-    toc = build_toc(doc, toc_level=max_level, compact=compact)
+    toc = build_toc(
+        doc, tag=HEADING_TAGS[min_level - 1], toc_level=max_level, compact=compact
+    )
     doc.add(nav(toc, cls="section-nav"))
+
+
+def add_plotly_header(doc):
+    if not has_plotly:
+        raise RuntimeError("Plotly needs to be installed")
+    with doc.head:
+        script(raw(get_plotlyjs()), type="text/javascript")
+
+
+def add_hypothesis(
+    doc, ident: str, domain: str = "annotate.climateanalytics.org"
+) -> None:
+    """
+    Add hypothes.is web client to integrate a shared annotation system
+
+    Arguments
+    ---------
+    doc
+        Dominate-based document to operate on
+    ident : str
+        Identifier for sharing annotations across multiple document copies
+    domain : str, default "annotate.climateanalytics.org"
+        Sort-of an internet domain for grouping documents
+        (does not need to exist, see also Notes section)
+
+    Notes
+    -----
+    All annotators need to create an account and login at https://hypothes.is/.
+    For non-public annotations one needs to create a group and share its group
+    invite link with all contributors, possibly by including it in the
+    document.
+
+    The identifier together with the domain is used to make sure multiple
+    copies of the html file share the same annotations. Detailed description of
+    document equivalency can be found at
+    https://web.hypothes.is/help/how-to-establish-or-avoid-document-equivalence-in-the-hypothesis-system/.
+    """
+    with doc.head:
+        meta(name="dc.identifier", content=ident)
+        meta(name="dc.relation.ispartof", content=domain)
+        script(**{"async": True, "src": "https://hypothes.is/embed.js"})
 
 
 # Javascript, CSS and HTML for the Sticky TOC are subject to

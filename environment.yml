@@ -23,6 +23,7 @@ dependencies:
 - python-slugify
 - seaborn
 - tqdm
+- jupytext
 
 - ipykernel
 - pip
