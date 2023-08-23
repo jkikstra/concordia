@@ -22,14 +22,14 @@ from pathlib import Path
 
 import pandas as pd
 import xarray as xr
-import pandas_indexing.accessors
-from aneris.harmonize import Harmonizer
-from aneris.downscaling import Downscaler
-from aneris.grid import Gridder
+from concordia import RegionMapping, VariableDefinitions, combine_countries
 from pandas import DataFrame
 from pandas_indexing import isin, semijoin
 
-from concordia import VariableDefinitions, RegionMapping, combine_countries
+from aneris.downscaling import Downscaler
+from aneris.grid import Gridder
+from aneris.harmonize import Harmonizer
+
 
 # %%
 # Potentially better gridding performance??
@@ -44,11 +44,11 @@ base_path = Path(
     "/Users/coroa/Library/CloudStorage/OneDrive-SharedLibraries-IIASA/RESCUE - WP 1/data"
 )
 data_path = Path("../data")
-base_year = 2015 # in which year scenario data should be harmonized to historical data
+base_year = 2015  # in which year scenario data should be harmonized to historical data
 country_combinations = {
     "sdn_ssd": ["ssd", "sdn"],
     "isr_pse": ["isr", "pse"],
-    "srb_ksv": ["srb", "srb (kosovo)"]
+    "srb_ksv": ["srb", "srb (kosovo)"],
 }
 
 # %% [markdown]
@@ -69,7 +69,9 @@ variabledefs.data.head()
 regionmapping = RegionMapping.from_regiondef(
     base_path / "historical/cmip6/remind_region_mapping.csv"
 )
-regionmapping.data = combine_countries(regionmapping.data, **country_combinations, agg_func="first")
+regionmapping.data = combine_countries(
+    regionmapping.data, **country_combinations, agg_func="first"
+)
 
 # %% [markdown]
 # ## Model and historic data read in
@@ -241,7 +243,9 @@ results
 # # Gridding
 
 # %%
-idxr = xr.open_dataarray(base_path / "gridding_process_files" / "iso_mask.nc", chunks={"iso": 20}).rename({"iso": "country"})
+idxr = xr.open_dataarray(
+    base_path / "gridding_process_files" / "iso_mask.nc", chunks={"iso": 20}
+).rename({"iso": "country"})
 
 # %%
 proxy_dir = base_path / "gridding_process_files" / "proxy_rasters"
@@ -268,7 +272,14 @@ proxy_cfg = pd.concat(
         #         "separate_shares": True,
         #     }
         # ),
-        DataFrame({"path": proxy_dir.glob("shipping_*.nc"), "name": ..., "template": ..., "separate_shares": False})
+        DataFrame(
+            {
+                "path": proxy_dir.glob("shipping_*.nc"),
+                "name": ...,
+                "template": ...,
+                "separate_shares": False,
+            }
+        ),
     ]
 ).assign(
     name=lambda df: df.path.map(lambda p: p.stem.split("_")[1]) + "-" + df.name,
@@ -307,7 +318,13 @@ results = results.droplevel("region")
 results.head()
 
 # %%
-gridder = Gridder(results, idxr, proxy_cfg, index_mappings=dict(sector=sector_mapping), output_dir="../results")
+gridder = Gridder(
+    results,
+    idxr,
+    proxy_cfg,
+    index_mappings=dict(sector=sector_mapping),
+    output_dir="../results",
+)
 
 # %%
 gridder.grid(skip_check=True)

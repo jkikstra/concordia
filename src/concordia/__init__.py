@@ -1,4 +1,5 @@
-"""Concordia package and workflow
+"""
+Concordia package and workflow.
 """
 
 from importlib.metadata import version as _version

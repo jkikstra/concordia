@@ -5,28 +5,29 @@ from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
-import pandas_indexing.accessors
+from IPython.core.magic import Magics, cell_magic, magics_class
 from pandas import DataFrame
 from pandas_indexing import concat, isin
-from IPython.core.magic import Magics, magics_class, cell_magic
+
 
 @magics_class
 class CondordiaMagics(Magics):
-
     @cell_magic
     def execute_or_lazy_load(self, line, cell):
+        """Evaluates first line argument.
+
+        If True, executes cell, otherwise executes remaining arguments
         """
-        Evaluates first line argument. If True, executes cell, otherwise executes remaining arguments
-        """
-        parts = line.split('#')[0].split()
+        parts = line.split("#")[0].split()
         if self.shell.ev(parts[0]):
             self.shell.run_cell(cell)
         elif len(parts) > 1:
-            cmd = ' '.join(parts[1:])
-            print(f'Running: {cmd}')
+            cmd = " ".join(parts[1:])
+            print(f"Running: {cmd}")
             self.shell.run_cell(cmd)
         else:
-            return print('Skipped')
+            return print("Skipped")
+
 
 @dataclass
 class VariableDefinitions:
@@ -65,7 +66,7 @@ class VariableDefinitions:
         extend_missing: Union[bool, float] = False,
         timeseries: bool = True,
     ):
-        """Load data from dataframe
+        """Load data from dataframe.
 
         Assigns sector/gas and checks correct units.
 
@@ -273,7 +274,7 @@ def combine_countries(df, level="country", agg_func="sum", **countries):
 def as_seaborn(
     df: DataFrame, meta: Optional[DataFrame] = None, value_name: str = "value"
 ):
-    """Convert multi-indexed time-series dataframe to tidy dataframe
+    """Convert multi-indexed time-series dataframe to tidy dataframe.
 
     Parameters
     ----------

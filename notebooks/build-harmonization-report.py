@@ -17,20 +17,21 @@
 # %autoreload 2
 
 # %%
-import pandas as pd
-from pandas_indexing import isin, concat, ismatch
-import pandas_indexing.accessors
-from dominate.tags import div
-from dominate import document
-from concordia import embed_image, add_sticky_toc
-from concordia.report import HEADING_TAGS, add_plotly_header
-from concordia.utils import RegionMapping, combine_countries
-import seaborn as sns
-from tqdm import tqdm
 from pathlib import Path
 from subprocess import run
-from joblib import Parallel, delayed
+
+import pandas as pd
+import seaborn as sns
 import yaml
+from concordia import add_sticky_toc, embed_image
+from concordia.report import HEADING_TAGS, add_plotly_header
+from concordia.utils import RegionMapping, combine_countries
+from dominate import document
+from dominate.tags import div
+from joblib import Parallel, delayed
+from pandas_indexing import concat, isin, ismatch
+from tqdm import tqdm
+
 
 # %%
 version = "2023-08-09"
@@ -56,9 +57,15 @@ regionmapping.data = combine_countries(
 )
 
 # %%
-data = pd.read_csv(out_path / f"harmonization-{version}.csv", index_col=list(range(5)), engine="pyarrow").rename(
-    columns=int
-).loc[ismatch(scenario="*cp0400*") | isin(model="Historic")]
+data = (
+    pd.read_csv(
+        out_path / f"harmonization-{version}.csv",
+        index_col=list(range(5)),
+        engine="pyarrow",
+    )
+    .rename(columns=int)
+    .loc[ismatch(scenario="*cp0400*") | isin(model="Historic")]
+)
 model = data.pix.extract(
     variable="Emissions|{gas}|{sector}|Unharmonized", drop=True
 ).dropna(how="all", axis=1)
@@ -117,6 +124,7 @@ import plotly.express as px
 
 # %%
 import plotly.io as pio
+
 
 # %%
 pio.templates.default = "ggplot2"
@@ -196,7 +204,7 @@ plot_harm(
 g = plot_harm(
     isin(sector="Total", gas="CO2"),
     scenario="RESCUE-Tier1-Extension-2023-07-27-PkBudg_cp0400-OAE_off",
-    useplotly=True
+    useplotly=True,
 )
 
 # %%
@@ -209,6 +217,7 @@ embed_image(g)
 
 # %% [markdown]
 # # Make Comparison Notebooks
+
 
 # %%
 def what_changed(next, prev):
@@ -240,10 +249,12 @@ def make_doc(order, scenario=None, compact=False, useplotly=False):
             ax = plot_harm(
                 isin(**dict(zip(index.names, idx)), ignore_missing_levels=True),
                 scenario=scenario,
-                useplotly=useplotly
+                useplotly=useplotly,
             )
-        except ValueError as e:
-            print(f"During plot_harm(isin(**{dict(zip(index.names, idx))}, ignore_missing_levels=True), {scenario=})")
+        except ValueError:
+            print(
+                f"During plot_harm(isin(**{dict(zip(index.names, idx))}, ignore_missing_levels=True), {scenario=})"
+            )
             raise
         main.add(embed_image(ax, close=True))
 
@@ -260,7 +271,10 @@ def shorten(scenario):
 
 
 # %%
-files = [out_path / f"harmonization-{version}.csv", out_path / f"harmonization-{version}-splithfc.csv"]
+files = [
+    out_path / f"harmonization-{version}.csv",
+    out_path / f"harmonization-{version}-splithfc.csv",
+]
 
 # %%
 for scenario in harm.pix.unique("scenario"):
@@ -279,15 +293,19 @@ for scenario in harm.pix.unique("scenario"):
 def make_scenario_facets(scenario):
     fn = f"harmonization-{version}-facet-{shorten(scenario)}.html"
     with open(fn, "w", encoding="utf-8") as f:
-        print(make_doc(order=["gas", "sector"], scenario=scenario, useplotly=False), file=f)
+        print(
+            make_doc(order=["gas", "sector"], scenario=scenario, useplotly=False),
+            file=f,
+        )
     return fn
+
+
 files.extend(
-    Parallel(n_jobs=1 #min(10, len(harm.pix.unique("scenario")))
-            , verbose=10)(
+    Parallel(n_jobs=1, verbose=10)(  # min(10, len(harm.pix.unique("scenario")))
         delayed(make_scenario_facets)(scenario)
         for scenario in harm.pix.unique("scenario")[:1]
     )
-)   
+)
 
 # %%
 scenario = harm.pix.unique("scenario")[0]
