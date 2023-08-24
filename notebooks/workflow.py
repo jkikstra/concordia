@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.14.6
+#       jupytext_version: 1.15.0
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -59,8 +59,8 @@ ur = set_openscm_registry_as_default()
 # # Set which parts of the workflow you would like to execute and how the file names should be tagged
 
 # %%
-execute_harmonization = True
-execute_downscaling = True
+execute_harmonization = False
+execute_downscaling = False
 execute_gridding = True
 version = "2023-08-21"
 
@@ -714,8 +714,9 @@ data_for_gridding.to_csv(data_for_gridding_path)
 
 # %%
 scen = data_for_gridding.pix.semijoin(
-    data_for_gridding.pix.unique(["model", "scenario"])[2:10], how="right"
+    data_for_gridding.pix.unique(["model", "scenario"])[2:3], how="right"
 )  # TODO: Only 2nd and 3rd pathways
+scen.pix.unique('scenario')
 
 # %%
 _ = Gridder(
@@ -733,19 +734,19 @@ proxy_cfg_test = _PROXY_CFG.copy().iloc[idx]
 proxy_cfg_test
 
 # %%
-proxy_cfg.iloc[idx]["name"].iloc[2:]
-
-# %%
 # cfg = proxy_cfg_test
 cfg = _PROXY_CFG.copy()
 
 # %%
+output_dir = base_path.parent / "analysis" / "gridding" / version
+output_dir.mkdir(parents=True, exist_ok=True)
+
 gridder = Gridder(
     scen,
     idxr,
     cfg,
     index_mappings=dict(sector=sector_mapping),
-    output_dir="../results",
+    output_dir=output_dir,
 )
 
 gridder.proxy_cfg
@@ -759,3 +760,5 @@ tasks = gridder.grid(
     iter_levels=["model", "scenario"],
     verify_output=True,
 )
+
+# %%
