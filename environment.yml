@@ -28,7 +28,7 @@ dependencies:
 - ipykernel
 - pip
 - pip:
-  - pandas-indexing[units]
+  - pandas-indexing[units] >=0.2.10
   - ptolemy-iamc
   - git+https://github.com/iiasa/aneris.git@workflow#egg=aneris-iamc
   - -e .

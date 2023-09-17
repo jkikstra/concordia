@@ -46,6 +46,21 @@ class VariableDefinitions:
         return self.__class__(self.data.loc[self.data.has_history])
 
     @property
+    def downscaling(self):
+        data = self.data
+        subsectors = (
+            data.pix.unique("sector")
+            .to_series()
+            .loc[lambda s: s.str.contains("|", regex=False)]
+        )
+
+        return self.__class__(
+            data.rename(subsectors.str.split("|").str[0], level="sector")
+            .groupby(["gas", "sector"])
+            .first()
+        )
+
+    @property
     def variable_index(self):
         return self.data.index
 

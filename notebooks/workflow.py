@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.14.6
+#       jupytext_version: 1.15.0
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -62,7 +62,7 @@ ur = set_openscm_registry_as_default()
 execute_harmonization = True
 execute_downscaling = True
 execute_gridding = True
-version = "2023-08-21"
+version = "2023-09-16"
 
 # %% [markdown]
 # # Read model and historic data including overrides
@@ -174,7 +174,7 @@ with ur.context("AR4GWP100"):
     model = (
         pd.read_csv(
             base_path
-            / "iam_files/rescue/REMIND-MAgPIE-CEDS-RESCUE-Tier1-Extension-2023-07-27.csv",
+            / "iam_files/rescue/REMIND-MAgPIE-CEDS-RESCUE-Tier1-2023-09-14.csv",
             index_col=list(range(5)),
             sep=";",
         )
@@ -366,6 +366,34 @@ data = concat(
 ).sort_index(axis=1)
 data.to_csv(out_path / f"harmonization-{version}.csv")
 
+# %% [markdown]
+# ## Aggregate sub-sector variables to totals
+
+# %%
+subsectors = (
+    harmonized.pix.unique("sector")
+    .to_series()
+    .loc[lambda s: s.str.contains("|", regex=False)]
+)
+print(f"Aggregating subsectors: {', '.join(subsectors)}")
+
+
+# %%
+def aggregate_subsectors(df):
+    return (
+        df.rename(subsectors.str.split("|").str[0], level="sector")
+        .groupby(df.index.names)
+        .sum()
+    )
+
+
+# %%
+harmonized = aggregate_subsectors(harmonized.droplevel("method"))
+hist = aggregate_subsectors(hist)
+
+# %% [markdown]
+# ## Split HFC distributions
+
 # %%
 hfc_distribution = (
     pd.read_csv(
@@ -397,7 +425,7 @@ data = concat(
             variable="Emissions|{gas}|{sector}|Unharmonized", drop=True
         ),
         split_hfc(harmonized).pix.format(
-            variable="Emissions|{gas}|{sector}|Harmonized|{method}", drop=True
+            variable="Emissions|{gas}|{sector}|Harmonized", drop=True
         ),
         split_hfc(hist_agg.loc[:, 1990:]).pix.format(
             model="Historic",
@@ -486,11 +514,10 @@ regionmapping_trimmed = RegionMapping(
 
 # %%
 # %%execute_or_lazy_load execute_downscaling downscaled = pd.read_csv(downscaled_path, index_col=list(range(8))).rename(columns=int)
+index_regional = variabledefs.downscaling.index_regional
 downscaler = Downscaler(
-    harmonized.pix.semijoin(variabledefs.index_regional, how="inner")
-    .loc[~isin(region="World")]
-    .droplevel("method"),
-    hist.pix.semijoin(variabledefs.index_regional, how="inner"),
+    harmonized.pix.semijoin(index_regional, how="inner").loc[~isin(region="World")],
+    hist.pix.semijoin(index_regional, how="inner"),
     base_year,
     regionmapping_trimmed.data,
     luc_sectors=luc_sectors,
@@ -543,7 +570,7 @@ proxy_cfg = pd.concat(
             {
                 "path": proxy_dir.glob("openburning_*.nc"),
                 "name": "em-openburning",
-                "separate_shares": True,
+                "separate_shares": False,
                 "global_only": False,
             }
         ),
@@ -562,6 +589,9 @@ proxy_cfg = pd.concat(
 )
 _PROXY_CFG = proxy_cfg.copy()  # for debugging help not to overwrite name
 proxy_cfg.tail()
+
+# %% [raw]
+# out_path
 
 # %% [raw]
 # proxy_cfg = pd.concat([

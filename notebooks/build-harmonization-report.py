@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.14.6
+#       jupytext_version: 1.15.0
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -21,6 +21,11 @@ from pathlib import Path
 from subprocess import run
 
 import pandas as pd
+import pandas_indexing.accessors  # noqa: F401
+
+# %%
+import plotly.express as px
+import plotly.io as pio
 import seaborn as sns
 import yaml
 from concordia import add_sticky_toc, embed_image
@@ -33,8 +38,10 @@ from pandas_indexing import concat, isin, ismatch
 from tqdm import tqdm
 
 
+pio.templates.default = "ggplot2"
+
 # %%
-version = "2023-08-09"
+version = "2023-09-16"
 
 # %%
 with open("config.yaml") as f:
@@ -119,16 +126,6 @@ cmip6_hist = regionmapping.aggregate(
 # %%
 hist = concat([hist, cmip6_hist])
 
-# %%
-import plotly.express as px
-
-# %%
-import plotly.io as pio
-
-
-# %%
-pio.templates.default = "ggplot2"
-
 
 # %%
 def plot_harm(sel, scenario=None, levels=["gas", "sector", "region"], useplotly=False):
@@ -165,7 +162,7 @@ def plot_harm(sel, scenario=None, levels=["gas", "sector", "region"], useplotly=
             color="key",
             facet_col=non_unique,
             facet_col_wrap=4,
-            labels=dict(value=data.pix.unique("unit").item(), key=None),
+            labels=dict(value=data.pix.unique("unit").item(), key="Trajectory"),
         )
         g.update_yaxes(matches=None)
 
@@ -195,15 +192,18 @@ def plot_harm(sel, scenario=None, levels=["gas", "sector", "region"], useplotly=
 
 
 # %%
+harm.loc[isin(scenario="RESCUE-Tier1-Extension-2023-09-14-PkBudg_cp0400-OAE_off")]
+
+# %%
 plot_harm(
     isin(region="World", sector="Total", gas="CO2"),
-    scenario="RESCUE-Tier1-Extension-2023-07-27-PkBudg_cp0400-OAE_off",
+    scenario="RESCUE-Tier1-Extension-2023-09-14-PkBudg_cp0400-OAE_off",
 )
 
 # %%
 g = plot_harm(
     isin(sector="Total", gas="CO2"),
-    scenario="RESCUE-Tier1-Extension-2023-07-27-PkBudg_cp0400-OAE_off",
+    scenario="RESCUE-Tier1-Extension-2023-09-14-PkBudg_cp0400-OAE_off",
     useplotly=True,
 )
 
@@ -267,7 +267,7 @@ def make_doc(order, scenario=None, compact=False, useplotly=False):
 
 # %%
 def shorten(scenario):
-    return scenario.removeprefix("RESCUE-Tier1-Extension-2023-07-27-")
+    return scenario.removeprefix("RESCUE-Tier1-Extension-2023-09-14-")
 
 
 # %%
@@ -290,11 +290,13 @@ for scenario in harm.pix.unique("scenario"):
 
 
 # %%
-def make_scenario_facets(scenario):
-    fn = f"harmonization-{version}-facet-{shorten(scenario)}.html"
+def make_scenario_facets(scenario, useplotly=False):
+    suffix = "-plotly" if useplotly else ""
+    fn = out_path / f"harmonization-{version}-facet-{shorten(scenario)}{suffix}.html"
+
     with open(fn, "w", encoding="utf-8") as f:
         print(
-            make_doc(order=["gas", "sector"], scenario=scenario, useplotly=False),
+            make_doc(order=["gas", "sector"], scenario=scenario, useplotly=useplotly),
             file=f,
         )
     return fn
@@ -302,14 +304,10 @@ def make_scenario_facets(scenario):
 
 files.extend(
     Parallel(n_jobs=1, verbose=10)(  # min(10, len(harm.pix.unique("scenario")))
-        delayed(make_scenario_facets)(scenario)
-        for scenario in harm.pix.unique("scenario")[:1]
+        delayed(make_scenario_facets)(scenario, useplotly=True)
+        for scenario in harm.pix.unique("scenario")
     )
 )
-
-# %%
-scenario = harm.pix.unique("scenario")[0]
-# !open "harmonization-{version}-facet-{shorten(scenario)}.html"
 
 # %%
 for fn in files:
