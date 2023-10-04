@@ -62,8 +62,8 @@ ur = set_openscm_registry_as_default()
 # # Set which parts of the workflow you would like to execute and how the file names should be tagged
 
 # %%
-execute_harmonization = False
-execute_downscaling = False
+execute_harmonization = True
+execute_downscaling = True
 execute_gridding = True
 
 # %% [markdown]
@@ -688,7 +688,7 @@ assert iso_diff.empty
 # ## Preparing Data for Gridding
 
 # %%
-data_for_gridding = downscaled.droplevel("region")
+data_for_gridding = downscaled.droplevel(["region", "method"])
 
 # %% [markdown]
 # We also generate data for sectors only with global resolution, so we add those back in
@@ -747,20 +747,20 @@ scen = data_for_gridding.pix.semijoin(
 )  # TODO: Only 2nd and 3rd pathways
 scen.pix.unique('scenario')
 
-# %%
-_ = Gridder(
-    scen,
-    idxr,
-    proxy_cfg,
-    index_mappings=dict(sector=sector_mapping),
-    output_dir="../results",
-)
-_.check(strict_proxy_data=False)
+# %% [raw]
+# _ = Gridder(
+#     scen,
+#     idxr,
+#     proxy_cfg,
+#     index_mappings=dict(sector=sector_mapping),
+#     output_dir="../results",
+# )
+# _.check(strict_proxy_data=False)
 
-# %%
-idx = [0, 11, 21, 32, 36]
-proxy_cfg_test = _PROXY_CFG.copy().iloc[idx]
-proxy_cfg_test
+# %% [raw]
+# idx = [0, 11, 21, 32, 36]
+# proxy_cfg_test = _PROXY_CFG.copy().iloc[idx]
+# proxy_cfg_test
 
 # %%
 # cfg = proxy_cfg_test
