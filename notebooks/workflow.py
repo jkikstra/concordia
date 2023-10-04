@@ -43,7 +43,17 @@ from aneris.harmonize import Harmonizer
 
 
 # %%
-fh = logging.FileHandler("debug.log", mode="w")
+# %env HDF5_USE_FILE_LOCKING=FALSE
+
+# %%
+import os
+os.environ["HDF5_USE_FILE_LOCKING"]
+
+# %%
+version = "2023-08-28"
+
+# %%
+fh = logging.FileHandler(f"debug_{version}.log", mode="w")
 fh.setLevel(logging.DEBUG)
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 fh.setFormatter(formatter)
@@ -62,7 +72,6 @@ ur = set_openscm_registry_as_default()
 execute_harmonization = False
 execute_downscaling = False
 execute_gridding = True
-version = "2023-09-16"
 
 # %% [markdown]
 # # Read model and historic data including overrides
@@ -87,10 +96,14 @@ with open("config.yaml") as stream:
 # %%
 base_path = Path(config["base_path"]).expanduser()
 data_path = Path(config["data_path"]).expanduser()
-out_path = base_path.parent / "analysis" / "harmonization"
+out_path = Path(config["out_path"]).expanduser() / version
+out_path.mkdir(parents=True, exist_ok=True)
 
 base_year = 2020  # in which year scenario data should be harmonized to historical data
 country_combinations = config["country_combinations"]
+
+# %%
+base_path, os.path.exists(base_path)
 
 # %% [markdown]
 # ## Variable definition files
@@ -174,7 +187,7 @@ with ur.context("AR4GWP100"):
     model = (
         pd.read_csv(
             base_path
-            / "iam_files/rescue/REMIND-MAgPIE-CEDS-RESCUE-Tier1-2023-09-14.csv",
+            / "iam_files/rescue/REMIND-MAgPIE-CEDS-RESCUE-Tier1-Extension-2023-07-27.csv",
             index_col=list(range(5)),
             sep=";",
         )
@@ -366,34 +379,6 @@ data = concat(
 ).sort_index(axis=1)
 data.to_csv(out_path / f"harmonization-{version}.csv")
 
-# %% [markdown]
-# ## Aggregate sub-sector variables to totals
-
-# %%
-subsectors = (
-    harmonized.pix.unique("sector")
-    .to_series()
-    .loc[lambda s: s.str.contains("|", regex=False)]
-)
-print(f"Aggregating subsectors: {', '.join(subsectors)}")
-
-
-# %%
-def aggregate_subsectors(df):
-    return (
-        df.rename(subsectors.str.split("|").str[0], level="sector")
-        .groupby(df.index.names)
-        .sum()
-    )
-
-
-# %%
-harmonized = aggregate_subsectors(harmonized.droplevel("method"))
-hist = aggregate_subsectors(hist)
-
-# %% [markdown]
-# ## Split HFC distributions
-
 # %%
 hfc_distribution = (
     pd.read_csv(
@@ -425,7 +410,7 @@ data = concat(
             variable="Emissions|{gas}|{sector}|Unharmonized", drop=True
         ),
         split_hfc(harmonized).pix.format(
-            variable="Emissions|{gas}|{sector}|Harmonized", drop=True
+            variable="Emissions|{gas}|{sector}|Harmonized|{method}", drop=True
         ),
         split_hfc(hist_agg.loc[:, 1990:]).pix.format(
             model="Historic",
@@ -514,10 +499,11 @@ regionmapping_trimmed = RegionMapping(
 
 # %%
 # %%execute_or_lazy_load execute_downscaling downscaled = pd.read_csv(downscaled_path, index_col=list(range(8))).rename(columns=int)
-index_regional = variabledefs.downscaling.index_regional
 downscaler = Downscaler(
-    harmonized.pix.semijoin(index_regional, how="inner").loc[~isin(region="World")],
-    hist.pix.semijoin(index_regional, how="inner"),
+    harmonized.pix.semijoin(variabledefs.index_regional, how="inner")
+    .loc[~isin(region="World")]
+    .droplevel("method"),
+    hist.pix.semijoin(variabledefs.index_regional, how="inner"),
     base_year,
     regionmapping_trimmed.data,
     luc_sectors=luc_sectors,
@@ -546,7 +532,6 @@ proxy_cfg = pd.concat(
             {
                 "path": proxy_dir.glob("aircraft_*.nc"),
                 "name": "em-AIR-anthro",
-                "separate_shares": False,
                 "global_only": True,
             }
         ),
@@ -554,7 +539,6 @@ proxy_cfg = pd.concat(
             {
                 "path": proxy_dir.glob("shipping_*.nc"),
                 "name": "em-SHP-anthro",
-                "separate_shares": False,
                 "global_only": True,
             }
         ),
@@ -562,7 +546,6 @@ proxy_cfg = pd.concat(
             {
                 "path": proxy_dir.glob("anthro_*.nc"),
                 "name": "em-anthro",
-                "separate_shares": False,
                 "global_only": False,
             }
         ),
@@ -570,7 +553,6 @@ proxy_cfg = pd.concat(
             {
                 "path": proxy_dir.glob("openburning_*.nc"),
                 "name": "em-openburning",
-                "separate_shares": False,
                 "global_only": False,
             }
         ),
@@ -578,7 +560,6 @@ proxy_cfg = pd.concat(
             {
                 "path": proxy_dir.glob("CDR*.nc"),
                 "name": "em-removal",
-                "separate_shares": False,
                 "global_only": False,
             }
         ),
@@ -589,9 +570,6 @@ proxy_cfg = pd.concat(
 )
 _PROXY_CFG = proxy_cfg.copy()  # for debugging help not to overwrite name
 proxy_cfg.tail()
-
-# %% [raw]
-# out_path
 
 # %% [raw]
 # proxy_cfg = pd.concat([
@@ -676,7 +654,7 @@ client = Client()
 
 # %%
 idxr = xr.open_dataarray(
-    base_path / "gridding_process_files" / "ssp_comb_iso_mask.nc", chunks={"iso": 5}
+    base_path / "gridding_process_files" / "ssp_comb_iso_mask.nc", chunks={"iso": 3}
 ).rename({"iso": "country"})
 
 # %%
@@ -744,39 +722,37 @@ data_for_gridding.to_csv(data_for_gridding_path)
 
 # %%
 scen = data_for_gridding.pix.semijoin(
-    data_for_gridding.pix.unique(["model", "scenario"])[2:3], how="right"
+    data_for_gridding.pix.unique(["model", "scenario"])[2:4], how="right"
 )  # TODO: Only 2nd and 3rd pathways
 scen.pix.unique('scenario')
 
-# %%
-_ = Gridder(
-    scen,
-    idxr,
-    proxy_cfg,
-    index_mappings=dict(sector=sector_mapping),
-    output_dir="../results",
-)
-_.check(strict_proxy_data=False)
+# %% [raw]
+# _ = Gridder(
+#     scen,
+#     idxr,
+#     proxy_cfg,
+#     index_mappings=dict(sector=sector_mapping),
+#     output_dir="../results",
+# )
+# _.check(strict_proxy_data=False)
 
-# %%
-idx = [0, 11, 21, 32, 36]
-proxy_cfg_test = _PROXY_CFG.copy().iloc[idx]
-proxy_cfg_test
+# %% [raw]
+# idx = [0, 11, 21, 32, 36]
+# proxy_cfg_test = _PROXY_CFG.copy().iloc[idx]
+# proxy_cfg_test
 
 # %%
 # cfg = proxy_cfg_test
 cfg = _PROXY_CFG.copy()
+cfg
 
 # %%
-output_dir = base_path.parent / "analysis" / "gridding" / version
-output_dir.mkdir(parents=True, exist_ok=True)
-
 gridder = Gridder(
     scen,
     idxr,
     cfg,
     index_mappings=dict(sector=sector_mapping),
-    output_dir=output_dir,
+    output_dir=out_path,
 )
 
 gridder.proxy_cfg
@@ -789,6 +765,25 @@ tasks = gridder.grid(
     chunk_proxy_dims={"level": "auto"},
     iter_levels=["model", "scenario"],
     verify_output=True,
+    skip_exists=True,
 )
 
+# %% [markdown]
+# # Upload Data
+
 # %%
+from ftpsync.targets import FsTarget
+from ftpsync.ftp_target import FTPTarget
+from ftpsync.synchronizers import UploadSynchronizer
+
+# %%
+ftp = config["ftp"]
+local = out_path
+remote = ftp["path"] + '/' + version
+opts = {"create_folder": True, "force": False, "delete_unmatched": True, "verbose": 3}
+s = UploadSynchronizer(
+    FsTarget(local), 
+    FTPTarget(remote, ftp["server"], port=ftp["port"], username=ftp["user"], password=ftp["pass"]), 
+    opts
+)
+s.run()

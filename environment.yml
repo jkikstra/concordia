@@ -29,6 +29,7 @@ dependencies:
 - pip
 - pip:
   - pandas-indexing[units] >=0.2.10
+  - pyftpsync
   - ptolemy-iamc
   - git+https://github.com/iiasa/aneris.git@workflow#egg=aneris-iamc
   - -e .
