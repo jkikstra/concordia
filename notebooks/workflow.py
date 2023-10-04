@@ -19,6 +19,7 @@
 # %%
 import logging
 import re
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -41,9 +42,11 @@ from aneris.downscaling import Downscaler
 from aneris.grid import Gridder
 from aneris.harmonize import Harmonizer
 
+# %%
+version = "2023-09-16"
 
 # %%
-fh = logging.FileHandler("debug.log", mode="w")
+fh = logging.FileHandler(f"debug_{version}.log", mode="w")
 fh.setLevel(logging.DEBUG)
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 fh.setFormatter(formatter)
@@ -62,7 +65,6 @@ ur = set_openscm_registry_as_default()
 execute_harmonization = False
 execute_downscaling = False
 execute_gridding = True
-version = "2023-09-16"
 
 # %% [markdown]
 # # Read model and historic data including overrides
@@ -87,7 +89,9 @@ with open("config.yaml") as stream:
 # %%
 base_path = Path(config["base_path"]).expanduser()
 data_path = Path(config["data_path"]).expanduser()
-out_path = base_path.parent / "analysis" / "harmonization"
+out_path = Path(config["out_path"]).expanduser() / version
+out_path.mkdir(parents=True, exist_ok=True)
+assert os.path.exists(base_path), base_path
 
 base_year = 2020  # in which year scenario data should be harmonized to historical data
 country_combinations = config["country_combinations"]
@@ -546,7 +550,6 @@ proxy_cfg = pd.concat(
             {
                 "path": proxy_dir.glob("aircraft_*.nc"),
                 "name": "em-AIR-anthro",
-                "separate_shares": False,
                 "global_only": True,
             }
         ),
@@ -554,7 +557,6 @@ proxy_cfg = pd.concat(
             {
                 "path": proxy_dir.glob("shipping_*.nc"),
                 "name": "em-SHP-anthro",
-                "separate_shares": False,
                 "global_only": True,
             }
         ),
@@ -562,7 +564,6 @@ proxy_cfg = pd.concat(
             {
                 "path": proxy_dir.glob("anthro_*.nc"),
                 "name": "em-anthro",
-                "separate_shares": False,
                 "global_only": False,
             }
         ),
@@ -570,7 +571,6 @@ proxy_cfg = pd.concat(
             {
                 "path": proxy_dir.glob("openburning_*.nc"),
                 "name": "em-openburning",
-                "separate_shares": False,
                 "global_only": False,
             }
         ),
@@ -578,7 +578,6 @@ proxy_cfg = pd.concat(
             {
                 "path": proxy_dir.glob("CDR*.nc"),
                 "name": "em-removal",
-                "separate_shares": False,
                 "global_only": False,
             }
         ),
@@ -676,7 +675,7 @@ client = Client()
 
 # %%
 idxr = xr.open_dataarray(
-    base_path / "gridding_process_files" / "ssp_comb_iso_mask.nc", chunks={"iso": 5}
+    base_path / "gridding_process_files" / "ssp_comb_iso_mask.nc", chunks={"iso": 3}
 ).rename({"iso": "country"})
 
 # %%
@@ -744,7 +743,7 @@ data_for_gridding.to_csv(data_for_gridding_path)
 
 # %%
 scen = data_for_gridding.pix.semijoin(
-    data_for_gridding.pix.unique(["model", "scenario"])[2:3], how="right"
+    data_for_gridding.pix.unique(["model", "scenario"])[2:4], how="right"
 )  # TODO: Only 2nd and 3rd pathways
 scen.pix.unique('scenario')
 
@@ -768,15 +767,12 @@ proxy_cfg_test
 cfg = _PROXY_CFG.copy()
 
 # %%
-output_dir = base_path.parent / "analysis" / "gridding" / version
-output_dir.mkdir(parents=True, exist_ok=True)
-
 gridder = Gridder(
     scen,
     idxr,
     cfg,
     index_mappings=dict(sector=sector_mapping),
-    output_dir=output_dir,
+    output_dir=out_path,
 )
 
 gridder.proxy_cfg
@@ -789,6 +785,25 @@ tasks = gridder.grid(
     chunk_proxy_dims={"level": "auto"},
     iter_levels=["model", "scenario"],
     verify_output=True,
+    skip_exists=True,
 )
 
+# %% [markdown]
+# # Upload Data
+
 # %%
+from ftpsync.targets import FsTarget
+from ftpsync.ftp_target import FTPTarget
+from ftpsync.synchronizers import UploadSynchronizer
+
+# %%
+ftp = config["ftp"]
+local = out_path
+remote = ftp["path"] + '/' + version
+opts = {"create_folder": True, "force": False, "delete_unmatched": True, "verbose": 3}
+s = UploadSynchronizer(
+    FsTarget(local), 
+    FTPTarget(remote, ftp["server"], port=ftp["port"], username=ftp["user"], password=ftp["pass"]), 
+    opts
+)
+s.run()
