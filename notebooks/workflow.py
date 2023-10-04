@@ -46,13 +46,6 @@ from aneris.harmonize import Harmonizer
 version = "2023-09-16"
 
 # %%
-fh = logging.FileHandler(f"debug_{version}.log", mode="w")
-fh.setLevel(logging.DEBUG)
-formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-fh.setFormatter(formatter)
-logger().addHandler(fh)
-
-# %%
 get_ipython().register_magics(CondordiaMagics)
 
 # %%
@@ -62,8 +55,8 @@ ur = set_openscm_registry_as_default()
 # # Set which parts of the workflow you would like to execute and how the file names should be tagged
 
 # %%
-execute_harmonization = True
-execute_downscaling = True
+execute_harmonization = False
+execute_downscaling = False
 execute_gridding = True
 
 # %% [markdown]
@@ -95,6 +88,13 @@ assert os.path.exists(base_path), base_path
 
 base_year = 2020  # in which year scenario data should be harmonized to historical data
 country_combinations = config["country_combinations"]
+
+# %%
+fh = logging.FileHandler(out_path / f"debug_{version}.log", mode="w")
+fh.setLevel(logging.DEBUG)
+formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+fh.setFormatter(formatter)
+logger().addHandler(fh)
 
 # %% [markdown]
 # ## Variable definition files
@@ -675,7 +675,7 @@ client = Client()
 
 # %%
 idxr = xr.open_dataarray(
-    base_path / "gridding_process_files" / "ssp_comb_iso_mask.nc", chunks={"iso": 3}
+    base_path / "gridding_process_files" / "ssp_comb_iso_mask.nc", chunks={"iso": 2}
 ).rename({"iso": "country"})
 
 # %%
@@ -764,7 +764,7 @@ scen.pix.unique('scenario')
 
 # %%
 # cfg = proxy_cfg_test
-cfg = _PROXY_CFG.copy()
+cfg = _PROXY_CFG.copy().iloc[9+9+4:] # testing NH3 anthro and onwards
 
 # %%
 gridder = Gridder(
@@ -785,25 +785,5 @@ tasks = gridder.grid(
     chunk_proxy_dims={"level": "auto"},
     iter_levels=["model", "scenario"],
     verify_output=True,
-    skip_exists=True,
+    skip_exists=False,
 )
-
-# %% [markdown]
-# # Upload Data
-
-# %%
-from ftpsync.targets import FsTarget
-from ftpsync.ftp_target import FTPTarget
-from ftpsync.synchronizers import UploadSynchronizer
-
-# %%
-ftp = config["ftp"]
-local = out_path
-remote = ftp["path"] + '/' + version
-opts = {"create_folder": True, "force": False, "delete_unmatched": True, "verbose": 3}
-s = UploadSynchronizer(
-    FsTarget(local), 
-    FTPTarget(remote, ftp["server"], port=ftp["port"], username=ftp["user"], password=ftp["pass"]), 
-    opts
-)
-s.run()
