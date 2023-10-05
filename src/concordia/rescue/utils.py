@@ -222,7 +222,7 @@ def ftp_upload(cfg, local_path, remote_path):
 
                 rsize = ftp.size(rpath)
                 lsize = lpath.stat().st_size
-                if rtimestamp > ltimestamp or rsize != lsize:
+                if rtimestamp > ltimestamp and rsize == lsize:
                     print(
                         f"{lpath.name} already on {remote_path.as_posix()}, not uploading"
                     )
