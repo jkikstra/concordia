@@ -1,11 +1,12 @@
-import cf_xarray
-import cftime
 import datetime
+import ftplib
 
-import xarray as xr
+import cftime
+import dateutil
 import pandas as pd
-
+import xarray as xr
 from xarray.coding.times import convert_times
+
 
 SECTOR_MAPPING = {
     # anthro
@@ -198,3 +199,37 @@ class DressUp:
             .pipe(clean_var, name, gas, handle)
             .assign_attrs(ds_attrs(name, model, scenario, self.version, self.date))
         )
+
+
+def ftp_upload(cfg, local_path, remote_path):
+    paths = list(local_path.iterdir())
+
+    ftp = ftplib.FTP()
+    ftp.connect(cfg["server"], cfg["port"])
+    ftp.login(cfg["user"], cfg["pass"])
+
+    try:
+        if remote_path.as_posix() not in ftp.nlst(remote_path.parent.as_posix()):
+            ftp.mkd(remote_path.as_posix())
+
+        ftp.cwd(remote_path.as_posix())
+        remote_files = ftp.nlst(remote_path.as_posix())
+        for lpath in paths:
+            rpath = (remote_path / lpath.name).as_posix()
+            if rpath in remote_files:
+                rtimestamp = dateutil.parser.parse(ftp.voidcmd(f"MDTM {rpath}")[4:])
+                ltimestamp = datetime.datetime.fromtimestamp(lpath.lstat().st_mtime)
+
+                rsize = ftp.size(rpath)
+                lsize = lpath.stat().st_size
+                if rtimestamp > ltimestamp and rsize == lsize:
+                    print(
+                        f"{lpath.name} already on {remote_path.as_posix()}, not uploading"
+                    )
+                    continue
+
+            print(f"{lpath.name} not on {remote_path.as_posix()}, uploading")
+            ftp.storbinary("STOR " + lpath.name, open(lpath, "rb"))
+
+    finally:
+        ftp.close()

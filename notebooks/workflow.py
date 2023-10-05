@@ -801,4 +801,9 @@ tasks = gridder.grid(
     encoding_kwargs=dict(zlib=True, complevel=2, _FillValue=1.e20),
 )
 
+# %% [markdown]
+# # Upload to BSC FTP
+
 # %%
+remote_path = Path('/forcings/emissions') / version
+rescue_utils.ftp_upload(config['ftp'], out_path, remote_path)
