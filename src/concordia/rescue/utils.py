@@ -56,9 +56,9 @@ ATTRS = {
 }
 
 DATA_HANDLES = {
-    'em-anthro': 'anthropogenic',
-    'em-AIR-anthro': 'aircraft',
-    'em-openburning': 'openburning',
+    'em_anthro': 'anthropogenic',
+    'em_AIR_anthro': 'aircraft',
+    'em_openburning': 'openburning',
 }
 
 DS_ATTRS = dict(
@@ -74,7 +74,7 @@ DS_ATTRS = dict(
     grid='0.5x0.5 degree latitude x longitude',
     grid_label='gn',
     license='Creative Commons Attribution-ShareAlike 4.0 International License (https://creativecommons.org/licenses). Further information about this data, including some limitations, can be found via the further_info_url (recorded as a global attribute in this file). The data producers and data providers make no warranty, either express or implied, including, but not limited to, warranties of merchantability and fitness for a particular purpose. All liabilities arising from the supply of the information (including any liability arising in negligence) are excluded to the fullest extent permitted by law.',
-    institution='IIASA & PIK',
+    institution='IIASA-PIK',
     institution_id='IIASA',
     mip_era='CMIP7',
     nominal_resolution='50 km',
@@ -84,6 +84,8 @@ DS_ATTRS = dict(
     table_id='input4MIPs',
     target_mip='RESCUE',
     product='primary-emissions-data',
+    start_date='202001',
+    end_date='210012',
 )
 
 def convert_to_datetime(da):
@@ -115,7 +117,7 @@ def add_sector_mapping(da, sector_mapping):
     keys = da.indexes['sector']
     vals = keys.map(sector_mapping)
     return (
-        da.assign_coords(sector=xr.DataArray(vals, attrs=dict(long_name='sector', id={v: k for v, k in zip(vals, keys)})))
+        da.assign_coords(sector=xr.DataArray(vals, attrs=dict(long_name='sector', id=str({v: k for v, k in zip(vals, keys)}))))
     )
 
 def replace_attrs(da, attrs):
@@ -130,29 +132,36 @@ def clean_var(da, name, gas, handle):
         'cell_methods': 'time: mean',
         'long_name': f'{gas} {handle} emissions'
     }
-    rename =name.replace('-', '_')
-    ret =da.rename({name: rename})
-    ret[rename].attrs =attrs
-    return ret
+    da[name].attrs =attrs
+    return da
 
-def dress_up(da, scenario, version):
+def ds_attrs(name, model, scenario, version):
+    split = name.split('_')
+    gas = split[0]
+    handle = DATA_HANDLES['_'.join(split[1:])]
+    
+    extra_attrs = dict(
+        source_version=version,
+        source_id=f"{DS_ATTRS['institution']}-{model}-{scenario}-{version}".replace(
+                " ", "__"
+            ),
+        variable_id=name,
+        creation_date=str(datetime.datetime.today()),
+        title=f'Future {handle} emissions of {gas} in {scenario}',
+        reporting_unit=f'Mass flux of {gas}',
+    )
+    attrs = DS_ATTRS | extra_attrs
+    return attrs
+
+
+def dress_up(da, model, scenario, version, **kwargs):
     vars = list(da.data_vars)
     assert len(vars) == 1, vars
     
     name = vars[0]
-    split = name.split('-')
+    split = name.split('_')
     gas = split[0]
-    handle = DATA_HANDLES['-'.join(split[1:])]
-    
-    extra_ds_attrs = dict(
-        source_version=version,
-        source_id=f'PIK-IIASA-{scenario}-{version}',
-        variable_id=name.replace('-', '_'),
-        creation_date=datetime.datetime.today(),
-        title=f'Future {type} emissions of {gas} in {scenario}',
-        reporting_unit=f'Mass flux of {gas}',
-    )
-    ds_attrs = DS_ATTRS | extra_ds_attrs
+    handle = DATA_HANDLES['_'.join(split[1:])]
 
     return (
         da
@@ -162,5 +171,5 @@ def dress_up(da, scenario, version):
         .pipe(add_sector_mapping, SECTOR_MAPPING)
         .pipe(replace_attrs, ATTRS)
         .pipe(clean_var, name, gas, handle)
-        .assign_attrs(ds_attrs)
+        .assign_attrs(ds_attrs(name, model, scenario, version))
     )
