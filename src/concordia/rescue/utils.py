@@ -1,12 +1,12 @@
-import cf_xarray
-import cftime
 import datetime
 import ftplib
 
-import xarray as xr
+import cftime
+import dateutil
 import pandas as pd
-
+import xarray as xr
 from xarray.coding.times import convert_times
+
 
 SECTOR_MAPPING = {
     # anthro
@@ -209,13 +209,27 @@ def ftp_upload(cfg, local_path, remote_path):
     ftp.login(cfg["user"], cfg["pass"])
 
     try:
-        if not remote_path.as_posix() in ftp.nlst(remote_path.parent.as_posix()):
+        if remote_path.as_posix() not in ftp.nlst(remote_path.parent.as_posix()):
             ftp.mkd(remote_path.as_posix())
 
         ftp.cwd(remote_path.as_posix())
-        for path in paths:
-            print(f"Uploading {path.name} to {remote_path.as_posix()}")
-            ftp.storbinary("STOR " + path.name, open(path, "rb"))
+        remote_files = ftp.nlst(remote_path.as_posix())
+        for lpath in paths:
+            rpath = (remote_path / lpath.name).as_posix()
+            if rpath in remote_files:
+                rtimestamp = dateutil.parser.parse(ftp.voidcmd(f"MDTM {rpath}")[4:])
+                ltimestamp = datetime.datetime.fromtimestamp(lpath.lstat().st_mtime)
+
+                rsize = ftp.size(rpath)
+                lsize = lpath.stat().st_size
+                if rtimestamp > ltimestamp or rsize != lsize:
+                    print(
+                        f"{lpath.name} already on {remote_path.as_posix()}, not uploading"
+                    )
+                    continue
+
+            print(f"{lpath.name} not on {remote_path.as_posix()}, uploading")
+            ftp.storbinary("STOR " + lpath.name, open(lpath, "rb"))
 
     finally:
         ftp.close()
