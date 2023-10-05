@@ -105,6 +105,10 @@ def convert_to_datetime(da):
     return da.drop_vars(["time", "year", "month"]).assign_coords(time=dates)
 
 
+def clean_coords(da, whitelist=["lat", "lon", "time", "sector", "level"]):
+    return da.squeeze(dim=set(da.coords) - set(whitelist), drop=True)
+
+
 def add_bounds(da, bounds=["lat", "lon", "time", "level"]):
     bounds = list(set(bounds) & set(da.coords))
     da = da.cf.add_bounds(bounds, output_dim="bound")
@@ -185,12 +189,9 @@ class DressUp:
         gas = split[0]
         handle = DATA_HANDLES["_".join(split[1:])]
 
-        coord_whitelist = ["lat", "lon", "time", "sector", "level"]
-        squeeze_coords = set(da.coords) - set(coord_whitelist)
-
         return (
             da.pipe(convert_to_datetime)
-            .squeeze(dim=squeeze_coords, drop=True)
+            .pipe(clean_coords)
             .pipe(add_bounds)
             .pipe(add_sector_mapping, SECTOR_MAPPING)
             .pipe(replace_attrs, ATTRS)
