@@ -1,6 +1,7 @@
 import cf_xarray
 import cftime
 import datetime
+import ftplib
 
 import xarray as xr
 import pandas as pd
@@ -198,3 +199,23 @@ class DressUp:
             .pipe(clean_var, name, gas, handle)
             .assign_attrs(ds_attrs(name, model, scenario, self.version, self.date))
         )
+
+
+def ftp_upload(cfg, local_path, remote_path):
+    paths = list(local_path.iterdir())
+
+    ftp = ftplib.FTP()
+    ftp.connect(cfg["server"], cfg["port"])
+    ftp.login(cfg["user"], cfg["pass"])
+
+    try:
+        if not remote_path.as_posix() in ftp.nlst(remote_path.parent.as_posix()):
+            ftp.mkd(remote_path.as_posix())
+
+        ftp.cwd(remote_path.as_posix())
+        for path in paths:
+            print(f"Uploading {path.name} to {remote_path.as_posix()}")
+            ftp.storbinary("STOR " + path.name, open(path, "rb"))
+
+    finally:
+        ftp.close()
