@@ -8,6 +8,7 @@ import pandas as pd
 from xarray.coding.times import convert_times
 
 SECTOR_MAPPING = {
+    # anthro
     'Agriculture': 0, 
     'Energy Sector': 1, 
     'Industrial Sector': 2,
@@ -16,11 +17,16 @@ SECTOR_MAPPING = {
     'Solvents Production and Application': 5, 
     'Transportation Sector': 3, 
     'Waste': 6,
+    # aircraft
     'Aircraft': 8,
+    # openburning
     'Agricultural Waste Burning': 0, 
     'Forest Burning': 1, 
     'Grassland Burning': 2,
     'Peat Burning': 3,
+    # cdr
+    'CDR DACCS': 0, 
+    'CDR Industry': 1, 
 }
 
 ATTRS = {
@@ -93,15 +99,9 @@ def convert_to_datetime(da):
     dates = pd.DatetimeIndex(da.indexes["time"].map(lambda t: datetime.date(t[0], t[1], 16 if t[1] !=2 else 15)))
     return da.drop_vars(["time", "year", "month"]).assign_coords(time=dates)
 
-def clean_coords(da, whitelist=['lat', 'lon', 'time', 'sector', 'level']):
-    return da.squeeze(dim=set(da.coords) - set(whitelist), drop=True)
-
 def add_bounds(da, bounds=['lat', 'lon', 'time', 'level']):
     bounds = list(set(bounds) & set(da.coords))
-    da =(
-        da
-        .cf.add_bounds(bounds, output_dim='bound')
-    )
+    da = da.cf.add_bounds(bounds, output_dim='bound')
     da =(
         da
         .assign_coords(
@@ -132,10 +132,10 @@ def clean_var(da, name, gas, handle):
         'cell_methods': 'time: mean',
         'long_name': f'{gas} {handle} emissions'
     }
-    da[name].attrs =attrs
+    da[name].attrs = attrs
     return da
 
-def ds_attrs(name, model, scenario, version):
+def ds_attrs(name, model, scenario, version, date):
     split = name.split('_')
     gas = split[0]
     handle = DATA_HANDLES['_'.join(split[1:])]
@@ -146,7 +146,7 @@ def ds_attrs(name, model, scenario, version):
                 " ", "__"
             ),
         variable_id=name,
-        creation_date=str(datetime.datetime.today()),
+        creation_date=date,
         title=f'Future {handle} emissions of {gas} in {scenario}',
         reporting_unit=f'Mass flux of {gas}',
     )
@@ -154,22 +154,30 @@ def ds_attrs(name, model, scenario, version):
     return attrs
 
 
-def dress_up(da, model, scenario, version, **kwargs):
-    vars = list(da.data_vars)
-    assert len(vars) == 1, vars
-    
-    name = vars[0]
-    split = name.split('_')
-    gas = split[0]
-    handle = DATA_HANDLES['_'.join(split[1:])]
+class DressUp:
+    def __init__(self, version) -> None:
+        self.version = version
+        self.date = str(datetime.datetime.today())
 
-    return (
-        da
-        .pipe(convert_to_datetime)
-        .pipe(clean_coords)
-        .pipe(add_bounds)
-        .pipe(add_sector_mapping, SECTOR_MAPPING)
-        .pipe(replace_attrs, ATTRS)
-        .pipe(clean_var, name, gas, handle)
-        .assign_attrs(ds_attrs(name, model, scenario, version))
-    )
+    def __call__(self, da, model, scenario, **kwargs):
+        vars = list(da.data_vars)
+        assert len(vars) == 1, vars
+        
+        name = vars[0]
+        split = name.split('_')
+        gas = split[0]
+        handle = DATA_HANDLES['_'.join(split[1:])]
+
+        coord_whitelist = ['lat', 'lon', 'time', 'sector', 'level']
+        squeeze_coords = set(da.coords) - set(coord_whitelist)
+
+        return (
+            da
+            .pipe(convert_to_datetime)
+            .squeeze(dim=squeeze_coords, drop=True)
+            .pipe(add_bounds)
+            .pipe(add_sector_mapping, SECTOR_MAPPING)
+            .pipe(replace_attrs, ATTRS)
+            .pipe(clean_var, name, gas, handle)
+            .assign_attrs(ds_attrs(name, model, scenario, self.version, self.date))
+        )

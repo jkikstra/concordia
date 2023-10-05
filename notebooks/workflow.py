@@ -797,7 +797,7 @@ tasks = gridder.grid(
     iter_levels=["model", "scenario"],
     verify_output=True,
     skip_exists=False,
-    dress_up_callback=rescue_utils.dress_up,
+    dress_up_callback=rescue_utils.DressUp(version),
     encoding_kwargs=dict(zlib=True, complevel=2, _FillValue=1.e20),
 )
 
