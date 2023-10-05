@@ -18,24 +18,20 @@
 
 # %%
 import aneris
+
+
 aneris.__file__
 
 # %%
 import logging
-import re
 import os
+import re
 from pathlib import Path
 
 import pandas as pd
 import pycountry
 import xarray as xr
 import yaml
-from concordia import (
-    CondordiaMagics,
-    RegionMapping,
-    VariableDefinitions,
-    combine_countries,
-)
 from IPython import get_ipython
 from pandas import DataFrame
 from pandas_indexing import concat, isin, ismatch, semijoin
@@ -45,11 +41,17 @@ from aneris import logger
 from aneris.downscaling import Downscaler
 from aneris.grid import Gridder
 from aneris.harmonize import Harmonizer
-
+from concordia import (
+    CondordiaMagics,
+    RegionMapping,
+    VariableDefinitions,
+    combine_countries,
+)
 from concordia.rescue import utils as rescue_utils
 
+
 # %%
-version = "2023-09-16"
+version = "2023-10-03"
 
 # %%
 get_ipython().register_magics(CondordiaMagics)
@@ -61,8 +63,8 @@ ur = set_openscm_registry_as_default()
 # # Set which parts of the workflow you would like to execute and how the file names should be tagged
 
 # %%
-execute_harmonization = False
-execute_downscaling = False
+execute_harmonization = True
+execute_downscaling = True
 execute_gridding = True
 
 # %% [markdown]
@@ -184,7 +186,7 @@ with ur.context("AR4GWP100"):
     model = (
         pd.read_csv(
             base_path
-            / "iam_files/rescue/REMIND-MAgPIE-CEDS-RESCUE-Tier1-2023-09-14.csv",
+            / "iam_files/rescue/REMIND-MAgPIE-CEDS-RESCUE-Tier1-2023-09-21.csv",
             index_col=list(range(5)),
             sep=";",
         )
@@ -593,7 +595,7 @@ proxy_cfg = pd.concat(
 ).assign(
     name=lambda df: df.path.map(lambda p: p.stem.split("_")[1]) + "_" + df.name,
     template="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}-{version}_{grid_label}_202001-210012".format(
-        **rescue_utils.DS_ATTRS | {'version': version}
+        **rescue_utils.DS_ATTRS | {"version": version}
     ),
 )
 _PROXY_CFG = proxy_cfg.copy()  # for debugging help not to overwrite name
@@ -755,7 +757,7 @@ data_for_gridding.to_csv(data_for_gridding_path)
 scen = data_for_gridding.pix.semijoin(
     data_for_gridding.pix.unique(["model", "scenario"])[2:4], how="right"
 )  # TODO: Only 2nd and 3rd pathways
-scen.pix.unique('scenario')
+scen.pix.unique("scenario")
 
 # %% [raw]
 # _ = Gridder(
@@ -774,7 +776,9 @@ scen.pix.unique('scenario')
 
 # %%
 # cfg = proxy_cfg_test
-cfg = _PROXY_CFG.copy()[_PROXY_CFG.name.str.contains('BC_')].iloc[-1:] # air ran through ok
+cfg = _PROXY_CFG.copy()[_PROXY_CFG.name.str.contains("BC_")].iloc[
+    -1:
+]  # air ran through ok
 cfg.head()
 
 # %%
@@ -798,7 +802,7 @@ tasks = gridder.grid(
     verify_output=True,
     skip_exists=False,
     dress_up_callback=rescue_utils.DressUp(version),
-    encoding_kwargs=dict(zlib=True, complevel=2, _FillValue=1.e20),
+    encoding_kwargs=dict(zlib=True, complevel=2, _FillValue=1.0e20),
 )
 
 # %%
