@@ -17,6 +17,10 @@
 # %autoreload 2
 
 # %%
+import aneris
+aneris.__file__
+
+# %%
 import logging
 import re
 import os
@@ -41,6 +45,8 @@ from aneris import logger
 from aneris.downscaling import Downscaler
 from aneris.grid import Gridder
 from aneris.harmonize import Harmonizer
+
+from concordia.rescue import utils as rescue_utils
 
 # %%
 version = "2023-09-16"
@@ -549,48 +555,52 @@ proxy_cfg = pd.concat(
         DataFrame(
             {
                 "path": proxy_dir.glob("aircraft_*.nc"),
-                "name": "em-AIR-anthro",
+                "name": "em_AIR_anthro",
                 "global_only": True,
             }
         ),
         DataFrame(
             {
                 "path": proxy_dir.glob("shipping_*.nc"),
-                "name": "em-SHP-anthro",
+                "name": "em_anthro",
                 "global_only": True,
+                "concat_dim": "sector",
             }
         ),
         DataFrame(
             {
                 "path": proxy_dir.glob("anthro_*.nc"),
-                "name": "em-anthro",
+                "name": "em_anthro",
                 "global_only": False,
+                "concat_dim": "sector",
             }
         ),
         DataFrame(
             {
                 "path": proxy_dir.glob("openburning_*.nc"),
-                "name": "em-openburning",
+                "name": "em_openburning",
                 "global_only": False,
             }
         ),
         DataFrame(
             {
                 "path": proxy_dir.glob("CDR*.nc"),
-                "name": "em-removal",
+                "name": "em_removal",
                 "global_only": False,
             }
         ),
     ]
 ).assign(
-    name=lambda df: df.path.map(lambda p: p.stem.split("_")[1]) + "-" + df.name,
-    template="{name}_emissions_{model}-{scenario}_201501-210012",
+    name=lambda df: df.path.map(lambda p: p.stem.split("_")[1]) + "_" + df.name,
+    template="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}-{version}_{grid_label}_202001-210012".format(
+        **rescue_utils.DS_ATTRS | {'version': version}
+    ),
 )
 _PROXY_CFG = proxy_cfg.copy()  # for debugging help not to overwrite name
 proxy_cfg.tail()
 
-# %% [raw]
-# out_path
+# %%
+proxy_cfg.iloc[0].template
 
 # %% [raw]
 # proxy_cfg = pd.concat([
@@ -764,7 +774,8 @@ scen.pix.unique('scenario')
 
 # %%
 # cfg = proxy_cfg_test
-cfg = _PROXY_CFG.copy().iloc[9+9+4:] # testing NH3 anthro and onwards
+cfg = _PROXY_CFG.copy()[_PROXY_CFG.name.str.contains('BC_')].iloc[-1:] # air ran through ok
+cfg.head()
 
 # %%
 gridder = Gridder(
@@ -786,4 +797,8 @@ tasks = gridder.grid(
     iter_levels=["model", "scenario"],
     verify_output=True,
     skip_exists=False,
+    dress_up_callback=rescue_utils.DressUp(version),
+    encoding_kwargs=dict(zlib=True, complevel=2, _FillValue=1.e20),
 )
+
+# %%
