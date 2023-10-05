@@ -592,13 +592,15 @@ proxy_cfg = pd.concat(
     ]
 ).assign(
     name=lambda df: df.path.map(lambda p: p.stem.split("_")[1]) + "_" + df.name,
-    template="{name}_{activity_id}_emissions_{target_mip}_{institution}-{model}-{scenario}-{version}_{grid_label}_202001-210012",
+    template="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}-{version}_{grid_label}_202001-210012".format(
+        **rescue_utils.DS_ATTRS | {'version': version}
+    ),
 )
 _PROXY_CFG = proxy_cfg.copy()  # for debugging help not to overwrite name
 proxy_cfg.tail()
 
-# %% [raw]
-# out_path
+# %%
+proxy_cfg.iloc[0].template
 
 # %% [raw]
 # proxy_cfg = pd.concat([
@@ -796,7 +798,6 @@ tasks = gridder.grid(
     verify_output=True,
     skip_exists=False,
     dress_up_callback=rescue_utils.dress_up,
-    template_kwargs=rescue_utils.DS_ATTRS | {'version': version},
     encoding_kwargs=dict(zlib=True, complevel=2, _FillValue=1.e20),
 )
 
