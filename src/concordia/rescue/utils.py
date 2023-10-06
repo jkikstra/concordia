@@ -2,6 +2,7 @@ import datetime
 import ftplib
 
 import cftime
+import cf_xarray
 import dateutil
 import pandas as pd
 import xarray as xr
@@ -66,6 +67,7 @@ DATA_HANDLES = {
     "em_anthro": "anthropogenic",
     "em_AIR_anthro": "aircraft",
     "em_openburning": "openburning",
+    "em_removal": "cdr",
 }
 
 DS_ATTRS = dict(
