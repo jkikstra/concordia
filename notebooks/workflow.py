@@ -63,8 +63,8 @@ ur = set_openscm_registry_as_default()
 # # Set which parts of the workflow you would like to execute and how the file names should be tagged
 
 # %%
-execute_harmonization = True
-execute_downscaling = True
+execute_harmonization = False
+execute_downscaling = False
 execute_gridding = True
 
 # %% [markdown]
@@ -84,7 +84,8 @@ execute_gridding = True
 #
 
 # %%
-with open("config.yaml") as stream:
+cfname = "config.yaml" if os.name == "nt" else "config_win.yaml"
+with open(cfname) as stream:
     config = yaml.safe_load(stream)
 
 # %%
@@ -776,9 +777,7 @@ scen.pix.unique("scenario")
 
 # %%
 # cfg = proxy_cfg_test
-cfg = _PROXY_CFG.copy()[_PROXY_CFG.name.str.contains("BC_")].iloc[
-    -1:
-]  # air ran through ok
+cfg = _PROXY_CFG.copy()
 cfg.head()
 
 # %%
@@ -800,7 +799,7 @@ tasks = gridder.grid(
     chunk_proxy_dims={"level": "auto"},
     iter_levels=["model", "scenario"],
     verify_output=True,
-    skip_exists=False,
+    skip_exists=True,
     dress_up_callback=rescue_utils.DressUp(version),
     encoding_kwargs=dict(zlib=True, complevel=2, _FillValue=1.0e20),
 )
@@ -811,3 +810,5 @@ tasks = gridder.grid(
 # %%
 remote_path = Path("/forcings/emissions") / version
 rescue_utils.ftp_upload(config["ftp"], out_path, remote_path)
+
+# %%
