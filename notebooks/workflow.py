@@ -84,7 +84,7 @@ execute_gridding = True
 #
 
 # %%
-cfname = "config.yaml" if os.name == "nt" else "config_win.yaml"
+cfname = "config.yaml" if os.name != "nt" else "config_win.yaml"
 with open(cfname) as stream:
     config = yaml.safe_load(stream)
 
