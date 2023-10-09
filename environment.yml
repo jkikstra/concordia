@@ -19,6 +19,7 @@ dependencies:
 - cf_xarray
 - flox
 - filelock
+- geoutils
 - bottleneck
 - deprecated
 - pycountry
