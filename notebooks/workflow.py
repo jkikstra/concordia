@@ -51,7 +51,7 @@ from aneris.harmonize import Harmonizer
 
 
 # %%
-version = "2023-10-05"
+version = "2023-10-07"
 
 # %%
 get_ipython().register_magics(CondordiaMagics)
@@ -63,8 +63,8 @@ ur = set_openscm_registry_as_default()
 # # Set which parts of the workflow you would like to execute and how the file names should be tagged
 
 # %%
-execute_harmonization = False
-execute_downscaling = False
+execute_harmonization = True
+execute_downscaling = True
 execute_gridding = True
 
 # %% [markdown]
@@ -207,6 +207,7 @@ with ur.context("AR4GWP100"):
             extend_missing=True,
             levels=["model", "scenario", "region", "gas", "sector", "unit"],
         )
+        .loc[~ismatch(scenario="*Extension*")]  # remove extension only scenarios
     )
 model.pix
 
@@ -684,7 +685,7 @@ harmonized.pix.unique("sector").difference(
 from dask.distributed import Client
 
 
-client = Client(n_workers=4, memory_limit=0.15, processes=True)
+client = Client(n_workers=4, memory_limit=0.175, processes=True)
 
 # %%
 idxr = xr.open_dataarray(
@@ -755,9 +756,10 @@ data_for_gridding.to_csv(data_for_gridding_path)
 # ## Execute Gridding
 
 # %%
-scen = data_for_gridding.pix.semijoin(
-    data_for_gridding.pix.unique(["model", "scenario"])[2:4], how="right"
-)  # TODO: Only 2nd and 3rd pathways
+# scen = data_for_gridding.pix.semijoin(
+#    data_for_gridding.pix.unique(["model", "scenario"])[2:4], how="right"
+# )  # TODO: Only 2nd and 3rd pathways
+scen = data_for_gridding  # .loc[ismatch(scenario='*Direct*')]
 scen.pix.unique("scenario")
 
 # %% [raw]
@@ -791,6 +793,9 @@ gridder = Gridder(
 
 gridder.proxy_cfg
 # skip checks when using this for testing
+
+# %%
+# %env HDF5_USE_FILE_LOCKING=FALSE
 
 # %%
 # %%execute_or_lazy_load execute_gridding
