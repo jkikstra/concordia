@@ -51,7 +51,7 @@ from concordia.rescue import utils as rescue_utils
 
 
 # %%
-version = "2023-10-03"
+version = "2023-10-07"
 
 # %%
 get_ipython().register_magics(CondordiaMagics)
@@ -84,7 +84,8 @@ execute_gridding = True
 #
 
 # %%
-with open("config.yaml") as stream:
+cfname = "config.yaml" if os.name != "nt" else "config_win.yaml"
+with open(cfname) as stream:
     config = yaml.safe_load(stream)
 
 # %%
@@ -206,6 +207,7 @@ with ur.context("AR4GWP100"):
             extend_missing=True,
             levels=["model", "scenario", "region", "gas", "sector", "unit"],
         )
+        .loc[~ismatch(scenario="*Extension*")]  # remove extension only scenarios
     )
 model.pix
 
@@ -683,7 +685,7 @@ harmonized.pix.unique("sector").difference(
 from dask.distributed import Client
 
 
-client = Client()
+client = Client(n_workers=4, memory_limit=0.175, processes=True)
 
 # %%
 idxr = xr.open_dataarray(
@@ -754,9 +756,10 @@ data_for_gridding.to_csv(data_for_gridding_path)
 # ## Execute Gridding
 
 # %%
-scen = data_for_gridding.pix.semijoin(
-    data_for_gridding.pix.unique(["model", "scenario"])[2:4], how="right"
-)  # TODO: Only 2nd and 3rd pathways
+# scen = data_for_gridding.pix.semijoin(
+#    data_for_gridding.pix.unique(["model", "scenario"])[2:4], how="right"
+# )  # TODO: Only 2nd and 3rd pathways
+scen = data_for_gridding  # .loc[ismatch(scenario='*Direct*')]
 scen.pix.unique("scenario")
 
 # %% [raw]
@@ -776,9 +779,7 @@ scen.pix.unique("scenario")
 
 # %%
 # cfg = proxy_cfg_test
-cfg = _PROXY_CFG.copy()[_PROXY_CFG.name.str.contains("BC_")].iloc[
-    -1:
-]  # air ran through ok
+cfg = _PROXY_CFG.copy()
 cfg.head()
 
 # %%
@@ -794,15 +795,25 @@ gridder.proxy_cfg
 # skip checks when using this for testing
 
 # %%
+# %env HDF5_USE_FILE_LOCKING=FALSE
+
+# %%
 # %%execute_or_lazy_load execute_gridding
 tasks = gridder.grid(
     skip_check=True,
     chunk_proxy_dims={"level": "auto"},
     iter_levels=["model", "scenario"],
     verify_output=True,
-    skip_exists=False,
+    skip_exists=True,
     dress_up_callback=rescue_utils.DressUp(version),
     encoding_kwargs=dict(zlib=True, complevel=2, _FillValue=1.0e20),
 )
+
+# %% [markdown]
+# # Upload to BSC FTP
+
+# %%
+remote_path = Path("/forcings/emissions") / version
+rescue_utils.ftp_upload(config["ftp"], out_path, remote_path)
 
 # %%
