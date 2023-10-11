@@ -2,7 +2,6 @@ import datetime
 import ftplib
 
 import cftime
-import cf_xarray
 import dateutil
 import pandas as pd
 import xarray as xr
@@ -167,7 +166,7 @@ def ds_attrs(name, model, scenario, version, date):
     extra_attrs = dict(
         source_version=version,
         source_id=f"{DS_ATTRS['institution']}-{model}-{scenario}-{version}".replace(
-            " ", "__"
+            " ", "-"
         ),
         variable_id=name,
         creation_date=date,
