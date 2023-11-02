@@ -25,6 +25,57 @@ with open("../config.yaml") as f:
 base_path = Path(config["base_path"])
 
 # %% [markdown]
+# # Shipping
+#
+# We use shipping patterns from MariTeam to generate shipping proxies. NOx, SOx,
+# and CO2 are provided explicitly, and all other patterns are based on CO2, as
+# NOx and SOx have specific pollution controls embedded.
+#
+# Citation: Kramel, D., Muri, H., Kim, Y., Lonka, R., Nielsen, J.B., Ringvold,
+# A.L., Bouman, E.A., Steen, S. and Strømman, A.H., 2021. Global shipping
+# emissions from a well-to-wake perspective: the MariTEAM model. Environmental
+# science & technology, 55(22), pp.15040-15050.
+# https://pubs.acs.org/doi/10.1021/acs.est.1c03937
+#
+
+
+# %%
+def mariteam_shipping():
+    gases = ["BC", "CH4", "CO", "CO2", "NH3", "NOx", "OC", "Sulfur", "VOC"]
+    mari = list(
+        Path(".").glob(
+            base_path / "gridding_process_files/non_ceds_input/*MariTeam*.nc"
+        )
+    )
+    mari = {f.stem.split("_")[-2]: f for f in mari}
+    ceds_to_mari = {"Sulfur": "SO2"}  # maritime uses so2, ceds uses sulfur
+    fallback = "CO2"  # if maritime doesn't provide data, use co2 as backup
+
+    def convert_mariteam_to_ceds(mari, gas):
+        # get path of file to use for this gas
+        if gas in ceds_to_mari:
+            pth = mari[ceds_to_mari[gas]]
+        elif gas in mari:
+            pth = mari[gas]
+        else:
+            pth = mari[fallback]
+
+        # make sure gas name is aligned with gas arg
+        print(f"For gas {gas}, using {pth}")
+        with xr.open_dataarray(pth) as da:
+            return da.drop_vars(["gas"]).assign_coords(gas=[gas])
+
+    for gas in gases:
+        da = convert_mariteam_to_ceds(mari, gas)
+        fname = Path(
+            base_path / f"gridding_process_files/proxy_rasters/shipping_{gas}.nc"
+        )
+        da.to_netcdf(fname, encoding={"emissions": dict(zlib=True, complevel=2)})
+
+
+mariteam_shipping()
+
+# %% [markdown]
 # # Industry CDR
 #
 # **NOTE** Originally I hoped to use cement emission patterns, but it turns out that most industry CDR is from plastics, so fallback to simple industry CO2 emission patterns.
