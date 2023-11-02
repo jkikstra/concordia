@@ -410,12 +410,13 @@ hist = aggregate_subsectors(hist)
 
 # %%
 hfc_distribution = (
-    pd.read_csv(
+    pd.read_excel(
         base_path
         / "harmonization_postprocessing"
         / "rescue"
-        / "rescue_hfc_scenario.csv",
+        / "rescue_hfc_scenario.xlsx",
         index_col=0,
+        sheet_name="rescue_hfc_scenario",
     )
     .rename_axis("hfc")
     .rename(columns=int)
