@@ -1,6 +1,7 @@
 import datetime
 import ftplib
 
+import cf_xarray  # noqa
 import cftime
 import dateutil
 import pandas as pd
