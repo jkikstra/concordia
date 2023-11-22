@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.15.0
+#       jupytext_version: 1.15.2
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -51,7 +51,7 @@ from concordia.rescue import utils as rescue_utils
 
 
 # %%
-version = "2023-10-07"
+version = "2023-11-03"
 
 # %%
 get_ipython().register_magics(CondordiaMagics)
@@ -182,12 +182,21 @@ hist = (
 )
 hist.head()
 
+
+# %%
+def patch_model_variable(var):
+    var = var.removesuffix("|Total")
+    if var.endswith("|Energy Sector"):
+        var += "|Modelled"
+    return var
+
+
 # %%
 with ur.context("AR4GWP100"):
     model = (
         pd.read_csv(
             base_path
-            / "iam_files/rescue/REMIND-MAgPIE-CEDS-RESCUE-Tier1-2023-09-21.csv",
+            / "iam_files/rescue/REMIND-MAgPIE-CEDS-RESCUE-Tier1-2023-10-17.csv",
             index_col=list(range(5)),
             sep=";",
         )
@@ -201,13 +210,13 @@ with ur.context("AR4GWP100"):
             level="Unit",
         )
         .pix.convert_unit({"kt HFC134a/yr": "Mt CO2eq/yr"}, level="Unit")
-        .rename(index=lambda s: s.removesuffix("|Total"), level="Variable")
+        .rename(index=patch_model_variable, level="Variable")
         .pipe(
             variabledefs.load_data,
             extend_missing=True,
             levels=["model", "scenario", "region", "gas", "sector", "unit"],
         )
-        .loc[~ismatch(scenario="*Extension*")]  # remove extension only scenarios
+        .loc[ismatch(scenario=["*-Baseline", "*-PkBudg_cp2300-OAE_off", "*-Direct-*"])]
     )
 model.pix
 

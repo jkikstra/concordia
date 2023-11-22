@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.14.6
+#       jupytext_version: 1.15.2
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -30,6 +30,7 @@ import seaborn as sns
 import yaml
 from dominate import document
 from dominate.tags import div
+from filelock import FileLock
 from joblib import Parallel, delayed
 from pandas_indexing import concat, isin, ismatch
 from tqdm import tqdm
@@ -42,18 +43,18 @@ from concordia.utils import RegionMapping, combine_countries
 pio.templates.default = "ggplot2"
 
 # %%
-version_old = "2023-08-18"
-version = "2023-10-03"
+version_old = None  # "2023-08-18"
+version = "2023-11-03"
 
 # %%
 with open("config.yaml") as f:
     config = yaml.safe_load(f)
 
 # %%
-base_path = Path(config["base_path"])
+base_path = Path(config["base_path"]).expanduser()
 tmp_path = Path("tmp")
 tmp_path.mkdir(exist_ok=True)
-out_path = base_path.parent / "analysis" / "harmonization"
+out_path = Path(config["out_path"]).expanduser() / version
 country_combinations = config["country_combinations"]
 
 # %%
@@ -77,7 +78,10 @@ def read_version(version):
             engine="pyarrow",
         )
         .rename(columns=int)
-        .loc[ismatch(scenario="*cp0400*") | isin(model="Historic")]
+        .loc[
+            ismatch(scenario=["*-Baseline", "*-PkBudg_cp2300-OAE_off", "*-PkBudg500-*"])
+            | isin(model="Historic")
+        ]
     )
     model = data.pix.extract(
         variable="Emissions|{gas}|{sector}|Unharmonized", drop=True
@@ -93,12 +97,13 @@ def read_version(version):
     )
 
     def aggregate_subsectors(df):
-        if "method" in df.index.names:
-            df = df.pix.assign(method="aggregated")
+        df_agg = (
+            df.pix.assign(method="aggregated") if "method" in df.index.names else df
+        )
         return concat(
             [
                 df,
-                df.pix.aggregate(
+                df_agg.pix.aggregate(
                     sector=subsectors.index.groupby(subsectors.str.split("|").str[0]),
                     mode="return",
                 ),
@@ -124,7 +129,8 @@ def read_version(version):
 model, harm, hist = read_version(version)
 
 # %%
-model_old, harm_old, _ = read_version(version_old)
+if version_old is not None:
+    model_old, harm_old, _ = read_version(version_old)
 
 
 # %%
@@ -164,18 +170,29 @@ cmip6_hist = regionmapping.aggregate(
 )
 
 # %%
-hist = concat([hist, cmip6_hist])
+# Recompute regional CO2 total (since they include wrongly fire emissions)
+cmip6_hist = concat(
+    [
+        cmip6_hist.loc[~(isin(gas="CO2", sector="Total") & ~isin(region="World"))],
+        cmip6_hist.loc[isin(gas="CO2") & ~isin(sector="Total") & ~isin(region="World")]
+        .pix.assign(sector="Total")
+        .groupby(cmip6_hist.index.names)
+        .sum(),
+    ]
+).sort_index()
 
 # %%
-harm.pix.unique("scenario")
+hist = concat([hist, cmip6_hist])
 
 
 # %%
 def plot_harm(sel, scenario=None, levels=["gas", "sector", "region"], useplotly=False):
     model_sel = sel if scenario is None else sel & ismatch(scenario=scenario)
     h = harm.loc[model_sel]
-    h_old = harm_old.loc[model_sel]
-    data = concat(
+
+    data = {}
+
+    data[version] = concat(
         dict(
             CEDS=hist.loc[sel & isin(scenario="Synthetic (GFED/CEDS/Global)")],
             CMIP6=hist.loc[sel & isin(scenario="CMIP6")],
@@ -185,12 +202,16 @@ def plot_harm(sel, scenario=None, levels=["gas", "sector", "region"], useplotly=
         keys="pathway",
     ).loc[:, 2000:]
 
-    data_old = concat(
-        dict(Unharmonized=model.loc[model_sel], Harmonized=h_old.droplevel("method")),
-        keys="pathway",
-    ).loc[:, 2000:]
+    if version_old is not None:
+        h_old = harm_old.loc[model_sel]
+        data[version_old] = concat(
+            dict(
+                Unharmonized=model.loc[model_sel], Harmonized=h_old.droplevel("method")
+            ),
+            keys="pathway",
+        ).loc[:, 2000:]
 
-    data = concat({version: data, version_old: data_old}, keys="version")
+    data = concat(data, keys="version")
 
     non_uniques = [lvl for lvl in levels if len(h.pix.unique(lvl)) > 1]
     if not non_uniques:
@@ -245,21 +266,22 @@ def plot_harm(sel, scenario=None, levels=["gas", "sector", "region"], useplotly=
 
 
 # %%
-harm.pix
-
-# %%
-harm.loc[ismatch(scenario="RESCUE-Tier1-Extension-*-PkBudg_cp0400-OAE_off")]
-
-# %%
 plot_harm(
-    isin(region="World", sector="Energy Sector", gas="CO2"),
-    scenario="RESCUE-Tier1-Extension-*-PkBudg_cp0400-OAE_off",
+    isin(region="World", sector="Total", gas="CO2"),
+    scenario="RESCUE-Tier1-Direct-*-PkBudg500-OAE_off",
 )
 
 # %%
 g = plot_harm(
-    isin(sector="Energy Sector", gas="VOC"),
-    scenario="RESCUE-Tier1-Extension-*-PkBudg_cp0400-OAE_off",
+    isin(sector="Total", gas="CO2"),
+    scenario="RESCUE-Tier1-Direct-*-PkBudg500-OAE_off",
+    useplotly=False,
+)
+
+# %%
+g = plot_harm(
+    isin(sector="Aggregate - Agriculture and LUC", gas="CO2"),
+    scenario="RESCUE-Tier1-Direct-*-PkBudg500-OAE_off",
     useplotly=False,
 )
 
@@ -279,6 +301,8 @@ def what_changed(next, prev):
 
 # %%
 def make_doc(order, scenario=None, compact=False, useplotly=False):
+    import pandas_indexing.accessors  # noqa: F401, F811
+
     if scenario is None:
         ((m, s),) = harm.pix.unique(["model", "scenario"])
     else:
@@ -309,13 +333,16 @@ def make_doc(order, scenario=None, compact=False, useplotly=False):
         prev_idx = idx
 
     add_sticky_toc(doc, max_level=2, compact=compact)
-    add_plotly_header(doc)
+    if useplotly:
+        add_plotly_header(doc)
     return doc
 
 
 # %%
 def shorten(scenario):
-    return scenario.removeprefix("RESCUE-Tier1-Extension-*-")
+    return scenario.removeprefix("RESCUE-Tier1-Direct-*-").removeprefix(
+        "RESCUE-Tier1-Extension-*-"
+    )
 
 
 # %%
@@ -324,17 +351,18 @@ files = [
     out_path / f"harmonization-{version}-splithfc.csv",
 ]
 
+
 # %%
-for scenario in harm.pix.unique("scenario").str.replace("2023-09-21", "*"):
-    fn = out_path / f"harmonization-{version}-single-{shorten(scenario)}.html"
-    with open(fn, "w", encoding="utf-8") as f:
-        print(
-            make_doc(
-                order=["gas", "sector", "region"], scenario=scenario, compact=False
-            ),
-            file=f,
-        )
-    files.append(fn)
+# for scenario in harm.pix.unique("scenario").str.replace(version, "*"):
+#     fn = out_path / f"harmonization-{version}-single-{shorten(scenario)}.html"
+#     with open(fn, "w", encoding="utf-8") as f:
+#         print(
+#             make_doc(
+#                 order=["gas", "sector", "region"], scenario=scenario, compact=False
+#             ),
+#             file=f,
+#         )
+#     files.append(fn)
 
 
 # %%
@@ -342,23 +370,24 @@ def make_scenario_facets(scenario, useplotly=False):
     suffix = "-plotly" if useplotly else ""
     fn = out_path / f"harmonization-{version}-facet-{shorten(scenario)}{suffix}.html"
 
+    lock = FileLock(out_path / ".lock")
     doc = make_doc(order=["gas", "sector"], scenario=scenario, useplotly=useplotly)
-    with open(fn, "w", encoding="utf-8") as f:
-        print(doc, file=f)
+
+    with lock:
+        with open(fn, "w", encoding="utf-8") as f:
+            print(doc, file=f)
     return fn
 
 
 files.extend(
-    Parallel(
-        n_jobs=1, verbose=10
-    )(  # min(10, len(harm.pix.unique("scenario"))), verbose=10)(
+    Parallel(n_jobs=min(10, len(harm.pix.unique("scenario"))), verbose=10)(
         delayed(make_scenario_facets)(scenario)
-        for scenario in harm.pix.unique("scenario").str.replace("2023-09-21", "*")
+        for scenario in harm.pix.unique("scenario").str.replace(version, "*")
     )
 )
 
 # %%
 for fn in files:
-    run(["aws", "s3", "cp", fn, "s3://rescue-task1.3/harmonization/"])
+    run(["aws", "s3", "cp", fn, f"s3://rescue-task1.3/harmonization/{version}/"])
 
 # %%
