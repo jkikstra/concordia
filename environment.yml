@@ -2,6 +2,7 @@ name: concordia
 channels:
 - conda-forge
 dependencies:
+- attrs
 - pandas >=1.1
 - pyyaml
 - xlrd >=2.0
@@ -31,5 +32,7 @@ dependencies:
 - pip:
   - pandas-indexing[units] >=0.2.10
   - ptolemy-iamc
+  # Need to integrate new indexraster changes into ptolemy
+  - git+https://github.com/iiasa/ptolemy.git@add-index-raster#egg=aneris-iamc
   - git+https://github.com/iiasa/aneris.git@workflow#egg=aneris-iamc
   - -e .

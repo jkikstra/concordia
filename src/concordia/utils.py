@@ -1,13 +1,23 @@
-from dataclasses import dataclass
-from itertools import chain, repeat
+import logging
+from itertools import chain
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Self, Sequence, Union
 
 import numpy as np
 import pandas as pd
+import pycountry
+from attrs import define
 from IPython.core.magic import Magics, cell_magic, magics_class
-from pandas import DataFrame
+from pandas import DataFrame, isna
 from pandas_indexing import concat, isin
+
+from .settings import Settings
+
+
+logger = logging.getLogger(__name__)
+
+
+Pathy = str | Path
 
 
 @magics_class
@@ -23,23 +33,35 @@ class CondordiaMagics(Magics):
             self.shell.run_cell(cell)
         elif len(parts) > 1:
             cmd = " ".join(parts[1:])
-            print(f"Running: {cmd}")
+            logger.info(f"Running: {cmd}")
             self.shell.run_cell(cmd)
         else:
-            return print("Skipped")
+            return logger.info("Skipped")
 
 
-@dataclass
+@define
 class VariableDefinitions:
     data: DataFrame
 
     @classmethod
     def from_csv(cls, path):
         return cls(
-            pd.read_csv(path, index_col=list(range(3))).loc[
-                isin(variable=lambda s: ~s.str.startswith("#"))
+            pd.read_csv(path, index_col=list(range(2))).loc[
+                isin(gas=lambda s: ~s.str.startswith("#"))
             ]
         )
+
+    def for_proxy(self, proxy_name: str | float) -> Self:
+        data = self.data.loc[
+            self.data.proxy_name.isna()
+            if isna(proxy_name)
+            else (self.data.proxy_name == proxy_name)
+        ]
+        return self.__class__(data)
+
+    @property
+    def proxies(self):
+        return self.data["proxy_name"].unique()
 
     @property
     def history(self):
@@ -66,11 +88,11 @@ class VariableDefinitions:
 
     @property
     def index_global(self):
-        return self.data.index[self.data["global"]].pix.project(["gas", "sector"])
+        return self.data.index[self.data["global"]]
 
     @property
     def index_regional(self):
-        return self.data.index[~self.data["global"]].pix.project(["gas", "sector"])
+        return self.data.index[~self.data["global"]]
 
     def load_data(
         self,
@@ -80,6 +102,7 @@ class VariableDefinitions:
         ignore_missing: bool = False,
         extend_missing: Union[bool, float] = False,
         timeseries: bool = True,
+        settings: Optional[Settings] = None,
     ):
         """Load data from dataframe.
 
@@ -116,6 +139,9 @@ class VariableDefinitions:
             df = df.rename_axis(columns="year").rename(columns=int)
         else:
             df = df.rename(columns=str.lower)
+
+        if "variable" in df.index.names and settings is not None:
+            df = df.pix.extract(variable=settings.variable_template, drop=True)
 
         if ignore_undefined and ignore_missing:
             how = "inner"
@@ -182,9 +208,13 @@ class VariableDefinitions:
 
             variations = pd.MultiIndex.from_product(
                 chain(
-                    (index.pix.project("variable")[li == -1],),
+                    np.nonzero(li == -1),
                     (df.pix.unique(level).dropna() for level in nanlevels),
                 )
+            )
+            idx = index[variations.pix.project(None)]
+            variations = variations.droplevel(None).pix.assign(
+                gas=idx.pix.project("gas"), sector=idx.pix.project("sector")
             )
             df = concat(
                 [
@@ -198,7 +228,7 @@ class VariableDefinitions:
         return df
 
 
-@dataclass
+@define
 class RegionMapping:
     data: pd.Series
 
@@ -229,6 +259,9 @@ class RegionMapping:
             .rename(index=str.lower)
             .rename("region")
         )
+
+    def filter(self, countries: Sequence[str] | pd.Index) -> Self:
+        return self.__class__(self.data.loc[isin(country=countries)])
 
     def prefix(self, s: str):
         return self.__class__(s + self.data)
@@ -264,26 +297,57 @@ class RegionMapping:
         )
 
 
-def combine_countries(df, level="country", agg_func="sum", **countries):
-    index = pd.MultiIndex.from_tuples(
-        chain(
-            *(
-                zip(repeat(new_name), individual_countries)
-                for new_name, individual_countries in countries.items()
-            )
-        ),
-        names=[level, "old"],
+def aggregate_subsectors(df):
+    subsectors = (
+        df.pix.unique("sector")
+        .to_series()
+        .loc[lambda s: s.str.contains("|", regex=False)]
+    )
+    if subsectors.empty:
+        return df
+
+    logger.debug(f"Aggregating subsectors: {', '.join(subsectors)}")
+    return (
+        df.rename(subsectors.str.split("|").str[0], level="sector")
+        .groupby(df.index.names)
+        .sum()
     )
 
-    new = (
-        df.rename_axis(index={level: "old"})
-        .pix.semijoin(index, how="right")
-        .groupby(df.index.names)
-        .agg(agg_func)
+
+def make_totals(df):
+    original_levels = df.index.names
+    if "method" in original_levels:  # need to process harm
+        df = df.droplevel("method")
+    level = df.index.names
+    ret = concat(
+        [
+            (
+                df.loc[~isin(region="World")]  # don"t count aviation
+                .groupby(level.difference(["region"]))
+                .agg(lambda s: s.sum(skipna=False))
+                .pix.assign(region="World", order=level)
+            ),
+            (
+                df.loc[~(isin(sector="Total") | isin(region="World"))]
+                .groupby(level.difference(["sector"]))
+                .agg(lambda s: s.sum(skipna=False))
+                .pix.assign(sector="Total", order=level)
+            ),
+            (
+                df.loc[~isin(sector="Total")]  # don"t count global totals
+                .groupby(level.difference(["region", "sector"]))
+                .agg(lambda s: s.sum(skipna=False))
+                .pix.assign(region="World", sector="Total", order=level)
+            ),
+        ]
     )
-    return concat(
-        [df.loc[~isin(**{level: index.pix.project("old")})], new]
-    ).sort_index()
+    if "method" in original_levels:  # need to process harm
+        ret = ret.pix.assign(method="aggregate", order=original_levels)
+    return ret
+
+
+def add_totals(df):
+    return concat([df, make_totals(df)])
 
 
 def as_seaborn(
@@ -309,3 +373,12 @@ def as_seaborn(
     if meta is not None:
         df = df.to_frame().join(meta, on=meta.index.names)
     return df.reset_index()
+
+
+def skipnone(*args):
+    return [x for x in args if x is not None]
+
+
+def iso_to_name(x):
+    cntry = pycountry.countries.get(alpha_3=x.upper())
+    return cntry.name if cntry is not None else x

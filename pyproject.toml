@@ -16,6 +16,7 @@ classifiers = [
   "License :: OSI Approved :: Apache Software License",
 ]
 dependencies = [
+  "attrs",
   "ptolemy-iamc>=0.3",
   "aneris-iamc>=0.2.6",
   "pandas-indexing>=0.2.10",
