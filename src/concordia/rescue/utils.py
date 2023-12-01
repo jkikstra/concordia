@@ -1,10 +1,14 @@
 import datetime
 import ftplib
+from typing import Any
 
 import cf_xarray  # noqa
 import dateutil
 import pandas as pd
 import xarray as xr
+from cattrs import structure, transform_error
+
+from ..settings import FtpSettings
 
 
 SECTOR_MAPPING = {
@@ -203,12 +207,18 @@ class DressUp:
         )
 
 
-def ftp_upload(cfg, local_path, remote_path):
+def ftp_upload(cfg: FtpSettings | dict[str, Any], local_path, remote_path):
     paths = list(local_path.iterdir())
 
+    if not isinstance(cfg, FtpSettings):
+        try:
+            cfg = structure(cfg, FtpSettings)
+        except Exception as exc:
+            raise ValueError(", ".join(transform_error(exc, path="cfg"))) from None
+
     ftp = ftplib.FTP()
-    ftp.connect(cfg["server"], cfg["port"])
-    ftp.login(cfg["user"], cfg["pass"])
+    ftp.connect(cfg.server, cfg.port)
+    ftp.login(cfg.user, cfg.password)
 
     try:
         if remote_path.as_posix() not in ftp.nlst(remote_path.parent.as_posix()):

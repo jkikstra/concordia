@@ -3,9 +3,19 @@ from typing import Self
 
 import yaml
 from attrs import define
+from cattrs import structure, transform_error
 
 
 Pathy = str | Path
+
+
+@define
+class FtpSettings:
+    server: str
+    port: int
+
+    user: str
+    password: str
 
 
 @define
@@ -16,6 +26,8 @@ class Settings:
     luc_sectors: list[str]
     country_combinations: dict[str, list[str]]
     variable_template: str
+
+    ftp: FtpSettings
 
     # where shared stuff is stored
     shared_path: Path
@@ -52,4 +64,8 @@ class Settings:
         with open(config_path) as f:
             config = yaml.safe_load(f)
 
-        return cls(**cls.resolve_paths(config | overwrites))
+        # TODO might want to replace with merge for nested dictionaries
+        try:
+            return structure(cls.resolve_paths(config | overwrites), cls)
+        except Exception as exc:
+            raise ValueError(", ".join(transform_error(exc, path="config"))) from None

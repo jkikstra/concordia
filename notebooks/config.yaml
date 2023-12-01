@@ -19,3 +19,9 @@ luc_sectors:
   - "Peat Burning"
   - "Agriculture"
   - "Aggregate - Agriculture and LUC"
+
+ftp:
+  server: "127.0.0.1"
+  port: 21
+  user: anonymous
+  password: ""
