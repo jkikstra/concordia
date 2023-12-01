@@ -2,11 +2,9 @@ import datetime
 import ftplib
 
 import cf_xarray  # noqa
-import cftime
 import dateutil
 import pandas as pd
 import xarray as xr
-from xarray.coding.times import convert_times
 
 
 SECTOR_MAPPING = {
@@ -98,14 +96,24 @@ DS_ATTRS = dict(
 )
 
 
-def convert_to_datetime(da):
+def convert_to_datetime(da: xr.DataArray) -> xr.DataArray:
     da = da.stack(time=("year", "month"))
     dates = pd.DatetimeIndex(
         da.indexes["time"].map(
             lambda t: datetime.date(t[0], t[1], 16 if t[1] != 2 else 15)
         )
     )
-    return da.drop_vars(["time", "year", "month"]).assign_coords(time=dates)
+    return (
+        da.drop_vars(["time", "year", "month"])
+        .assign_coords(
+            time=xr.IndexVariable(
+                "time",
+                dates,
+                encoding=dict(units="days since 2015-1-1 0:0:0", calendar="noleap"),
+            )
+        )
+        .transpose("time", ...)
+    )
 
 
 def clean_coords(da, whitelist=["lat", "lon", "time", "sector", "level"]):
@@ -115,19 +123,11 @@ def clean_coords(da, whitelist=["lat", "lon", "time", "sector", "level"]):
 def add_bounds(da, bounds=["lat", "lon", "time", "level"]):
     bounds = list(set(bounds) & set(da.coords))
     da = da.cf.add_bounds(bounds, output_dim="bound")
-    da = (
-        da.assign_coords(
-            time=convert_times(da.time.data, cftime.DatetimeNoLeap),
-            time_bounds=(
-                ("time", "bound"),
-                convert_times(
-                    da.time_bounds.data.ravel(), cftime.DatetimeNoLeap
-                ).reshape(-1, 2),
-            ),
-        )
-        .reset_coords([f"{b}_bounds" for b in bounds])
-        .rename({f"{b}_bounds": f"{b}_bnds" for b in bounds})
+    da = da.reset_coords([f"{b}_bounds" for b in bounds]).rename(
+        {f"{b}_bounds": f"{b}_bnds" for b in bounds}
     )
+    for b in bounds:
+        da.coords[b].attrs["bounds"] = f"{b}_bnds"
     return da
 
 
