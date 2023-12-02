@@ -19,14 +19,14 @@ logger = logging.getLogger(__name__)
 
 @dask.delayed
 def verify_global_values(
-    aggregated, tabular, proxy_name, index, abstol=1e-8, reltol=1e-4
-):
+    aggregated, tabular, proxy_name, index, abstol=1e-8, reltol=1e-8
+) -> pd.DataFrame:
     tab_df = tabular.groupby(level=index).sum().unstack("year")
     grid_df = aggregated.to_series().groupby(level=index).sum().unstack("year")
     grid_df, tab_df = grid_df.align(tab_df, join="inner")
 
     absdiff = abs(grid_df - tab_df)
-    if (absdiff >= abstol + reltol * tab_df).any(axis=None):
+    if (absdiff >= abstol + reltol * abs(tab_df)).any(axis=None):
         reldiff = (absdiff / tab_df).where(abs(tab_df) > 0, 0)
         logger.warning(
             f"Yearly global totals relative values between grids and global data for ({proxy_name}) not within {reltol}:\n"
@@ -56,17 +56,17 @@ Weight = namedtuple("Weight", ["global_", "regional"])
 
 @define
 class Gridded:
-    gridded: xr.DataArray
+    data: xr.DataArray
     downscaled: pd.DataFrame
     proxy: "Proxy"
     meta: dict[str, str] = field(factory=dict)
 
     def verify(self, compute: bool = True):
-        return self.proxy.verify_gridded(self.gridded, self.downscaled, compute=compute)
+        return self.proxy.verify_gridded(self.data, self.downscaled, compute=compute)
 
     def prepare_dataset(self, callback: Optional[callable] = None):
         name = self.proxy.name
-        ds = self.gridded.to_dataset(name=name)
+        ds = self.data.to_dataset(name=name)
 
         if callback is not None:
             ds = callback(ds, name=name, **self.meta)
@@ -99,20 +99,13 @@ class Gridded:
         )
 
 
+@define(slots=False)  # cached_property's need __dict__
 class Proxy:
-    def __init__(
-        self,
-        proxy,
-        only_global,
-        indexraster: pt.IndexRaster,
-        name="unnamed",
-        as_flux: bool | xr.DataArray = True,
-    ):
-        self.proxy = proxy
-        self.only_global = only_global
-        self.indexraster = indexraster
-        self.name = name
-        self.as_flux = as_flux
+    data: xr.DataArray
+    indexraster: pt.IndexRaster
+    only_global: bool
+    name: str = "unnamed"
+    as_flux: bool = True
 
     @classmethod
     def from_variables(cls, df, indexraster=None, proxy_dir=None, **kwargs):
@@ -146,13 +139,13 @@ class Proxy:
         if indexraster is None and not only_global:
             raise ValueError("indexraster needs to be given for regional variables")
 
-        return cls(proxy, only_global, indexraster, name=name, **kwargs)
+        return cls(proxy, indexraster, only_global, name=name, **kwargs)
 
     @cached_property
-    def proxy_with_flux(self):
-        da = self.proxy
+    def proxy_as_flux(self):
+        da = self.data
         if self.as_flux:
-            da /= self.indexraster.cell_area
+            da /= self.indexraster.cell_area.chunk().persist()
         return da
 
     def reduce_dimensions(self, da):
@@ -163,26 +156,15 @@ class Proxy:
 
     @cached_property
     def weight(self):
-        proxy_reduced = self.reduce_dimensions(self.proxy)
+        proxy_reduced = self.reduce_dimensions(self.data)
 
-        global_weight = proxy_reduced.sum(["lat", "lon"]).assign_coords(country="World")
+        global_weight = proxy_reduced.sum(["lat", "lon"]).chunk(-1)
         if self.only_global:
             return Weight(global_weight.persist(), None)
 
-        return Weight(
-            *dask.persist(global_weight, self.indexraster.aggregate(proxy_reduced))
-        )
+        regional_weight = self.indexraster.aggregate(proxy_reduced).chunk(-1)
 
-    @property
-    def countries(self):
-        if self.only_global:
-            return pd.Index(["World"], name="country")
-
-        proxy_weight = self.weight.regional
-        country_weight = proxy_weight.sum(
-            [d for d in proxy_weight.dims if d != "country"]
-        ).to_pandas()
-        return country_weight.index[country_weight > 0]
+        return Weight(*dask.persist(global_weight, regional_weight))
 
     @staticmethod
     def assert_single_pathway(downscaled):
@@ -198,7 +180,7 @@ class Proxy:
             downscaled.stack("year")
             .pix.semijoin(
                 pd.MultiIndex.from_product(
-                    [self.proxy.indexes[d] for d in ["gas", "sector", "year"]]
+                    [self.data.indexes[d] for d in ["gas", "sector", "year"]]
                 ),
                 how="inner",
             )
@@ -224,18 +206,19 @@ class Proxy:
         scen = self.prepare_downscaled(downscaled)
 
         def weighted(scen, weight):
-            scen = xr.DataArray.from_series(scen)
+            sectors = weight.indexes["sector"].intersection(scen.pix.unique("sector"))
+            scen = xr.DataArray.from_series(scen).reindex(sector=sectors, fill_value=0)
             weight = weight.reindex_like(scen)
-            return (scen / weight).where(weight, 0)
+            return (scen / weight).where(weight, 0).chunk().persist()
 
         is_global = isin(country="World")
 
         gridded_global = weighted(
             scen.loc[is_global].droplevel("country"), self.weight.global_
-        ).drop_vars("country")
+        )
         if self.only_global:
             return Gridded(
-                gridded_global * self.proxy_with_flux,
+                self.proxy_as_flux * gridded_global,
                 downscaled.loc[is_global],
                 self,
                 scen.attrs,
@@ -251,4 +234,4 @@ class Proxy:
             else gridded_regional
         )
 
-        return Gridded(gridded * self.proxy_with_flux, downscaled, self, scen.attrs)
+        return Gridded(self.proxy_as_flux * gridded, downscaled, self, scen.attrs)

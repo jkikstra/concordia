@@ -7,9 +7,9 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.15.2
 #   kernelspec:
-#     display_name: Python 3 (ipykernel)
+#     display_name: Python [conda env:concordia]
 #     language: python
-#     name: python3
+#     name: conda-env-concordia-py
 # ---
 
 # %%
@@ -28,7 +28,6 @@ from pathlib import Path
 
 import dask
 import pandas as pd
-import xarray as xr
 from dask.distributed import Client
 from pandas_indexing import concat, isin, semijoin
 from pandas_indexing.units import set_openscm_registry_as_default
@@ -41,6 +40,7 @@ from concordia import (
 )
 from concordia.rescue import utils as rescue_utils
 from concordia.settings import Settings
+from concordia.utils import DaskSetWorkerLoglevel, MultiLineFormatter
 from concordia.workflow import WorkflowDriver
 
 
@@ -71,7 +71,18 @@ fh = logging.FileHandler(settings.out_path / f"debug_{settings.version}.log", mo
 fh.setLevel(logging.DEBUG)
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 fh.setFormatter(formatter)
-logger().addHandler(fh)
+
+
+streamhandler = logging.StreamHandler()
+streamhandler.setFormatter(
+    MultiLineFormatter(
+        "%(log_color)s%(levelname)-8s%(reset)s %(message)s  (%(blue)s%(name)s%(reset)s)",
+        datefmt=None,
+        reset=True,
+    )
+)
+
+logger().handlers = [streamhandler, fh]
 
 # %% [markdown]
 # ## Variable definition files
@@ -250,9 +261,17 @@ model = model.pix.semijoin(model.pix.unique(["model", "scenario"])[:2], how="rig
 
 # %%
 client = Client()
+client.register_plugin(DaskSetWorkerLoglevel(20))
+client.forward_logging()
 
 # %%
-indexraster = IndexRaster.from_netcdf("indexraster.nc", chunks={}).persist()
+dask.distributed.utils_perf.disable_gc_diagnosis()
+
+# %%
+indexraster = IndexRaster.from_netcdf(
+    settings.shared_path / "gridding_process_files" / "ssp_comb_indexraster.nc",
+    chunks={},
+).persist()
 
 # %%
 workflow = WorkflowDriver(
@@ -279,8 +298,8 @@ version_path.mkdir(parents=True, exist_ok=True)
 # ## Alternative 1) Run full processing and create netcdf files
 
 # %%
-res = workflow.grid_all(
-    template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}-{version}_{grid_label}_202001-210012".format(
+res = workflow.grid(
+    template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}-{version}_{grid_label}_202001-210012.nc".format(
         **rescue_utils.DS_ATTRS | {"version": settings.version}
     ),
     callback=rescue_utils.DressUp(version=settings.version),
@@ -304,18 +323,20 @@ workflow.harmonize_and_downscale()
 # ### Process single proxy
 
 # %%
-gridded = next(workflow.grid_proxy("CO_em_anthro"))
+gridded = next(workflow.grid_proxy("BC_em_anthro"))
 
 # %%
 reldiff, _ = dask.compute(
     gridded.verify(compute=False),
     gridded.to_netcdf(
-        template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}-{version}_{grid_label}_202001-210012".format(
-            **rescue_utils.DS_ATTRS | {"version": settings.version}
-        ),
+        template_fn=(
+            "{{name}}_{activity_id}_emissions_{target_mip}_{institution}-"
+            "{{model}}-{{scenario}}-{version}_{grid_label}_202001-210012.nc"
+        ).format(**rescue_utils.DS_ATTRS | {"version": settings.version}),
         callback=rescue_utils.DressUp(version=settings.version),
         encoding_kwargs=dict(_FillValue=1e20),
         compute=False,
+        directory=version_path,
     ),
 )
 
@@ -324,20 +345,8 @@ reldiff, _ = dask.compute(
 
 # %%
 gridded.proxy.weight.regional.sel(
-    sector="Transportation Sector", year=2050, gas="CO"
+    sector="Transportation Sector", year=2050, gas="CO2"
 ).compute().to_pandas().plot.hist(bins=100, logx=True, logy=True)
-
-# %%
-scen = xr.DataArray.from_series(
-    gridded.proxy.prepare_downscaled(
-        gridded.downscaled.loc[
-            isin(sector="Transportation Sector") & ~isin(country="World")
-        ]
-    )
-)
-weight = gridded.proxy.weight.regional.reindex_like(scen).chunk(-1)
-gridded_wo_proxy = indexraster.grid((scen / weight).where(abs(weight) > 0, 0))
-gridded_vals = gridded_wo_proxy * gridded.proxy.proxy_with_flux
 
 # %% [markdown]
 # ## Export harmonized scenarios
@@ -347,7 +356,7 @@ gridded_vals = gridded_wo_proxy * gridded.proxy.proxy_with_flux
 data = workflow.harmonized_data.add_totals().to_iamc(
     settings.variable_template, hist_scenario="Synthetic (GFED/CEDS/Global)"
 )
-data.to_csv(settings.out_path / f"harmonization-{settings.version}.csv")
+data.to_csv(version_path / f"harmonization-{settings.version}.csv")
 
 # %% [markdown]
 # ### Split HFC distributions
@@ -374,7 +383,7 @@ data = (
     .split_hfc(hfc_distribution)
     .to_iamc(settings.variable_template, hist_scenario="Synthetic (GFED/CEDS/Global)")
 )
-data.to_csv(settings.out_path / f"harmonization-{settings.version}-splithfc.csv")
+data.to_csv(version_path / f"harmonization-{settings.version}-splithfc.csv")
 
 # %% [markdown]
 # # Export downscaled results
@@ -384,8 +393,8 @@ data.to_csv(settings.out_path / f"harmonization-{settings.version}-splithfc.csv"
 
 # %%
 # Do we also want to render this as IAMC?
-concat(workflow.downscaled.values()).to_csv(
-    settings.out_path / f"downscaled-only-{settings.version}.csv"
+workflow.downscaled.data.to_csv(
+    version_path / f"downscaled-only-{settings.version}.csv"
 )
 
 # %% [markdown]

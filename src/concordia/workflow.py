@@ -1,14 +1,17 @@
 import logging
 import re
+import textwrap
+from collections import namedtuple
 from functools import cached_property
-from typing import Optional, Sequence
+from typing import Iterator, Optional, Sequence
 
+import dask
 import pandas as pd
 import ptolemy as pt
-from attrs import define, field
-from dask import compute
-from pandas import isna
+from attrs import define
 from pandas_indexing import concat, isin
+from pandas_indexing.utils import print_list
+from tqdm.auto import tqdm
 
 from .downscale import downscale
 from .grid import Gridded, Proxy
@@ -25,6 +28,45 @@ from .utils import (
 
 logger = logging.getLogger(__name__)
 
+CountryGroup = namedtuple("CountryGroup", ["countries", "variables"])
+
+
+def log_uncovered_history(
+    hist: pd.DataFrame, hist_agg: pd.DataFrame, threshold=0.01
+) -> None:
+    levels = ["gas", "sector", "unit"]
+    hist_total = hist.iloc[~isin(country="World"), -1].groupby(levels).sum()
+    hist_covered = hist_agg.iloc[:, -1].groupby(levels).sum()
+    hist_uncovered = hist_total - hist_covered
+    hist_stats = pd.DataFrame(
+        dict(uncovered=hist_uncovered, rel=hist_uncovered / hist_total)
+    )
+    loglevel = (
+        logging.WARN
+        if (hist_uncovered > threshold * hist_total + 1e-6).any()
+        else logging.INFO
+    )
+    logger.log(
+        loglevel,
+        "Historical emissions in countries missing from proxy:"
+        + "".join(
+            "\n"
+            + "::".join(t.Index[:2])
+            + f" - {t.uncovered:.02f} {t.Index[2]} ({t.rel * 100:.01f}%)"
+            for t in hist_stats.sort_values("rel", ascending=False).itertuples()
+        ),
+    )
+
+
+@define
+class GlobalRegional:
+    global_: Optional[pd.DataFrame] = None
+    regional: Optional[pd.DataFrame] = None
+
+    @property
+    def data(self):
+        return concat([self.global_, self.regional])
+
 
 @define(slots=False)
 class WorkflowDriver:
@@ -38,14 +80,87 @@ class WorkflowDriver:
     harm_overrides: pd.DataFrame
     settings: Settings
 
-    history_aggregated: dict[str, pd.DataFrame] = field(factory=dict)
-    harmonized: dict[str, pd.DataFrame] = field(factory=dict)
-    downscaled: dict[str, pd.DataFrame] = field(factory=dict)
+    history_aggregated: GlobalRegional = GlobalRegional()
+    harmonized: GlobalRegional = GlobalRegional()
+    downscaled: GlobalRegional = GlobalRegional()
 
     @cached_property
-    def harmdown_all_global(self) -> pd.DataFrame:
-        variables = self.variabledefs.index_global
+    def proxies(self):
+        return {
+            proxy_name: Proxy.from_variables(
+                self.variabledefs.for_proxy(proxy_name),
+                self.indexraster,
+                self.settings.proxy_path,
+            )
+            for proxy_name in self.variabledefs.proxies
+        }
 
+    def country_groups(
+        self, variabledefs: Optional[VariableDefinitions] = None
+    ) -> Iterator[CountryGroup]:
+        if variabledefs is None:
+            variabledefs = self.variabledefs
+
+        regional_proxies = set(
+            variabledefs.data.loc[~variabledefs.data["global"], "proxy_name"]
+        )
+        variables = [
+            w.to_series().loc[lambda s: abs(s) > 0].index
+            for w in dask.compute(
+                *[
+                    proxy.weight.regional.sum("year")
+                    for proxy_name, proxy in self.proxies.items()
+                    if proxy_name in regional_proxies
+                    and proxy.weight.regional is not None
+                ]
+            )
+        ]
+
+        variables = concat(variables) if variables else pd.DataFrame()
+        if not variables.empty:
+            sectors = variabledefs.index_regional.pix.unique("sector")
+            variables = (
+                variables.rename({"sector": "short_sector"})
+                .join(
+                    pd.MultiIndex.from_arrays(
+                        [
+                            sectors,
+                            sectors.to_series()
+                            .str.split("|")
+                            .str[0]
+                            .rename("short_sector"),
+                        ]
+                    )
+                )
+                .droplevel("short_sector")
+            )
+            countries = (
+                variables.to_frame()
+                .country.groupby(["gas", "sector"])
+                .apply(lambda s: tuple(sorted(s)))
+            )
+            for cntries, variables in countries.index.groupby(countries).items():
+                logger.info(
+                    textwrap.fill(
+                        print_list(cntries, n=40)
+                        + " : "
+                        + ", ".join(variables.map("::".join)),
+                        width=88,
+                    )
+                )
+                yield CountryGroup(countries=pd.Index(cntries), variables=variables)
+
+    def harmdown_global(
+        self, variabledefs: Optional[VariableDefinitions] = None
+    ) -> pd.DataFrame:
+        if variabledefs is None:
+            variabledefs = self.variabledefs
+
+        variables = variabledefs.index_global
+        if variables.empty:
+            return
+
+        logger.info("Harmonizing and downscaling %d global variables", len(variables))
         model = self.model.pix.semijoin(variables, how="right").loc[
             isin(region="World")
         ]
@@ -65,119 +180,92 @@ class WorkflowDriver:
         harmonized = aggregate_subsectors(harmonized)
         hist = aggregate_subsectors(hist)
 
-        self.history_aggregated["global"] = hist
-        self.harmonized["global"] = harmonized
-        self.downscaled["global"] = harmonized.pix.format(
+        self.history_aggregated.global_ = hist
+        self.harmonized.global_ = harmonized
+        self.downscaled.global_ = harmonized.pix.format(
             method="single", country="{region}"
         )
 
         return harmonized.droplevel("method").rename_axis(index={"region": "country"})
 
-    def harmdown_global(self, variables: pd.MultiIndex):
-        return self.harmdown_all_global.pix.semijoin(variables, how="right")
-
     def harmdown_regional(
-        self,
-        variables: pd.MultiIndex,
-        regionmapping: RegionMapping,
-        name: Optional[str] = None,
+        self, variabledefs: Optional[VariableDefinitions] = None
     ) -> pd.DataFrame:
-        model = self.model.pix.semijoin(variables, how="right").loc[
-            ~isin(region="World")
-        ]
-        hist = self.hist.pix.semijoin(variables, how="right")
-        hist_agg = regionmapping.aggregate(hist, dropna=True)
-        if name is not None:
-            self.history_aggregated[name] = hist_agg
+        if variabledefs is None:
+            variabledefs = self.variabledefs
 
-        harmonized = harmonize(
-            model,
-            hist_agg,
-            overrides=self.harm_overrides.pix.semijoin(variables, how="inner"),
-            settings=self.settings,
+        logger.info(
+            "Harmonizing and downscaling %d regional variables",
+            len(variabledefs.index_regional),
         )
-        if name is not None:
-            self.harmonized[name] = harmonized
+        history_aggregated = []
+        harmonized = []
+        downscaled = []
+        for group in self.country_groups(variabledefs):
+            regionmapping = self.regionmapping.filter(group.countries)
 
-        harmonized = aggregate_subsectors(harmonized.droplevel("method"))
-        hist = aggregate_subsectors(hist)
+            model = self.model.pix.semijoin(group.variables, how="right").loc[
+                isin(region=regionmapping.data.unique())
+            ]
+            hist = self.hist.pix.semijoin(group.variables, how="right")
+            hist_agg = regionmapping.aggregate(hist, dropna=True)
 
-        downscaled = downscale(
-            harmonized,
-            hist,
-            self.gdp,
-            regionmapping,
-            settings=self.settings,
-        )
-        if name is not None:
-            self.downscaled[name] = downscaled
+            log_uncovered_history(hist, hist_agg)
+            history_aggregated.append(hist_agg)
+
+            harm = harmonize(
+                model,
+                hist_agg,
+                overrides=self.harm_overrides.pix.semijoin(
+                    group.variables, how="inner"
+                ),
+                settings=self.settings,
+            )
+            harmonized.append(harm)
+
+            harm = aggregate_subsectors(harm.droplevel("method"))
+            hist = aggregate_subsectors(hist)
+
+            down = downscale(
+                harm,
+                hist,
+                self.gdp,
+                regionmapping,
+                settings=self.settings,
+            )
+            downscaled.append(down)
+
+        if not downscaled:
+            return
+
+        self.history_aggregated.regional = concat(history_aggregated)
+        self.harmonized.regional = concat(harmonized)
+        downscaled = self.downscaled.regional = concat(downscaled)
 
         return downscaled.droplevel(["method", "region"])
 
-    def harmdown_proxy(
-        self,
-        variables: pd.DataFrame,
-        proxy: Optional[Proxy],
-        include_global: bool = True,
-    ) -> pd.DataFrame:
-        regionmapping = (
-            self.regionmapping
-            if proxy is None
-            else self.regionmapping.filter(proxy.countries)
-        )
-
-        downscaled = []
-        if include_global:
-            var_global = variables.index_global
-            if not var_global.empty:
-                downscaled.append(self.harmdown_global(var_global))
-        var_regional = variables.index_regional
-        if not var_regional.empty:
-            downscaled.append(
-                self.harmdown_regional(
-                    var_regional, regionmapping, name=variables.proxies.item()
-                )
-            )
-
-        return concat(downscaled) if downscaled else None
-
     def harmonize_and_downscale(
-        self, proxy_name: Optional[str] = None, include_global: bool = True
-    ):
-        if proxy_name is None:
-            return concat(
-                skipnone(
-                    *(
-                        [
-                            self.harmonize_and_downscale(
-                                proxy_name, include_global=False
-                            )
-                            for proxy_name in self.variabledefs.proxies
-                        ]
-                        + ([self.harmdown_all_global] if include_global else [])
-                    )
-                )
-            )
+        self, variabledefs: Optional[VariableDefinitions] = None
+    ) -> pd.DataFrame:
+        if variabledefs is None:
+            variabledefs = self.variabledefs
 
-        logger.info(f"Harmonizing and downscaling variables for proxy {proxy_name}")
-        variables = self.variabledefs.for_proxy(proxy_name)
-        proxy = (
-            Proxy.from_variables(
-                variables, self.indexraster, proxy_dir=self.settings.proxy_path
+        return concat(
+            skipnone(
+                self.harmdown_global(variabledefs), self.harmdown_regional(variabledefs)
             )
-            if not isna(proxy_name)
-            else None
         )
 
-        return self.harmdown_proxy(variables, proxy, include_global=include_global)
+    def grid_proxy(self, proxy_name: str, downscaled: Optional[pd.DataFrame] = None):
+        proxy = self.proxies[proxy_name]
 
-    def grid_proxy(self, proxy_name: str):
-        variables = self.variabledefs.for_proxy(proxy_name)
-        proxy = Proxy.from_variables(
-            variables, self.indexraster, proxy_dir=self.settings.proxy_path
-        )
-
-        downscaled = self.harmdown_proxy(variables, proxy)
+        variabledefs = self.variabledefs.for_proxy(proxy_name)
+        if downscaled is None:
+            downscaled = self.harmonize_and_downscale(variabledefs)
+        else:
+            downscaled = downscaled.pix.semijoin(
+                variabledefs.variable_index, how="inner"
+            )
 
         # Convert unit to kg/s of the repective gas
         downscaled = downscaled.pix.convert_unit(
@@ -187,7 +275,7 @@ class WorkflowDriver:
         for model, scenario in downscaled.pix.unique(["model", "scenario"]):
             yield proxy.grid(downscaled.loc[isin(model=model, scenario=scenario)])
 
-    def grid_all(
+    def grid(
         self,
         template_fn: str,
         directory: Optional[Pathy] = None,
@@ -196,7 +284,7 @@ class WorkflowDriver:
         verify: bool = True,
     ):
         def verify_and_save(pathways: Sequence[Gridded]):
-            return compute(
+            return dask.compute(
                 (
                     gridded.to_netcdf(
                         template_fn,
@@ -205,23 +293,21 @@ class WorkflowDriver:
                         encoding_kwargs=encoding_kwargs,
                         compute=False,
                     ),
-                    gridded.verify() if verify else None,
+                    gridded.verify(compute=False) if verify else None,
                 )
                 for gridded in pathways
             )
 
-        res = {}
-        for proxy_name in self.variabledefs.proxies:
-            if isna(proxy_name):
-                self.harmonize_and_downscale(proxy_name)
-            else:
-                res[proxy_name] = verify_and_save(self.grid_proxy(proxy_name))
-        return res
+        downscaled = self.harmonize_and_downscale()
+
+        return {
+            proxy_name: verify_and_save(self.grid_proxy(proxy_name, downscaled))
+            for proxy_name in tqdm(self.proxies.keys())
+        }
 
     @property
     def harmonized_data(self):
-        hist = concat(self.history_aggregated.values())
+        hist = self.history_aggregated.data
         model = self.model.pix.semijoin(hist.index, how="right")
-        harmonized = concat(self.harmonized.values())
 
-        return Harmonized(hist=hist, model=model, harmonized=harmonized)
+        return Harmonized(hist=hist, model=model, harmonized=self.harmonized.data)

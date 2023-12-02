@@ -3,6 +3,7 @@ import ftplib
 from typing import Any
 
 import cf_xarray  # noqa
+import dask
 import dateutil
 import pandas as pd
 import xarray as xr
@@ -101,7 +102,8 @@ DS_ATTRS = dict(
 
 
 def convert_to_datetime(da: xr.DataArray) -> xr.DataArray:
-    da = da.stack(time=("year", "month"))
+    with dask.config.set(**{"array.slicing.split_large_chunks": False}):
+        da = da.stack(time=("year", "month"))
     dates = pd.DatetimeIndex(
         da.indexes["time"].map(
             lambda t: datetime.date(t[0], t[1], 16 if t[1] != 2 else 15)
@@ -120,8 +122,8 @@ def convert_to_datetime(da: xr.DataArray) -> xr.DataArray:
     )
 
 
-def clean_coords(da, whitelist=["lat", "lon", "time", "sector", "level"]):
-    return da.squeeze(dim=set(da.coords) - set(whitelist), drop=True)
+def clean_coords(da):
+    return da.squeeze(drop=True)
 
 
 def add_bounds(da, bounds=["lat", "lon", "time", "level"]):
@@ -136,12 +138,18 @@ def add_bounds(da, bounds=["lat", "lon", "time", "level"]):
 
 
 def add_sector_mapping(da, sector_mapping):
+    if "sector" not in da.indexes:
+        return da
+
     keys = da.indexes["sector"]
     vals = keys.map(sector_mapping)
     return da.assign_coords(
         sector=xr.DataArray(
             vals,
-            attrs=dict(long_name="sector", id=str({v: k for v, k in zip(vals, keys)})),
+            attrs=dict(
+                long_name="sector",
+                id="; ".join(f"{v}: {k}" for v, k in zip(vals, keys)),
+            ),
         )
     )
 

@@ -3,12 +3,15 @@ from itertools import chain
 from pathlib import Path
 from typing import Optional, Self, Sequence, Union
 
+import dask.distributed as dd
 import numpy as np
 import pandas as pd
 import pycountry
 from attrs import define
+from colorlog import ColoredFormatter
 from IPython.core.magic import Magics, cell_magic, magics_class
 from pandas import DataFrame, isna
+from pandas.api.types import is_iterator, is_list_like
 from pandas_indexing import concat, isin
 
 from .settings import Settings
@@ -61,7 +64,7 @@ class VariableDefinitions:
 
     @property
     def proxies(self):
-        return self.data["proxy_name"].unique()
+        return pd.Index(self.data["proxy_name"].unique()).dropna()
 
     @property
     def history(self):
@@ -376,9 +379,57 @@ def as_seaborn(
 
 
 def skipnone(*args):
+    if len(args) == 1 and (is_list_like(args[0]) or is_iterator(args[0])):
+        args = args[0]
     return [x for x in args if x is not None]
 
 
 def iso_to_name(x):
     cntry = pycountry.countries.get(alpha_3=x.upper())
     return cntry.name if cntry is not None else x
+
+
+class DaskSetWorkerLoglevel(dd.diagnostics.plugin.WorkerPlugin):
+    def __init__(self, loglevel: int):
+        self.loglevel = loglevel
+
+    def setup(self, worker: dd.Worker):
+        logging.getLogger().setLevel(self.loglevel)
+
+
+class MultiLineFormatter(ColoredFormatter):
+    """Multi-line formatter based on https://stackoverflow.com/a/66855071/2873952"""
+
+    def get_header_length(self, record):
+        """
+        Get the header length of a given record.
+        """
+        self.checking_length = True
+        length = (
+            super()
+            .format(
+                logging.LogRecord(
+                    name=record.name,
+                    level=record.levelno,
+                    pathname=record.pathname,
+                    lineno=record.lineno,
+                    msg="EOM",
+                    args=(),
+                    exc_info=None,
+                )
+            )
+            .index("EOM")
+        )
+        self.checking_length = False
+        return length
+
+    def _blank_escape_codes(self):
+        return self.checking_length or super()._blank_escape_codes()
+
+    def format(self, record):
+        """
+        Format a record with added indentation.
+        """
+        indent = " " * self.get_header_length(record)
+        head, *trailing = super().format(record).splitlines(True)
+        return head + "".join(indent + line for line in trailing)
