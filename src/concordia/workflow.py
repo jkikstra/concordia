@@ -32,11 +32,11 @@ CountryGroup = namedtuple("CountryGroup", ["countries", "variables"])
 
 
 def log_uncovered_history(
-    hist: pd.DataFrame, hist_agg: pd.DataFrame, threshold=0.01
+    hist: pd.DataFrame, hist_agg: pd.DataFrame, threshold=0.01, base_year: int = 2020
 ) -> None:
     levels = ["gas", "sector", "unit"]
-    hist_total = hist.iloc[~isin(country="World"), -1].groupby(levels).sum()
-    hist_covered = hist_agg.iloc[:, -1].groupby(levels).sum()
+    hist_total = hist.loc[~isin(country="World"), base_year].groupby(levels).sum()
+    hist_covered = hist_agg.loc[:, base_year].groupby(levels).sum()
     hist_uncovered = hist_total - hist_covered
     hist_stats = pd.DataFrame(
         dict(uncovered=hist_uncovered, rel=hist_uncovered / hist_total)
@@ -210,7 +210,7 @@ class WorkflowDriver:
             hist = self.hist.pix.semijoin(group.variables, how="right")
             hist_agg = regionmapping.aggregate(hist, dropna=True)
 
-            log_uncovered_history(hist, hist_agg)
+            log_uncovered_history(hist, hist_agg, base_year=self.settings.base_year)
             history_aggregated.append(hist_agg)
 
             harm = harmonize(

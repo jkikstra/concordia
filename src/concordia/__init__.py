@@ -4,8 +4,6 @@ Concordia package and workflow.
 
 from importlib.metadata import version as _version
 
-import pandas_indexing.accessors
-
 from .report import add_hypothesis, add_plotly_header, add_sticky_toc, embed_image
 from .utils import (
     CondordiaMagics,

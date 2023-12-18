@@ -413,12 +413,12 @@ class MultiLineFormatter(ColoredFormatter):
                     level=record.levelno,
                     pathname=record.pathname,
                     lineno=record.lineno,
-                    msg="EOM",
+                    msg="<<BOM>>",
                     args=(),
                     exc_info=None,
                 )
             )
-            .index("EOM")
+            .index("<<BOM>>")
         )
         self.checking_length = False
         return length

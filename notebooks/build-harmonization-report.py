@@ -17,17 +17,14 @@
 # %autoreload 2
 
 # %%
-from pathlib import Path
 from subprocess import run
 
 import pandas as pd
-import pandas_indexing.accessors  # noqa: F401
 
 # %%
 import plotly.express as px
 import plotly.io as pio
 import seaborn as sns
-import yaml
 from dominate import document
 from dominate.tags import div
 from filelock import FileLock
@@ -37,7 +34,8 @@ from tqdm import tqdm
 
 from concordia import add_sticky_toc, embed_image
 from concordia.report import HEADING_TAGS, add_plotly_header
-from concordia.utils import RegionMapping, combine_countries
+from concordia.settings import Settings
+from concordia.utils import RegionMapping
 
 
 pio.templates.default = "ggplot2"
@@ -47,25 +45,20 @@ version_old = None  # "2023-08-18"
 version = "2023-11-03"
 
 # %%
-with open("config.yaml") as f:
-    config = yaml.safe_load(f)
+settings = Settings.from_config(version=version)
 
 # %%
-base_path = Path(config["base_path"]).expanduser()
-tmp_path = Path("tmp")
-tmp_path.mkdir(exist_ok=True)
-out_path = Path(config["out_path"]).expanduser() / version
-country_combinations = config["country_combinations"]
+out_path = settings.out_path / settings.version
 
 # %%
 regionmapping = RegionMapping.from_regiondef(
-    base_path / "iam_files/rescue/regionmappingH12.csv",
+    settings.shared_path / "iam_files/rescue/regionmappingH12.csv",
     country_column="CountryCode",
     region_column="RegionCode",
     sep=";",
 )
-regionmapping.data = combine_countries(
-    regionmapping.data, **country_combinations, agg_func="last"
+regionmapping.data = regionmapping.data.pix.aggregate(
+    country=settings.country_combinations, agg_func="last"
 )
 
 
@@ -151,7 +144,7 @@ def extract_sector_gas(df):
 # %%
 cmip6_hist = regionmapping.aggregate(
     pd.read_csv(
-        base_path / "historical" / "cmip6" / "history.csv",
+        settings.shared_path / "historical" / "cmip6" / "history.csv",
         index_col=list(range(5)),
         engine="pyarrow",
     )
@@ -163,7 +156,7 @@ cmip6_hist = regionmapping.aggregate(
         model="CEDS",
         scenario="CMIP6",
     )
-    .pipe(combine_countries, level="region", **country_combinations),
+    .pix.aggregate(region=settings.country_combinations),
     level="region",
     keepworld=True,
     dropna=True,
@@ -266,10 +259,15 @@ def plot_harm(sel, scenario=None, levels=["gas", "sector", "region"], useplotly=
 
 
 # %%
+import matplotlib.pyplot as plt
+
+
+# %%
 plot_harm(
-    isin(region="World", sector="Total", gas="CO2"),
+    isin(region="CHA", sector="Energy Sector", gas="CH4"),
     scenario="RESCUE-Tier1-Direct-*-PkBudg500-OAE_off",
 )
+plt.legend(labels=["CEDS", "CMIP6", "Unharmonized", "Harmonized"], frameon=False)
 
 # %%
 g = plot_harm(
@@ -301,8 +299,6 @@ def what_changed(next, prev):
 
 # %%
 def make_doc(order, scenario=None, compact=False, useplotly=False):
-    import pandas_indexing.accessors  # noqa: F401, F811
-
     if scenario is None:
         ((m, s),) = harm.pix.unique(["model", "scenario"])
     else:

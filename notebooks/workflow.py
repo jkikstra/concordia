@@ -7,9 +7,9 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.15.2
 #   kernelspec:
-#     display_name: Python [conda env:concordia]
+#     display_name: concordia
 #     language: python
-#     name: conda-env-concordia-py
+#     name: python3
 # ---
 
 # %%
@@ -64,7 +64,7 @@ ur = set_openscm_registry_as_default()
 #
 
 # %%
-settings = Settings.from_config(version="2023-11-23")
+settings = Settings.from_config(version="2023-12-16")
 
 # %%
 fh = logging.FileHandler(settings.out_path / f"debug_{settings.version}.log", mode="w")
@@ -177,7 +177,7 @@ with ur.context("AR4GWP100"):
     model = (
         pd.read_csv(
             settings.shared_path
-            / "iam_files/rescue/REMIND-MAgPIE-CEDS-RESCUE-Tier1-2023-10-17.csv",
+            / "iam_files/rescue/REMIND-MAgPIE-CEDS-RESCUE-Tier1-2023-12-13.csv",
             index_col=list(range(5)),
             sep=";",
         )
@@ -257,7 +257,7 @@ gdp = semijoin(
 
 # %%
 # Test with two scenarios only
-model = model.pix.semijoin(model.pix.unique(["model", "scenario"])[:2], how="right")
+# model = model.pix.semijoin(model.pix.unique(["model", "scenario"])[:2], how="right")
 
 # %%
 client = Client()
@@ -323,7 +323,7 @@ workflow.harmonize_and_downscale()
 # ### Process single proxy
 
 # %%
-gridded = next(workflow.grid_proxy("BC_em_anthro"))
+gridded = next(workflow.grid_proxy("CH4_em_anthro"))
 
 # %%
 reldiff, _ = dask.compute(
@@ -339,6 +339,7 @@ reldiff, _ = dask.compute(
         directory=version_path,
     ),
 )
+reldiff
 
 # %% [markdown]
 # ### Regional proxy weights
