@@ -8,6 +8,7 @@ dependencies:
 - xlrd >=2.0
 - openpyxl
 - matplotlib
+- cattrs
 - seaborn
 - pyomo
 - pytest
@@ -18,6 +19,8 @@ dependencies:
 - xarray
 - cf_xarray
 - flox
+- rasterio
+- rioxarray
 - filelock
 - bottleneck
 - deprecated
@@ -27,12 +30,13 @@ dependencies:
 - seaborn
 - tqdm
 - jupytext
+- colorlog
 - ipykernel
 - pip
 - pip:
   - pandas-indexing[units] >=0.2.10
-  - ptolemy-iamc
+  #- ptolemy-iamc
   # Need to integrate new indexraster changes into ptolemy
-  - git+https://github.com/iiasa/ptolemy.git@add-index-raster#egg=aneris-iamc
-  - git+https://github.com/iiasa/aneris.git@workflow#egg=aneris-iamc
+  - git+ssh://git@github.com/gidden/ptolemy.git@add-index-raster#egg=ptolemy-iamc
+  - git+ssh://git@github.com/iiasa/aneris.git@workflow#egg=aneris-iamc
   - -e .
