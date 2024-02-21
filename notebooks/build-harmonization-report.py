@@ -5,11 +5,11 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.15.2
+#       jupytext_version: 1.16.0
 #   kernelspec:
-#     display_name: Python 3 (ipykernel)
+#     display_name: Python [conda env:concordia]
 #     language: python
-#     name: python3
+#     name: conda-env-concordia-py
 # ---
 
 # %%
@@ -42,7 +42,7 @@ pio.templates.default = "ggplot2"
 
 # %%
 version_old = None  # "2023-08-18"
-version = "2023-11-03"
+version = "2023-12-08"
 
 # %%
 settings = Settings.from_config(version=version)
@@ -63,7 +63,7 @@ regionmapping.data = regionmapping.data.pix.aggregate(
 
 
 # %%
-def read_version(version):
+def read_version(version, variable_template):
     data = (
         pd.read_csv(
             out_path / f"harmonization-{version}.csv",
@@ -77,14 +77,14 @@ def read_version(version):
         ]
     )
     model = data.pix.extract(
-        variable="Emissions|{gas}|{sector}|Unharmonized", drop=True
+        variable=variable_template + "|Unharmonized", drop=True
     ).dropna(how="all", axis=1)
     harm = data.pix.extract(
-        variable="Emissions|{gas}|{sector}|Harmonized|{method}", drop=True
+        variable=variable_template + "|Harmonized|{method}", drop=True
     ).dropna(how="all", axis=1)
     hist = (
         data.loc[isin(model="Historic")]
-        .pix.extract(variable="Emissions|{gas}|{sector}", drop=True)
+        .pix.extract(variable=variable_template, drop=True)
         .dropna(how="all", axis=1)
         .pix.dropna(subset="region")
     )
@@ -119,7 +119,7 @@ def read_version(version):
 
 
 # %%
-model, harm, hist = read_version(version)
+model, harm, hist = read_version(version, settings.variable_template)
 
 # %%
 if version_old is not None:

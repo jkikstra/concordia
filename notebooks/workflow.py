@@ -5,11 +5,11 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.15.2
+#       jupytext_version: 1.16.0
 #   kernelspec:
-#     display_name: concordia
+#     display_name: Python [conda env:concordia]
 #     language: python
-#     name: python3
+#     name: conda-env-concordia-py
 # ---
 
 # %%
@@ -18,8 +18,6 @@
 
 # %%
 import aneris
-
-
 aneris.__file__
 
 # %%
@@ -64,7 +62,7 @@ ur = set_openscm_registry_as_default()
 #
 
 # %%
-settings = Settings.from_config(version="2023-12-16")
+settings = Settings.from_config(version="2023-12-08")
 
 # %%
 fh = logging.FileHandler(settings.out_path / f"debug_{settings.version}.log", mode="w")
@@ -140,7 +138,7 @@ hist_global = (
     )
     .rename_axis(index=str.lower)
     .rename_axis(index={"region": "country"})
-    .rename(index=lambda s: s.removesuffix("|Unharmonized"), level="variable")
+    .rename(index=lambda s: s.removesuffix("|Unharmonized") + "|Total", level="variable")
 )
 
 # %%
@@ -166,7 +164,6 @@ hist.head()
 
 # %%
 def patch_model_variable(var):
-    var = var.removesuffix("|Total")
     if var.endswith("|Energy Sector"):
         var += "|Modelled"
     return var
@@ -323,7 +320,7 @@ workflow.harmonize_and_downscale()
 # ### Process single proxy
 
 # %%
-gridded = next(workflow.grid_proxy("CH4_em_anthro"))
+gridded = next(workflow.grid_proxy("CO2_em_anthro"))
 
 # %%
 reldiff, _ = dask.compute(

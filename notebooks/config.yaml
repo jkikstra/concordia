@@ -1,7 +1,7 @@
 # Setting `base_path` redirects everything else from there
 out_path: "../data/out"
 data_path: "../data"
-shared_path: "~/Library/CloudStorage/OneDrive-SharedLibraries-IIASA/RESCUE - Documents/WP 1/data"
+shared_path: "../../shared_path"
 proxy_path: "$shared_path/gridding_process_files/proxy_rasters"
 
 country_combinations:
@@ -9,7 +9,7 @@ country_combinations:
   isr_pse: ["isr", "pse"]
   srb_ksv: ["srb", "srb (kosovo)"]
 
-variable_template: CEDS+|9+ Sectors|Emissions|{gas}|{sector}
+variable_template: "CEDS+|9+ Sectors|Emissions|{gas}|{sector}"
 base_year: 2020
 
 luc_sectors:
