@@ -384,6 +384,43 @@ def skipnone(*args):
     return [x for x in args if x is not None]
 
 
+def add_regions_as_zero(df: pd.DataFrame, regions: Sequence[str]) -> pd.DataFrame:
+    """Adds regions to DataFrame as 0 values
+
+    df : DataFrame
+        data in time-series representation with years on columns
+    regions : [str]
+        regions to be added
+
+    Returns
+    -------
+    DataFrame
+        unsorted data with additional regions
+
+    Note
+    ----
+    May lead to duplicates!"""
+    if not regions:
+        return df
+
+    levels = df.index.names
+    index = df.index[~isin(df, region="World")].pix.unique(
+        levels.difference(["region"])
+    )
+
+    return concat(
+        [df]
+        + [
+            pd.DataFrame(
+                0,
+                index=index.pix.assign(region=region, order=levels),
+                columns=df.columns,
+            )
+            for region in regions
+        ]
+    )
+
+
 def iso_to_name(x):
     cntry = pycountry.countries.get(alpha_3=x.upper())
     return cntry.name if cntry is not None else x

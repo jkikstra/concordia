@@ -21,6 +21,7 @@ from .utils import (
     Pathy,
     RegionMapping,
     VariableDefinitions,
+    add_regions_as_zero,
     aggregate_subsectors,
     skipnone,
 )
@@ -203,6 +204,9 @@ class WorkflowDriver:
         downscaled = []
         for group in self.country_groups(variabledefs):
             regionmapping = self.regionmapping.filter(group.countries)
+            missing_regions = set(self.regionmapping.data.unique()).difference(
+                regionmapping.data.unique()
+            )
 
             model = self.model.pix.semijoin(group.variables, how="right").loc[
                 isin(region=regionmapping.data.unique())
@@ -211,7 +215,7 @@ class WorkflowDriver:
             hist_agg = regionmapping.aggregate(hist, dropna=True)
 
             log_uncovered_history(hist, hist_agg, base_year=self.settings.base_year)
-            history_aggregated.append(hist_agg)
+            history_aggregated.append(add_regions_as_zero(hist_agg, missing_regions))
 
             harm = harmonize(
                 model,
@@ -221,7 +225,7 @@ class WorkflowDriver:
                 ),
                 settings=self.settings,
             )
-            harmonized.append(harm)
+            harmonized.append(add_regions_as_zero(harm, missing_regions))
 
             harm = aggregate_subsectors(harm.droplevel("method"))
             hist = aggregate_subsectors(hist)
