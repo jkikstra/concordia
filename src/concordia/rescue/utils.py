@@ -8,6 +8,7 @@ import dateutil
 import pandas as pd
 import xarray as xr
 from cattrs import structure, transform_error
+from tqdm.auto import tqdm
 
 from ..settings import FtpSettings
 
@@ -236,20 +237,34 @@ def ftp_upload(cfg: FtpSettings | dict[str, Any], local_path, remote_path):
         remote_files = ftp.nlst(remote_path.as_posix())
         for lpath in paths:
             rpath = (remote_path / lpath.name).as_posix()
+            lsize = lpath.stat().st_size
+
+            msg = lpath.name
             if rpath in remote_files:
                 rtimestamp = dateutil.parser.parse(ftp.voidcmd(f"MDTM {rpath}")[4:])
                 ltimestamp = datetime.datetime.fromtimestamp(lpath.lstat().st_mtime)
 
                 rsize = ftp.size(rpath)
-                lsize = lpath.stat().st_size
-                if rtimestamp > ltimestamp and rsize == lsize:
-                    print(
-                        f"{lpath.name} already on {remote_path.as_posix()}, not uploading"
-                    )
+                msg += f" already on {remote_path.as_posix()}"
+                if rtimestamp < ltimestamp:
+                    msg += f", but local file is newer ({rtimestamp} < {ltimestamp})"
+                elif rsize != lsize:
+                    msg += f", but file size differs ({rsize} != {lsize})"
+                else:
+                    print(msg + ", not uploading")
                     continue
+            else:
+                msg += f" not on {remote_path.as_posix()}"
 
-            print(f"{lpath.name} not on {remote_path.as_posix()}, uploading")
-            ftp.storbinary("STOR " + lpath.name, open(lpath, "rb"))
+            print(msg + ", uploading")
+            with open(lpath, "rb") as fp, tqdm(
+                total=lsize, unit="B", unit_scale=True, unit_divisor=1024
+            ) as pbar:
+
+                def update_pbar(data):
+                    pbar.update(len(data))
+
+                ftp.storbinary("STOR " + lpath.name, fp, callback=update_pbar)
 
     finally:
         ftp.close()
