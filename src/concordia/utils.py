@@ -1,5 +1,6 @@
 import logging
-from itertools import chain
+from functools import reduce
+from itertools import chain, product
 from pathlib import Path
 from typing import Optional, Self, Sequence, Union
 
@@ -384,28 +385,51 @@ def skipnone(*args):
     return [x for x in args if x is not None]
 
 
-def add_regions_as_zero(df: pd.DataFrame, regions: Sequence[str]) -> pd.DataFrame:
-    """Adds regions to DataFrame as 0 values
+def add_zeros_like(
+    df: pd.DataFrame,
+    reference: pd.MultiIndex | pd.DataFrame | pd.Series,
+    /,
+    derive: Optional[dict[str, pd.MultiIndex]] = None,
+    **levels: Sequence[str],
+):
+    """Adds explicit `levels` to `df` as 0 values
+
+    Remaining levels in `df` not found in `levels` or `derive` are taken from
+    `reference` (or its index).
 
     df : DataFrame
         data in time-series representation with years on columns
-    regions : [str]
-        regions to be added
+    reference : [str]
+        expected level labels (like model, scenario combinations)
+    derive : dict
+        derive labels in a level from a multiindex with allowed combinations
+    **levels : [str]
+        which labels should be added to df
 
     Returns
     -------
     DataFrame
-        unsorted data with additional regions
+        unsorted data with additional zero data
 
     Note
     ----
     May lead to duplicates!"""
-    if not regions:
+
+    if any(len(labels) == 0 for labels in levels.values()):
         return df
 
-    levels = df.index.names
-    index = df.index[~isin(df, region="World")].pix.unique(
-        levels.difference(["region"])
+    if isinstance(reference, pd.Series | pd.DataFrame):
+        reference = reference.index
+
+    if "region" in levels and "region" in reference.names:
+        reference = reference[~isin(reference, region="World")]
+
+    if derive is None:
+        derive = {}
+
+    target_levels = df.index.names
+    index = reference.pix.unique(
+        target_levels.difference(levels.keys()).difference(derive.keys())
     )
 
     return concat(
@@ -413,10 +437,16 @@ def add_regions_as_zero(df: pd.DataFrame, regions: Sequence[str]) -> pd.DataFram
         + [
             pd.DataFrame(
                 0,
-                index=index.pix.assign(region=region, order=levels),
+                index=(
+                    reduce(
+                        lambda ind, d: ind.join(d, how="left"),
+                        derive.values(),
+                        index.pix.assign(**dict(zip(levels.keys(), labels))),
+                    ).reorder_levels(target_levels)
+                ),
                 columns=df.columns,
             )
-            for region in regions
+            for labels in product(*levels.values())
         ]
     )
 

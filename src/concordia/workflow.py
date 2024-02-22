@@ -21,7 +21,7 @@ from .utils import (
     Pathy,
     RegionMapping,
     VariableDefinitions,
-    add_regions_as_zero,
+    add_zeros_like,
     aggregate_subsectors,
     skipnone,
 )
@@ -105,22 +105,31 @@ class WorkflowDriver:
         regional_proxies = set(
             variabledefs.data.loc[~variabledefs.data["global"], "proxy_name"]
         )
-        variables = [
-            w.to_series().loc[lambda s: abs(s) > 0].index
-            for w in dask.compute(
-                *[
-                    proxy.weight.regional.sum("year")
-                    for proxy_name, proxy in self.proxies.items()
-                    if proxy_name in regional_proxies
-                    and proxy.weight.regional is not None
-                ]
-            )
-        ]
+        variables = concat(
+            [
+                w.to_series()
+                for w in dask.compute(
+                    *[
+                        proxy.weight.regional.sum("year")
+                        for proxy_name, proxy in self.proxies.items()
+                        if proxy_name in regional_proxies
+                        and proxy.weight.regional is not None
+                    ]
+                )
+            ]
+        )
+        all_variables = variables.pix.unique(["gas", "sector"])
+        nonzero_variables = variables.loc[abs(variables) > 0].index
+        zero_variables = all_variables.difference(
+            nonzero_variables.pix.unique(["gas", "sector"])
+        )
 
-        variables = concat(variables) if variables else pd.DataFrame()
-        if not variables.empty:
+        def expand_subsectors(variables: pd.MultiIndex) -> pd.MultiIndex:
+            """
+            Energy Sector becomes Energy Sector|Modelled and Energy Sector|Non-Modelled
+            """
             sectors = variabledefs.index_regional.pix.unique("sector")
-            variables = (
+            return (
                 variables.rename({"sector": "short_sector"})
                 .join(
                     pd.MultiIndex.from_arrays(
@@ -135,8 +144,21 @@ class WorkflowDriver:
                 )
                 .droplevel("short_sector")
             )
+
+        if not zero_variables.empty:
+            variables = expand_subsectors(zero_variables)
+            logger.info(
+                textwrap.fill(
+                    "No countries : " + ", ".join(variables.map("::".join)),
+                    width=88,
+                )
+            )
+            yield CountryGroup(countries=pd.Index([]), variables=variables)
+
+        if not nonzero_variables.empty:
             countries = (
-                variables.to_frame()
+                expand_subsectors(nonzero_variables)
+                .to_frame()
                 .country.groupby(["gas", "sector"])
                 .apply(lambda s: tuple(sorted(s)))
             )
@@ -207,25 +229,30 @@ class WorkflowDriver:
             missing_regions = set(self.regionmapping.data.unique()).difference(
                 regionmapping.data.unique()
             )
+            missing_countries = self.regionmapping.data.index.difference(
+                group.countries
+            )
 
-            model = self.model.pix.semijoin(group.variables, how="right").loc[
-                isin(region=regionmapping.data.unique())
-            ]
+            model = self.model.pix.semijoin(group.variables, how="right")
             hist = self.hist.pix.semijoin(group.variables, how="right")
             hist_agg = regionmapping.aggregate(hist, dropna=True)
 
             log_uncovered_history(hist, hist_agg, base_year=self.settings.base_year)
-            history_aggregated.append(add_regions_as_zero(hist_agg, missing_regions))
+            history_aggregated.append(
+                add_zeros_like(hist_agg, hist, region=missing_regions)
+            )
 
             harm = harmonize(
-                model,
+                model.loc[isin(region=regionmapping.data.unique())],
                 hist_agg,
                 overrides=self.harm_overrides.pix.semijoin(
                     group.variables, how="inner"
                 ),
                 settings=self.settings,
             )
-            harmonized.append(add_regions_as_zero(harm, missing_regions))
+            harmonized.append(
+                add_zeros_like(harm, model, region=missing_regions, method=["all_zero"])
+            )
 
             harm = aggregate_subsectors(harm.droplevel("method"))
             hist = aggregate_subsectors(hist)
@@ -237,7 +264,15 @@ class WorkflowDriver:
                 regionmapping,
                 settings=self.settings,
             )
-            downscaled.append(down)
+            downscaled.append(
+                add_zeros_like(
+                    down,
+                    model,
+                    country=missing_countries,
+                    method=["all_zero"],
+                    derive=dict(region=self.regionmapping.index),
+                )
+            )
 
         if not downscaled:
             return

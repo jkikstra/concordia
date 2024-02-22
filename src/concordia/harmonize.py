@@ -41,6 +41,9 @@ def _harmonize(
 def harmonize(
     model: pd.DataFrame, hist: pd.DataFrame, overrides: pd.DataFrame, settings: Settings
 ) -> pd.DataFrame:
+    if model.empty:
+        return model.loc[:, settings.base_year :].pix.assign(method=[])
+
     is_luc = isin(sector=settings.luc_sectors)
     harmonized = concat(
         skipnone(
