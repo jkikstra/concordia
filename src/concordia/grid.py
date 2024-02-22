@@ -145,7 +145,7 @@ class Proxy:
     def proxy_as_flux(self):
         da = self.data
         if self.as_flux:
-            da /= self.indexraster.cell_area.chunk().persist()
+            da /= self.indexraster.cell_area.astype(self.data.dtype, copy=False)
         return da
 
     def reduce_dimensions(self, da):
@@ -186,6 +186,7 @@ class Proxy:
             )
             .pix.project(["gas", "sector", "country", "year"])
             .sort_index()
+            .astype(self.data.dtype, copy=False)
         )
         downscaled.attrs.update(meta)
         return downscaled
@@ -195,7 +196,9 @@ class Proxy:
 
         global_gridded = self.reduce_dimensions(gridded)
         if self.as_flux:
-            global_gridded *= self.indexraster.cell_area
+            global_gridded *= self.indexraster.cell_area.astype(
+                self.data.dtype, copy=False
+            )
         global_gridded = global_gridded.sum(["lat", "lon"])
         diff = verify_global_values(
             global_gridded, scen, self.name, ("sector", "gas", "year")
