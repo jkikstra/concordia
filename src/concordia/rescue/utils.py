@@ -149,7 +149,7 @@ def add_sector_mapping(da, sector_mapping):
             vals,
             attrs=dict(
                 long_name="sector",
-                id="; ".join(f"{v}: {k}" for v, k in zip(vals, keys)),
+                ids="; ".join(f"{v}: {k}" for v, k in zip(vals, keys)),
             ),
         )
     )
