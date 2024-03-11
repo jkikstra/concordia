@@ -117,7 +117,7 @@ class WorkflowDriver:
                     ]
                 )
             ]
-        )
+        ).pix.semijoin(variabledefs.index_regional, how="inner")
         all_variables = variables.pix.unique(["gas", "sector"])
         nonzero_variables = variables.loc[abs(variables) > 0].index
         zero_variables = all_variables.difference(
@@ -129,7 +129,7 @@ class WorkflowDriver:
             Energy Sector becomes Energy Sector|Modelled and Energy Sector|Non-
             Modelled.
             """
-            sectors = variabledefs.index_regional.pix.unique("sector")
+            sectors = variabledefs.variable_index.pix.unique("sector")
             return (
                 variables.rename({"sector": "short_sector"})
                 .join(
@@ -141,7 +141,8 @@ class WorkflowDriver:
                             .str[0]
                             .rename("short_sector"),
                         ]
-                    )
+                    ),
+                    how="left",
                 )
                 .droplevel("short_sector")
             )

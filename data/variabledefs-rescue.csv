@@ -28,6 +28,7 @@ CH4,Solvents Production and Application,Mt CH4/yr,FALSE,TRUE,TRUE,anthro_CH4.nc,
 CH4,Transportation Sector,Mt CH4/yr,FALSE,TRUE,TRUE,anthro_CH4.nc,CH4_em_anthro,TRA
 CH4,Waste,Mt CH4/yr,FALSE,TRUE,TRUE,anthro_CH4.nc,CH4_em_anthro,WST
 CO2,Aggregate - Agriculture and LUC,Mt CO2/yr,TRUE,TRUE,FALSE,,,
+CO2,Agriculture,Mt CO2/yr,TRUE,TRUE,TRUE,anthro_CO2.nc,CO2_em_anthro,AGR
 CO2,Aircraft,Mt CO2/yr,TRUE,TRUE,TRUE,aircraft_CO2.nc,CO2_em_AIR_anthro,AIR
 CO2,Energy Sector|Modelled,Mt CO2/yr,FALSE,TRUE,TRUE,anthro_CO2.nc,CO2_em_anthro,ENE
 CO2,Energy Sector|Non-Modelled,Mt CO2/yr,FALSE,TRUE,TRUE,anthro_CO2.nc,CO2_em_anthro,ENE
