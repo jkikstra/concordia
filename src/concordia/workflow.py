@@ -126,7 +126,8 @@ class WorkflowDriver:
 
         def expand_subsectors(variables: pd.MultiIndex) -> pd.MultiIndex:
             """
-            Energy Sector becomes Energy Sector|Modelled and Energy Sector|Non-Modelled
+            Energy Sector becomes Energy Sector|Modelled and Energy Sector|Non-
+            Modelled.
             """
             sectors = variabledefs.index_regional.pix.unique("sector")
             return (
@@ -306,13 +307,18 @@ class WorkflowDriver:
                 variabledefs.variable_index, how="inner"
             )
 
+        downscaled, hist = downscaled.align(
+            self.hist.drop(self.settings.base_year, axis=1), join="left", axis=0
+        )
+        tabular = concat([hist, downscaled], axis=1)
+
         # Convert unit to kg/s of the repective gas
-        downscaled = downscaled.pix.convert_unit(
+        tabular = tabular.pix.convert_unit(
             lambda s: re.sub("(?:Gt|Mt|kt|t|kg) (.*)/yr", r"kg \1/s", s)
         )
 
-        for model, scenario in downscaled.pix.unique(["model", "scenario"]):
-            yield proxy.grid(downscaled.loc[isin(model=model, scenario=scenario)])
+        for model, scenario in tabular.pix.unique(["model", "scenario"]):
+            yield proxy.grid(tabular.loc[isin(model=model, scenario=scenario)])
 
     def grid(
         self,
