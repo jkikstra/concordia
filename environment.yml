@@ -9,7 +9,6 @@ dependencies:
 - xlrd >=2.0
 - openpyxl
 - matplotlib
-- cattrs
 - seaborn
 - pyomo
 - pytest
