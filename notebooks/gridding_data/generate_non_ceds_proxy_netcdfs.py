@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.15.2
+#       jupytext_version: 1.16.1
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -13,24 +13,24 @@
 # ---
 
 # %%
-import textwrap
-from pathlib import Path
-
-import cartopy.crs as ccrs
 import geoutils as gu
-import matplotlib.pyplot as plt
 import rasterio as rio
-import rioxarray
 import xarray as xr
-import yaml
 from ptolemy.raster import IndexRaster
 from scipy.ndimage import gaussian_filter
 
+from concordia.rescue.proxy import ReportMissingCountries, gu_to_xarray, plot_map
+from concordia.settings import Settings
+
 
 # %%
-with open("../config.yaml") as f:
-    config = yaml.safe_load(f)
-base_path = Path(config["base_path"])
+settings = Settings.from_config("../config.yaml", version=None)
+
+# %%
+
+missing_countries = ReportMissingCountries(
+    IndexRaster.from_netcdf(settings.gridding_path / "ssp_comb_indexraster.nc")
+)
 
 # %% [markdown]
 # # Shipping
@@ -52,7 +52,7 @@ def mariteam_shipping():
     gases = ["BC", "CH4", "CO", "CO2", "NH3", "NOx", "OC", "Sulfur", "VOC"]
     mari = {
         f.stem.split("_")[-2]: f
-        for f in base_path.glob("gridding_process_files/non_ceds_input/*MariTeam*.nc")
+        for f in settings.gridding_path.glob("non_ceds_input/*MariTeam*.nc")
     }
     ceds_to_mari = {"Sulfur": "SO2"}  # maritime uses so2, ceds uses sulfur
     fallback = "CO2"  # if maritime doesn't provide data, use co2 as backup
@@ -73,10 +73,10 @@ def mariteam_shipping():
 
     for gas in gases:
         da = convert_mariteam_to_ceds(mari, gas)
-        fname = Path(
-            base_path / f"gridding_process_files/proxy_rasters/shipping_{gas}.nc"
+        da.to_netcdf(
+            settings.proxy_path / f"shipping_{gas}.nc",
+            encoding={"emissions": settings.encoding},
         )
-        da.to_netcdf(fname, encoding={"emissions": dict(zlib=True, complevel=2)})
 
 
 mariteam_shipping()
@@ -93,9 +93,7 @@ mariteam_shipping()
 # %%
 # ind co2 defines the exact grid and other dimensions
 ind_co2 = (
-    xr.open_dataset(
-        base_path / "gridding_process_files/proxy_rasters/anthro_CO2.nc"
-    ).sel(sector="IND")
+    xr.open_dataset(settings.proxy_path / "anthro_CO2.nc").sel(sector="IND")
 ).emissions
 ind_co2
 
@@ -107,11 +105,7 @@ ind_co2
 
 # %%
 oae_cdr = (
-    (
-        xr.open_dataset(
-            base_path / "gridding_process_files/proxy_rasters/shipping_CO2.nc"
-        )
-    )
+    (xr.open_dataset(settings.proxy_path / "shipping_CO2.nc"))
     .emissions.sel(sector="SHP")
     .assign_coords(sector="OAE_CDR")
 )
@@ -126,14 +120,14 @@ oae_cdr = (
 
 # %%
 renewable_potential = gu.Raster(
-    base_path / "gridding_process_files/renewable_potential/renewable_potential.tiff"
+    settings.gridding_path / "renewable_potential/renewable_potential.tiff"
 )
 
 
 # %%
 def read_co2_storage_potential(smooth=True):
     co2_storage_potential = gu.Raster(
-        base_path / "gridding_process_files/co2_storage_potential/LOW_05.tif"
+        settings.gridding_path / "co2_storage_potential/LOW_05.tif"
     )
 
     # Has no nodata value set, which defaults to 1e20. an explicit -1 is easier to track
@@ -157,7 +151,7 @@ def read_co2_storage_potential(smooth=True):
         *rio.transform.array_bounds(height, width, transform)
     )
     co2_storage_potential_pc = co2_storage_potential.reproject(
-        dst_crs=crs_platecarree, dst_size=(width, height), dst_bounds=bounds
+        crs=crs_platecarree, grid_size=(width, height), bounds=bounds
     )
     co2_storage_potential_pc_smooth = gu.Raster.from_array(
         gaussian_filter(
@@ -182,53 +176,8 @@ def read_co2_storage_potential(smooth=True):
 co2_storage_potential_smooth = read_co2_storage_potential()
 daccs_potential = renewable_potential * co2_storage_potential_smooth
 
-
-# %%
-def gu_to_xarray(raster, grid_ref=None, name=None):
-    da = (
-        rioxarray.open_rasterio(raster.to_rio_dataset(), band_as_variable=True)
-        .band_1.where(lambda df: df != raster.nodata)
-        .rename({"x": "lon", "y": "lat"})
-        .drop(["spatial_ref"])
-    )
-    if grid_ref is not None:
-        da = da.reindex_like(
-            grid_ref, method="nearest"
-        )  # the grid is not exactly the same
-    if name is not None:
-        da = da.rename(name)
-    da.attrs.clear()
-    return da
-
-
 # %%
 daccs_potential = gu_to_xarray(daccs_potential, ind_co2, "emissions")
-
-
-# %%
-def plot_map(da, title=None, robust=True, add_colorbar=None, **kwargs):
-    fig, axis = plt.subplots(
-        1, 1, subplot_kw=dict(projection=ccrs.Robinson()), figsize=(12, 6)
-    )
-    axis.set_global()
-    # axis.stock_img()
-    axis.coastlines()
-
-    cbar_args = dict(add_colorbar=add_colorbar)
-    if add_colorbar is not False:
-        cbar_args["cbar_kwargs"] = {"orientation": "horizontal", "shrink": 0.65}
-
-    da.plot(
-        ax=axis,
-        robust=robust,
-        transform=ccrs.PlateCarree(),  # this is important!
-        cmap="GnBu",
-        **cbar_args,
-        **kwargs,
-    )
-    if title is not None:
-        axis.set_title(title)
-
 
 # %%
 plot_map(
@@ -254,7 +203,7 @@ plot_map(
 )
 
 # %%
-ind_co2_dimensions = xr.ones_like(ind_co2.drop("sector"))
+ind_co2_dimensions = xr.ones_like(ind_co2.drop_vars("sector"))
 ind_co2_seasonality = ind_co2.sum(["gas", "year"])
 ind_co2_seasonality /= ind_co2_seasonality.sum(["lat", "lon"]).mean("month")
 
@@ -269,23 +218,6 @@ plot_map(
     ),
     title="Industry CDR emissions",
 )
-
-# %%
-indexraster = IndexRaster.from_netcdf(
-    base_path / "gridding_process_files" / "ssp_comb_indexraster.nc"
-)
-
-
-def missing_countries(da, do_plot=True):
-    missing = ~(indexraster.aggregate(da) > 0)
-    print(textwrap.fill(f"Missing countries: {', '.join(indexraster.index[missing])}"))
-    if do_plot:
-        plot_map(
-            indexraster.grid(missing.astype(float)).assign_attrs(long_name="Uncovered"),
-            robust=False,
-            add_colorbar=False,
-        )
-
 
 # %%
 missing_countries(ind_cdr.sel(month=1, year=2050, gas="CO2"))
@@ -313,10 +245,14 @@ da = (
     )
     .fillna(0.0)
     .transpose("lat", "lon", "gas", "sector", "year", "month")
+    .astype("float32")
 )
 
 # %%
+da
+
+# %%
 da.to_netcdf(
-    base_path / "gridding_process_files/proxy_rasters/CDR_CO2.nc",
-    encoding={da.name: dict(zlib=True, complevel=2)},
+    settings.proxy_path / "CDR_CO2.nc",
+    encoding={da.name: settings.encoding},
 )
