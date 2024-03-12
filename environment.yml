@@ -3,6 +3,7 @@ channels:
 - conda-forge
 dependencies:
 - attrs
+- cattrs
 - pandas >=1.1
 - pyyaml
 - xlrd >=2.0
@@ -12,17 +13,7 @@ dependencies:
 - seaborn
 - pyomo
 - pytest
-- geopandas
-- netcdf4
-- h5netcdf
-- dask
-- xarray
-- cf_xarray
-- flox
-- rasterio
-- rioxarray
 - filelock
-- bottleneck
 - deprecated
 - pycountry
 - dominate
@@ -32,11 +23,33 @@ dependencies:
 - jupytext
 - colorlog
 - ipykernel
+
+# ptolemy dependencies
+- netcdf4
+- h5netcdf
+- dask
+- xarray
+- pooch
+- zarr
+- flox
+- bottleneck
+- cf_xarray
+
+# pandas-indexing dependencies
+- openscm-units
+
+# raster generation
+- rasterio
+- rioxarray
+- geoutils >=0.1
+- cartopy
+- geopandas
+- pyreadr
+
 - pip
 - pip:
   - pandas-indexing[units] >=0.2.10
-  #- ptolemy-iamc
   # Need to integrate new indexraster changes into ptolemy
-  - git+ssh://git@github.com/gidden/ptolemy.git@add-index-raster#egg=ptolemy-iamc
-  - git+ssh://git@github.com/iiasa/aneris.git@workflow#egg=aneris-iamc
-  - -e .
+  - git+https://github.com/gidden/ptolemy.git@add-index-raster#egg=ptolemy-iamc
+  - git+https://github.com/iiasa/aneris.git@workflow#egg=aneris-iamc
+  - -e .[rescue]

@@ -27,12 +27,16 @@ class Settings:
     country_combinations: dict[str, list[str]]
     variable_template: str
 
+    encoding: dict
+
     ftp: FtpSettings
 
     # where shared stuff is stored
     shared_path: Path
     # where proxies are stored
     proxy_path: Path
+    # where gridding process files are kept (should contain non-ceds-input and ceds-input folders for proxy generation)
+    gridding_path: Path
     # where to save outputs
     out_path: Path
     # where to load data from
