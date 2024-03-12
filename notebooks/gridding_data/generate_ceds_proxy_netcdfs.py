@@ -24,7 +24,6 @@
 
 
 import itertools
-import pathlib
 from functools import lru_cache
 
 import dask
@@ -125,7 +124,9 @@ def mask_to_ary(row):
     a = pyreadr.read_r(row.file)[f"{row.iso}_mask"]
     lat = template.lat[row.start_row - 1 : row.end_row]
     lon = template.lon[row.start_col - 1 : row.end_col]
-    da = xr.DataArray(a, coords={"lat": lat, "lon": lon})
+    da = xr.DataArray(
+        np.asarray(a, dtype="float32"), coords={"lat": lat, "lon": lon}
+    ).reindex(lat=template.lat, lon=template.lon, fill_value=0)
     da["lat"] = da["lat"] * -1  # NB: Inversion!
     return da
 
@@ -219,7 +220,6 @@ def gen_indexraster():
 
 
 def read_r_variable(file):
-    file = pathlib.Path(file)
     print(f"Reading in {file}\n")
     a = pyreadr.read_r(file)[file.stem]
     return np.asarray(a, dtype="float32")
@@ -275,7 +275,7 @@ def year_to_ary(row, file_key="file", with_dask=True):
 
 
 def read_air(file):
-    file = pathlib.Path(file.replace(".Rd", ".nc"))  # we can only read netcdfs for air
+    file = file.with_suffix(".nc")  # we can only read netcdfs for air
     print(f"Reading in {file}\n")
     da = xr.open_dataset(file).var1_1
     # this is supposed to be lat, lon, month, level, based on how other files are treated in season_to_ary
@@ -369,7 +369,6 @@ if __name__ == "__main__":
     gen_indexraster()
     full_process("anthro")
     full_process("openburning")
-#     ## old:
-#     ## full_process('shipping')
-#     mariteam_shipping()
-#     full_process("aircraft")
+    full_process("aircraft")
+    ## old:
+    ## full_process('shipping')
