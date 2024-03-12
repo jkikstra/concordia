@@ -32,6 +32,7 @@ import dask.array
 import numpy as np
 import pandas as pd
 import ptolemy as pt
+import pyogrio as pio
 import pyreadr
 import xarray as xr
 
@@ -137,19 +138,45 @@ def gen_mask():
     print("Generating Mask Raster")
     files = ceds_input_gridding_path.glob("mask/*.Rd")
     df = pd.DataFrame(
-        [[pathlib.Path(f).stem.split("_")[0], f] for f in files],
+        [[f.stem.split("_")[0], f] for f in files],
         columns=["iso", "file"],
     )
     idxs = pd.read_csv(ceds_input_gridding_path / "country_location_index_05.csv")
     data = pd.merge(df, idxs, on="iso")
     mask = xr.concat([mask_to_ary(s) for i, s in data.iterrows()], data.iso)
-    mask.to_netcdf("iso_mask.nc")
+    return mask
 
-    country_combinations = {
-        "sdn_ssd": ["ssd", "sdn"],
-        "isr_pse": ["isr", "pse"],
-        "srb_ksv": ["srb", "srb (kosovo)"],
-    }
+
+def add_eez_to_mask(mask):
+    print("Rasterize and add eez to mask raster")
+    rasterize = pt.Rasterize(
+        shape=(mask.sizes["lat"], mask.sizes["lon"]),
+        coords={"lat": mask.coords["lat"], "lon": mask.coords["lon"]},
+    )
+    rasterize.read_shpf(
+        pio.read_dataframe(
+            settings.gridding_path / "non_ceds_input" / "eez_v12.gpkg",
+            where="ISO_TER1 IS NOT NULL and POL_TYPE='200NM'",
+        )
+        .dissolve(by="ISO_TER1")
+        .reset_index(names=["iso"]),
+        idxkey="iso",
+    )
+    eez = rasterize.rasterize(strategy="weighted", normalize_weights=False).astype(
+        mask.dtype
+    )
+
+    eez = eez.assign_coords(iso=eez.indexes["iso"].str.lower()).reindex_like(
+        mask, fill_value=0.0
+    )
+
+    new_mask = mask + eez
+    totals = new_mask.sum("iso")
+    return (new_mask / totals).where(totals, 0)
+
+
+def recombine_mask(mask, include_world=True):
+    country_combinations = settings.country_combinations
     for comb, (iso1, iso2) in country_combinations.items():
         mask = xr.concat(
             [
@@ -161,14 +188,29 @@ def gen_mask():
             dim="iso",
         )
     comb_mask = mask.drop_sel(iso=list(itertools.chain(*country_combinations.values())))
-    comb_mask = xr.concat(
-        [
-            comb_mask,
-            comb_mask.sum(dim="iso").assign_coords({"iso": "World"}),
-        ],
-        dim="iso",
-    )
-    comb_mask.to_netcdf(settings.gridding_path / "ssp_comb_iso_mask.nc")
+    if include_world:
+        comb_mask = xr.concat(
+            [
+                comb_mask,
+                comb_mask.sum(dim="iso").assign_coords({"iso": "World"}),
+            ],
+            dim="iso",
+        )
+    return comb_mask
+    # comb_mask.to_netcdf(settings.gridding_path / "ssp_comb_iso_mask.nc")
+
+
+def mask_to_indexraster(mask):
+    indexraster = pt.IndexRaster.from_weighted_raster(mask.rename(iso="country"))
+    return indexraster
+
+
+def gen_indexraster():
+    mask = gen_mask()
+    mask = add_eez_to_mask(mask)
+    mask = recombine_mask(mask, include_world=False)
+    indexraster = mask_to_indexraster(mask)
+    indexraster.to_netcdf(settings.gridding_path / "ssp_comb_indexraster.nc")
 
 
 #
@@ -324,7 +366,7 @@ def full_process(sector_key):
 
 
 if __name__ == "__main__":
-    # gen_mask()
+    gen_indexraster()
     full_process("anthro")
     full_process("openburning")
 #     ## old:
