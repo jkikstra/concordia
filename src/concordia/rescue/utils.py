@@ -1,6 +1,6 @@
 import datetime
 import ftplib
-from typing import Any
+from typing import Any, Optional, Sequence
 
 import cf_xarray  # noqa
 import dask
@@ -13,26 +13,41 @@ from tqdm.auto import tqdm
 from ..settings import FtpSettings
 
 
-SECTOR_MAPPING = {
-    # anthro
-    "Agriculture": 0,
-    "Energy Sector": 1,
-    "Industrial Sector": 2,
-    "International Shipping": 7,
-    "Residential Commercial Other": 4,
-    "Solvents Production and Application": 5,
-    "Transportation Sector": 3,
-    "Waste": 6,
-    # aircraft
-    "Aircraft": 8,
-    # openburning
-    "Agricultural Waste Burning": 0,
-    "Forest Burning": 1,
-    "Grassland Burning": 2,
-    "Peat Burning": 3,
-    # cdr
-    "CDR DACCS": 0,
-    "CDR Industry": 1,
+SECTOR_ORDERING_DEFAULT = {
+    "anthro": [
+        "Agriculture",
+        "Energy Sector",
+        "Industrial Sector",
+        "Transportation Sector",
+        "Residential Commercial Other",
+        "Solvents Production and Application",
+        "Waste",
+        "International Shipping",
+    ],
+    "openburning": [
+        "Agricultural Waste Burning",
+        "Forest Burning",
+        "Grassland Burning",
+        "Peat Burning",
+    ],
+}
+
+SECTOR_ORDERING_GAS = {
+    ("CO2", "anthro"): [
+        "Agriculture",
+        "Energy Sector",
+        "Industrial Sector",
+        "Transportation Sector",
+        "Residential Commercial Other",
+        "Solvents Production and Application",
+        "Waste",
+        "International Shipping",
+        "CDR BECCS",
+        "CDR DACCS",
+        "CDR EW",
+        "CDR Industry",
+        "CDR OAE",
+    ],
 }
 
 ATTRS = {
@@ -138,21 +153,26 @@ def add_bounds(da, bounds=["lat", "lon", "time", "level"]):
     return da
 
 
-def add_sector_mapping(da, sector_mapping):
+def ensure_sector_ordering(da, sector_ordering: Optional[Sequence]):
+    if sector_ordering is None:
+        return da
+
+    return da.reindex(sector=sector_ordering)
+
+
+def add_sector_mapping(da, keep_sector_names=True):
     if "sector" not in da.indexes:
         return da
 
     keys = da.indexes["sector"]
-    vals = keys.map(sector_mapping)
-    return da.assign_coords(
-        sector=xr.DataArray(
-            vals,
-            attrs=dict(
-                long_name="sector",
-                ids="; ".join(f"{v}: {k}" for v, k in zip(vals, keys)),
-            ),
-        )
+    if not keep_sector_names:
+        da = da.assign_coords(sector=pd.RangeIndex(len(keys)))
+
+    da["sector"].attrs.update(
+        long_name="sector", ids="; ".join(f"{i}: {k}" for i, k in enumerate(keys))
     )
+
+    return da
 
 
 def replace_attrs(da, attrs):
@@ -209,7 +229,11 @@ class DressUp:
             da.pipe(convert_to_datetime)
             .pipe(clean_coords)
             .pipe(add_bounds)
-            .pipe(add_sector_mapping, SECTOR_MAPPING)
+            .pipe(
+                ensure_sector_ordering,
+                SECTOR_ORDERING_GAS.get((gas, name), SECTOR_ORDERING_DEFAULT.get(name)),
+            )
+            .pipe(add_sector_mapping)
             .pipe(replace_attrs, ATTRS)
             .pipe(clean_var, name, gas, handle)
             .assign_attrs(ds_attrs(name, model, scenario, self.version, self.date))

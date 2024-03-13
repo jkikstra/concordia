@@ -40,10 +40,10 @@ CO2,Transportation Sector,Mt CO2/yr,FALSE,TRUE,TRUE,anthro_CO2.nc,CO2_em_anthro,
 CO2,Waste,Mt CO2/yr,FALSE,TRUE,TRUE,anthro_CO2.nc,CO2_em_anthro,WST
 CO2,CDR Afforestation,Mt CO2/yr,FALSE,FALSE,TRUE,,,
 CO2,CDR BECCS,Mt CO2/yr,FALSE,FALSE,TRUE,,,
-CO2,CDR DACCS,Mt CO2/yr,FALSE,FALSE,TRUE,CDR_CO2.nc,CO2_em_removal,DAC_CDR
+CO2,CDR DACCS,Mt CO2/yr,FALSE,FALSE,TRUE,CDR_CO2.nc,CO2_em_anthro,DAC_CDR
 CO2,CDR EW,Mt CO2/yr,FALSE,FALSE,TRUE,,,
-CO2,CDR Industry,Mt CO2/yr,FALSE,FALSE,TRUE,CDR_CO2.nc,CO2_em_removal,IND_CDR
-CO2,CDR OAE,Mt CO2/yr,FALSE,FALSE,TRUE,CDR_CO2.nc,CO2_em_removal,OAE_CDR
+CO2,CDR Industry,Mt CO2/yr,FALSE,FALSE,TRUE,CDR_CO2.nc,CO2_em_anthro,IND_CDR
+CO2,CDR OAE,Mt CO2/yr,FALSE,FALSE,TRUE,CDR_CO2.nc,CO2_em_anthro,OAE_CDR
 CO,Agricultural Waste Burning,Mt CO/yr,FALSE,TRUE,TRUE,openburning_CO.nc,CO_em_openburning,AWB
 CO,Agriculture,Mt CO/yr,FALSE,TRUE,TRUE,anthro_CO.nc,CO_em_anthro,AGR
 CO,Aircraft,Mt CO/yr,TRUE,TRUE,TRUE,aircraft_CO.nc,CO_em_AIR_anthro,AIR
