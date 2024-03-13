@@ -31,6 +31,8 @@ dependencies:
 - pooch
 - zarr
 - flox
+- pyogrio
+- geopandas
 - bottleneck
 - cf_xarray
 
