@@ -69,7 +69,7 @@ def mariteam_shipping():
         # make sure gas name is aligned with gas arg
         print(f"For gas {gas}, using {pth}")
         with xr.open_dataarray(pth) as da:
-            return da.drop_vars(["gas"]).assign_coords(gas=[gas])
+            return da.drop_vars(["gas"]).assign_coords(gas=[gas]).astype("float32")
 
     for gas in gases:
         da = convert_mariteam_to_ceds(mari, gas)
@@ -85,6 +85,7 @@ mariteam_shipping()
 # # CDR
 #
 # We provide proxies for several CDR technologies:
+#
 # 1. OAE CDR re-uses shipping CO2 emissions
 # 2. DACCS CDR incorporates renewable potentials and CO2 storage potentials
 # 3. Industry CDR uses the composition of renewables, CO2 storage and industry co2 emissions
@@ -99,9 +100,14 @@ ind_co2
 
 # %% [markdown]
 # # OAE CDR and emissions
+#
+
+# %% [markdown]
+#
 
 # %% [markdown]
 # Use shipping CO2 for OAE CDR emissions
+#
 
 # %%
 oae_cdr = (
@@ -112,11 +118,13 @@ oae_cdr = (
 
 # %% [markdown]
 # **TODO** We might want to try to give the OAE CDR negative emissions some seasonality that correlates with industry emissions. Unfortunately, the industry co2 seasonality is different between regions (compare `ind_co2.sel(lon=slice(0, 20), lat=slice(40, 20)).mean(["year", "gas", "lat", "lon"]).plot()` (Europe) to `ind_co2.sel(lon=slice(0, 20), lat=slice(-10, 30)).mean(["year", "gas", "lat", "lon"]).plot()` (Africa))
+#
 
 # %% [markdown]
 # # DACCS and Industrial CDR
 #
 # Combine renewable potential from GaSP, Global Wind and Solar Atlas with CO2 storage potential
+#
 
 # %%
 renewable_potential = gu.Raster(
@@ -231,6 +239,7 @@ missing_countries(dac_cdr.sel(month=1, year=2050, gas="CO2"))
 
 # %% [markdown]
 # # Combine and Save
+#
 
 # %%
 da = (
@@ -247,9 +256,6 @@ da = (
     .transpose("lat", "lon", "gas", "sector", "year", "month")
     .astype("float32")
 )
-
-# %%
-da
 
 # %%
 da.to_netcdf(
