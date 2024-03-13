@@ -2,7 +2,13 @@
 out_path: "../data/out"
 data_path: "../data"
 shared_path: "../../shared_path"
+# shared_path: "~/Library/CloudStorage/OneDrive-SharedLibraries-IIASA/RESCUE - Documents/WP 1/data"
+gridding_path: "$shared_path/gridding_process_files"
 proxy_path: "$shared_path/gridding_process_files/proxy_rasters"
+
+encoding:
+  zlib: true
+  complevel: 2
 
 country_combinations:
   sdn_ssd: ["ssd", "sdn"]
