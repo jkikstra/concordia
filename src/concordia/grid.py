@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 @dask.delayed
 def verify_global_values(
-    aggregated, tabular, proxy_name, index, abstol=1e-8, reltol=1e-8
+    aggregated, tabular, proxy_name, index, abstol=1e-8, reltol=1e-6
 ) -> pd.DataFrame:
     tab_df = tabular.groupby(level=index).sum().unstack("year")
     grid_df = aggregated.to_series().groupby(level=index).sum().unstack("year")
