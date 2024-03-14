@@ -40,6 +40,7 @@ from concordia.settings import Settings
 
 settings = Settings.from_config("../config.yaml", version=None)
 
+dim_order = ["gas", "sector", "level", "year", "month", "lat", "lon"]
 
 sector_mapping = {
     "anthro": ["AGR", "ENE", "IND", "TRA", "RCO", "SLV", "WST"],
@@ -348,7 +349,7 @@ def gen_da_for_gas(gas, sector_key, with_dask=True):
         print(gas, sector)
         da = gen_da_for_sector(gas, sector, with_dask=with_dask)
         das.append(da)
-    return xr.concat(das, "sector")
+    return xr.concat(das, "sector").transpose(*dim_order, missing_dims="ignore")
 
 
 # # Full Processing

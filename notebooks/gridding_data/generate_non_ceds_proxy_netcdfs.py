@@ -27,6 +27,9 @@ from concordia.settings import Settings
 settings = Settings.from_config("../config.yaml", version=None)
 
 # %%
+dim_order = ["gas", "sector", "level", "year", "month", "lat", "lon"]
+
+# %%
 
 missing_countries = ReportMissingCountries(
     IndexRaster.from_netcdf(settings.gridding_path / "ssp_comb_indexraster.nc")
@@ -69,7 +72,12 @@ def mariteam_shipping():
         # make sure gas name is aligned with gas arg
         print(f"For gas {gas}, using {pth}")
         with xr.open_dataarray(pth) as da:
-            return da.drop_vars(["gas"]).assign_coords(gas=[gas]).astype("float32")
+            return (
+                da.drop_vars(["gas"])
+                .assign_coords(gas=[gas])
+                .transpose(*dim_order, missing_dims="ignore")
+                .astype("float32")
+            )
 
     for gas in gases:
         da = convert_mariteam_to_ceds(mari, gas)
@@ -253,7 +261,7 @@ da = (
         dim="sector",
     )
     .fillna(0.0)
-    .transpose("lat", "lon", "gas", "sector", "year", "month")
+    .transpose(*dim_order, missing_dims="ignore")
     .astype("float32")
 )
 
