@@ -13,18 +13,25 @@ from tqdm.auto import tqdm
 from ..settings import FtpSettings
 
 
+SECTOR_RENAMES = {
+    "Energy Sector": "Energy",
+    "Industrial Sector": "Industrial",
+    "Transportation Sector": "Transportation",
+    "Residential Commercial Other": "Residential, Commercial, Other",
+}
+
 SECTOR_ORDERING_DEFAULT = {
-    "anthro": [
+    "em_anthro": [
         "Agriculture",
-        "Energy Sector",
-        "Industrial Sector",
-        "Transportation Sector",
-        "Residential Commercial Other",
+        "Energy",
+        "Industrial",
+        "Transportation",
+        "Residential, Commercial, Other",
         "Solvents Production and Application",
         "Waste",
         "International Shipping",
     ],
-    "openburning": [
+    "em_openburning": [
         "Agricultural Waste Burning",
         "Forest Burning",
         "Grassland Burning",
@@ -33,15 +40,16 @@ SECTOR_ORDERING_DEFAULT = {
 }
 
 SECTOR_ORDERING_GAS = {
-    ("CO2", "anthro"): [
+    "CO2_em_anthro": [
         "Agriculture",
-        "Energy Sector",
-        "Industrial Sector",
-        "Transportation Sector",
-        "Residential Commercial Other",
+        "Energy",
+        "Industrial",
+        "Transportation",
+        "Residential, Commercial, Other",
         "Solvents Production and Application",
         "Waste",
         "International Shipping",
+        "CDR Afforestation",
         "CDR BECCS",
         "CDR DACCS",
         "CDR EW",
@@ -153,6 +161,15 @@ def add_bounds(da, bounds=["lat", "lon", "time", "level"]):
     return da
 
 
+def rename_sectors(da, renames: dict):
+    if "sector" not in da.indexes:
+        return da
+
+    return da.assign_coords(
+        sector=da.indexes["sector"].map(lambda s: renames.get(s, s))
+    )
+
+
 def ensure_sector_ordering(da, sector_ordering: Optional[Sequence]):
     if sector_ordering is None:
         return da
@@ -193,9 +210,8 @@ def clean_var(da, name, gas, handle):
 
 
 def ds_attrs(name, model, scenario, version, date):
-    split = name.split("_")
-    gas = split[0]
-    handle = DATA_HANDLES["_".join(split[1:])]
+    gas, rest = name.split("_", 1)
+    handle = DATA_HANDLES[rest]
 
     extra_attrs = dict(
         source_version=version,
@@ -221,17 +237,17 @@ class DressUp:
         assert len(vars) == 1, vars
 
         name = vars[0]
-        split = name.split("_")
-        gas = split[0]
-        handle = DATA_HANDLES["_".join(split[1:])]
+        gas, rest = name.split("_", 1)
+        handle = DATA_HANDLES[rest]
 
         return (
             da.pipe(convert_to_datetime)
             .pipe(clean_coords)
             .pipe(add_bounds)
+            .pipe(rename_sectors, SECTOR_RENAMES)
             .pipe(
                 ensure_sector_ordering,
-                SECTOR_ORDERING_GAS.get((gas, name), SECTOR_ORDERING_DEFAULT.get(name)),
+                SECTOR_ORDERING_GAS.get(name, SECTOR_ORDERING_DEFAULT.get(rest)),
             )
             .pipe(add_sector_mapping)
             .pipe(replace_attrs, ATTRS)
