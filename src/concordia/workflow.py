@@ -105,21 +105,22 @@ class WorkflowDriver:
         regional_proxies = set(
             variabledefs.data.loc[~variabledefs.data["global"], "proxy_name"]
         )
-        variables = concat(
-            [
-                w.to_series()
-                for w in dask.compute(
-                    *[
-                        proxy.weight.regional.sum("year")
-                        for proxy_name, proxy in self.proxies.items()
-                        if proxy_name in regional_proxies
-                        and proxy.weight.regional is not None
-                    ]
-                )
-            ]
-        ).pix.semijoin(variabledefs.index_regional, how="inner")
-        all_variables = variables.pix.unique(["gas", "sector"])
-        nonzero_variables = variables.loc[abs(variables) > 0].index
+        variable_weights = [
+            w.to_series()
+            for w in dask.compute(
+                *[
+                    proxy.weight.regional.sum("year")
+                    for proxy_name, proxy in self.proxies.items()
+                    if proxy_name in regional_proxies
+                    and proxy.weight.regional is not None
+                ]
+            )
+        ]
+        if not variable_weights:
+            return
+        variable_weights = concat(variable_weights)
+        all_variables = variable_weights.pix.unique(["gas", "sector"])
+        nonzero_variables = variable_weights.loc[abs(variable_weights) > 0].index
         zero_variables = all_variables.difference(
             nonzero_variables.pix.unique(["gas", "sector"])
         )
@@ -129,7 +130,7 @@ class WorkflowDriver:
             Energy Sector becomes Energy Sector|Modelled and Energy Sector|Non-
             Modelled.
             """
-            sectors = variabledefs.variable_index.pix.unique("sector")
+            sectors = variabledefs.index_regional.pix.unique("sector")
             return (
                 variables.rename({"sector": "short_sector"})
                 .join(
@@ -142,7 +143,7 @@ class WorkflowDriver:
                             .rename("short_sector"),
                         ]
                     ),
-                    how="left",
+                    how="inner",
                 )
                 .droplevel("short_sector")
             )
@@ -308,9 +309,8 @@ class WorkflowDriver:
                 variabledefs.variable_index, how="inner"
             )
 
-        downscaled, hist = downscaled.align(
-            self.hist.drop(self.settings.base_year, axis=1), join="left", axis=0
-        )
+        hist = aggregate_subsectors(self.hist.drop(self.settings.base_year, axis=1))
+        downscaled, hist = downscaled.align(hist, join="left", axis=0)
         tabular = concat([hist, downscaled], axis=1)
 
         # Convert unit to kg/s of the repective gas
