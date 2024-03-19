@@ -147,27 +147,43 @@ class VariableDefinitions:
         if "variable" in df.index.names and settings is not None:
             df = df.pix.extract(variable=settings.variable_template, drop=True)
 
-        if ignore_undefined and ignore_missing:
-            how = "inner"
-        elif ignore_undefined:
-            how = "right"
-        else:
-            how = "outer"
-        index, li, ri = df.index.join(
-            self.variable_index, how=how, return_indexers=True
-        )
+        fill_value = 0 if extend_missing is True else extend_missing
 
-        def unique_variable_str(index):
-            return "\n  " + ",\n  ".join(index.unique("variable"))
+        # Warn about missing or unused data
+        def unique_gas_sector_str(index):
+            return "\n- " + "\n- ".join(
+                index.pix.unique(["gas", "sector"]).map("::".join)
+            )
+
+        index, li, ri = df.index.join(
+            self.variable_index, how="outer", return_indexers=True
+        )
+        if (li == -1).any() and extend_missing:
+            logger.warning(
+                f"Variables missing from data (extending with {fill_value}):"
+                + unique_gas_sector_str(index[li == -1])
+            )
+        if (ri == -1).any() and ignore_undefined:
+            logger.warning(
+                "Unused variables exist in data (ignoring):"
+                + unique_gas_sector_str(index[ri == -1])
+            )
+
+        if ignore_undefined or ignore_missing:
+            index, li, ri = df.index.join(
+                self.variable_index,
+                how="inner" if ignore_undefined and ignore_missing else "right",
+                return_indexers=True,
+            )
 
         if (li == -1).any() and extend_missing is False:
             raise ValueError(
-                "Variables missing from data:" + unique_variable_str(index[li == -1])
+                "Variables missing from data:" + unique_gas_sector_str(index[li == -1])
             )
         if (ri == -1).any():
             raise ValueError(
                 "Undefined variables exist in data:"
-                + unique_variable_str(index[ri == -1])
+                + unique_gas_sector_str(index[ri == -1])
             )
 
         if (li == -1).any():
@@ -178,7 +194,6 @@ class VariableDefinitions:
                 ),
             )
 
-        fill_value = 0 if extend_missing is True else extend_missing
         df = pd.DataFrame(
             np.where((li != -1)[:, np.newaxis], df.values[li], fill_value),
             index=index,
