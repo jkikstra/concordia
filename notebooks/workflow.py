@@ -29,7 +29,7 @@ from pathlib import Path
 import dask
 import pandas as pd
 from dask.distributed import Client
-from pandas_indexing import concat, isin, semijoin
+from pandas_indexing import concat, isin, ismatch, semijoin
 from pandas_indexing.units import set_openscm_registry_as_default
 from ptolemy.raster import IndexRaster
 
@@ -64,7 +64,7 @@ ur = set_openscm_registry_as_default()
 #
 
 # %%
-settings = Settings.from_config(version="2024-03-13")
+settings = Settings.from_config(version="2024-03-18")
 
 # %%
 fh = logging.FileHandler(settings.out_path / f"debug_{settings.version}.log", mode="w")
@@ -261,11 +261,16 @@ gdp = semijoin(
 # %%
 # Test with one scenario only
 if True:
-    num_scenarios = 1
-    model = model.pix.semijoin(
-        model.pix.unique(["model", "scenario"])[:num_scenarios], how="right"
-    )
-    logger().warning("Testing with only %d scenario(s)", num_scenarios)
+    model = model.loc[ismatch(scenario="RESCUE-Tier1-Direct-*-PkBudg500-OAE_on")]
+
+    # model = model.pix.semijoin(
+    #     model.pix.unique(["model", "scenario"])[:2], how="right"
+    # )
+logger().info(
+    "Running with %d scenario(s):\n- %s",
+    len(model.pix.unique(["model", "scenario"])),
+    "\n- ".join(model.pix.unique("scenario")),
+)
 
 # %%
 client = Client()
