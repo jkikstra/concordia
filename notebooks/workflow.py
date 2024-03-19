@@ -141,7 +141,9 @@ hist_global = (
     .rename_axis(index=str.lower)
     .rename_axis(index={"region": "country"})
     .rename(
-        index=lambda s: s.removesuffix("|Unharmonized") + "|Total", level="variable"
+        index=lambda s: s.removesuffix("|Unharmonized")
+        + ("|Total" if "Agriculture and LUC" not in s else ""),
+        level="variable",
     )
 )
 
