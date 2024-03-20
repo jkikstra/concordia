@@ -72,16 +72,19 @@ class Harmonized:
     hist: pd.DataFrame
     model: pd.DataFrame
     harmonized: pd.DataFrame
+    skip_for_total: pd.MultiIndex
 
     def drop_method(self):
         return evolve(self, harmonized=self.harmonized.droplevel("method"))
 
     def pipe(self, func: callable, *args, **kwargs):
         f = partial(func, *args, **kwargs)
-        return self.__class__(f(self.hist), f(self.model), f(self.harmonized))
+        return self.__class__(
+            f(self.hist), f(self.model), f(self.harmonized), self.skip_for_total
+        )
 
     def add_totals(self):
-        return self.pipe(add_totals)
+        return self.pipe(add_totals, skip_for_total=self.skip_for_total)
 
     def aggregate_subsectors(self):
         return self.pipe(aggregate_subsectors)

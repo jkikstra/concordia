@@ -1,4 +1,4 @@
-gas,sector,unit,global,has_history,gridded,proxy_path,proxy_name,proxy_sector
+gas,sector,unit,global,include_in_total,gridded,proxy_path,proxy_name,proxy_sector
 BC,Agricultural Waste Burning,Mt BC/yr,FALSE,TRUE,TRUE,openburning_BC.nc,BC_em_openburning,AWB
 BC,Agriculture,Mt BC/yr,FALSE,TRUE,TRUE,anthro_BC.nc,BC_em_anthro,AGR
 BC,Aircraft,Mt BC/yr,TRUE,TRUE,TRUE,aircraft_BC.nc,BC_em_AIR_anthro,AIR
@@ -28,7 +28,7 @@ CH4,Solvents Production and Application,Mt CH4/yr,FALSE,TRUE,TRUE,anthro_CH4.nc,
 CH4,Transportation Sector,Mt CH4/yr,FALSE,TRUE,TRUE,anthro_CH4.nc,CH4_em_anthro,TRA
 CH4,Waste,Mt CH4/yr,FALSE,TRUE,TRUE,anthro_CH4.nc,CH4_em_anthro,WST
 CO2,Aggregate - Agriculture and LUC,Mt CO2/yr,TRUE,TRUE,FALSE,,,
-CO2,Agriculture,Mt CO2/yr,TRUE,TRUE,TRUE,anthro_CO2.nc,CO2_em_anthro,AGR
+CO2,Agriculture,Mt CO2/yr,TRUE,FALSE,TRUE,anthro_CO2.nc,CO2_em_anthro,AGR
 CO2,Aircraft,Mt CO2/yr,TRUE,TRUE,TRUE,aircraft_CO2.nc,CO2_em_AIR_anthro,AIR
 CO2,Energy Sector|Modelled,Mt CO2/yr,FALSE,TRUE,TRUE,anthro_CO2.nc,CO2_em_anthro,ENE
 CO2,Energy Sector|Non-Modelled,Mt CO2/yr,FALSE,TRUE,TRUE,anthro_CO2.nc,CO2_em_anthro,ENE
@@ -39,11 +39,11 @@ CO2,Solvents Production and Application,Mt CO2/yr,FALSE,TRUE,TRUE,anthro_CO2.nc,
 CO2,Transportation Sector,Mt CO2/yr,FALSE,TRUE,TRUE,anthro_CO2.nc,CO2_em_anthro,TRA
 CO2,Waste,Mt CO2/yr,FALSE,TRUE,TRUE,anthro_CO2.nc,CO2_em_anthro,WST
 CO2,CDR Afforestation,Mt CO2/yr,FALSE,FALSE,TRUE,,,
-CO2,CDR BECCS,Mt CO2/yr,FALSE,FALSE,TRUE,,,
-CO2,CDR DACCS,Mt CO2/yr,FALSE,FALSE,TRUE,CDR_CO2.nc,CO2_em_anthro,DAC_CDR
-CO2,CDR EW,Mt CO2/yr,FALSE,FALSE,TRUE,,,
-CO2,CDR Industry,Mt CO2/yr,FALSE,FALSE,TRUE,CDR_CO2.nc,CO2_em_anthro,IND_CDR
-CO2,CDR OAE Uptake Ocean,Mt CO2/yr,FALSE,FALSE,TRUE,CDR_CO2.nc,CO2_em_anthro,OAE_CDR
+CO2,CDR BECCS,Mt CO2/yr,FALSE,TRUE,TRUE,,,
+CO2,CDR DACCS,Mt CO2/yr,FALSE,TRUE,TRUE,CDR_CO2.nc,CO2_em_anthro,DAC_CDR
+CO2,CDR EW,Mt CO2/yr,FALSE,TRUE,TRUE,,,
+CO2,CDR Industry,Mt CO2/yr,FALSE,TRUE,TRUE,CDR_CO2.nc,CO2_em_anthro,IND_CDR
+CO2,CDR OAE Uptake Ocean,Mt CO2/yr,FALSE,TRUE,TRUE,CDR_CO2.nc,CO2_em_anthro,OAE_CDR
 CO,Agricultural Waste Burning,Mt CO/yr,FALSE,TRUE,TRUE,openburning_CO.nc,CO_em_openburning,AWB
 CO,Agriculture,Mt CO/yr,FALSE,TRUE,TRUE,anthro_CO.nc,CO_em_anthro,AGR
 CO,Aircraft,Mt CO/yr,TRUE,TRUE,TRUE,aircraft_CO.nc,CO_em_AIR_anthro,AIR

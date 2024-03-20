@@ -362,4 +362,9 @@ class WorkflowDriver:
         hist = self.history_aggregated.data
         model = self.model.pix.semijoin(hist.index, how="right")
 
-        return Harmonized(hist=hist, model=model, harmonized=self.harmonized.data)
+        return Harmonized(
+            hist=hist,
+            model=model,
+            harmonized=self.harmonized.data,
+            skip_for_total=self.variabledefs.skip_for_total,
+        )

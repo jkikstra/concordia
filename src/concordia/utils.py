@@ -68,10 +68,6 @@ class VariableDefinitions:
         return pd.Index(self.data["proxy_name"].unique()).dropna()
 
     @property
-    def history(self):
-        return self.__class__(self.data.loc[self.data.has_history])
-
-    @property
     def downscaling(self):
         data = self.data
         subsectors = (
@@ -97,6 +93,10 @@ class VariableDefinitions:
     @property
     def index_regional(self):
         return self.data.index[~self.data["global"]]
+
+    @property
+    def skip_for_total(self):
+        return self.data.index[~self.data.include_in_total]
 
     def load_data(
         self,
@@ -365,8 +365,9 @@ def make_totals(df):
     return ret
 
 
-def add_totals(df):
-    return concat([df, make_totals(df)])
+def add_totals(df, skip_for_total=None):
+    reduced = df if skip_for_total is None else df.pix.antijoin(skip_for_total)
+    return concat([df, make_totals(reduced)])
 
 
 def as_seaborn(
@@ -469,6 +470,28 @@ def add_zeros_like(
 def iso_to_name(x):
     cntry = pycountry.countries.get(alpha_3=x.upper())
     return cntry.name if cntry is not None else x
+
+
+class DaskSetLogging(dd.diagnostics.plugin.WorkerPlugin):
+    """Applies a dictionary logging configuration to workers
+
+    Note
+    ----
+    The configuration format is described in
+    https://docs.python.org/3/library/logging.config.html#logging-config-dictschema
+
+    Example
+    -------
+    >>> client = Client()
+    >>> client.register_plugin(DaskSetLogging(dict(version=1, root={"level": "INFO"})))
+    >>> client.forward_logging()
+    """
+
+    def __init__(self, config: dict):
+        self.config = config
+
+    def setup(self, worker: dd.Worker):
+        logging.config.dictConfig(self.config)
 
 
 class DaskSetWorkerLoglevel(dd.diagnostics.plugin.WorkerPlugin):
