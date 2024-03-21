@@ -209,7 +209,7 @@ with ur.context("AR4GWP100"):
             levels=["model", "scenario", "region", "gas", "sector", "unit"],
             settings=settings,
         )
-        # .loc[ismatch(scenario=["*-Baseline", "*-PkBudg_cp2300-OAE_off", "*-Direct-*"])]
+        .loc[~ismatch(scenario=["*Ext*"])]
     )
 model.pix
 
@@ -268,7 +268,7 @@ gdp = semijoin(
 
 # %%
 # Test with one scenario only
-one_scenario = False
+one_scenario = True
 if one_scenario:
     model = model.loc[ismatch(scenario="RESCUE-Tier1-Direct-*-PkBudg500-OAE_on")]
 logger().info(
