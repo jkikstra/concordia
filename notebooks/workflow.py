@@ -268,12 +268,9 @@ gdp = semijoin(
 
 # %%
 # Test with one scenario only
-if True:
-    # num_scenarios = 1
+one_scenario = False
+if one_scenario:
     model = model.loc[ismatch(scenario="RESCUE-Tier1-Direct-*-PkBudg500-OAE_on")]
-    # model = model.pix.semijoin(
-    #     model.pix.unique(["model", "scenario"])[:num_scenarios], how="right"
-    # )
 logger().info(
     "Running with %d scenario(s):\n- %s",
     len(model.pix.unique(["model", "scenario"])),
@@ -327,6 +324,7 @@ res = workflow.grid(
     callback=rescue_utils.DressUp(version=settings.version),
     encoding_kwargs=dict(_FillValue=1e20),
     directory=version_path,
+    skip_exists=True,
 )
 
 # %% [markdown]
@@ -397,10 +395,7 @@ data.to_csv(version_path / f"harmonization-{settings.version}.csv")
 # %%
 hfc_distribution = (
     pd.read_excel(
-        settings.shared_path
-        / "harmonization_postprocessing"
-        / "rescue"
-        / "rescue_hfc_scenario.xlsx",
+        settings.postprocess_path / "rescue_hfc_scenario.xlsx",
         index_col=0,
         sheet_name="velders_2015",
     )
