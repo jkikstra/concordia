@@ -43,7 +43,7 @@ CO2,CDR BECCS,Mt CO2/yr,FALSE,TRUE,TRUE,,,
 CO2,CDR DACCS,Mt CO2/yr,FALSE,TRUE,TRUE,CDR_CO2.nc,CO2_em_anthro,DAC_CDR
 CO2,CDR EW,Mt CO2/yr,FALSE,TRUE,TRUE,,,
 CO2,CDR Industry,Mt CO2/yr,FALSE,TRUE,TRUE,CDR_CO2.nc,CO2_em_anthro,IND_CDR
-CO2,CDR OAE Uptake Ocean,Mt CO2/yr,FALSE,TRUE,TRUE,CDR_CO2.nc,CO2_em_anthro,OAE_CDR
+CO2,CDR OAE Uptake Ocean,Mt CO2/yr,FALSE,TRUE,TRUE,,,
 CO,Agricultural Waste Burning,Mt CO/yr,FALSE,TRUE,TRUE,openburning_CO.nc,CO_em_openburning,AWB
 CO,Agriculture,Mt CO/yr,FALSE,TRUE,TRUE,anthro_CO.nc,CO_em_anthro,AGR
 CO,Aircraft,Mt CO/yr,TRUE,TRUE,TRUE,aircraft_CO.nc,CO_em_AIR_anthro,AIR

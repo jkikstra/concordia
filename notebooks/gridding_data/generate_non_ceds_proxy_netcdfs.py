@@ -94,7 +94,7 @@ mariteam_shipping()
 #
 # We provide proxies for several CDR technologies:
 #
-# 1. OAE CDR re-uses shipping CO2 emissions
+# 1. OAE CDR re-uses shipping CO2 emissions (to be updated and spread evenly into EEZ)
 # 2. DACCS CDR incorporates renewable potentials and CO2 storage potentials
 # 3. Industry CDR uses the composition of renewables, CO2 storage and industry co2 emissions
 #
@@ -254,7 +254,7 @@ da = (
     xr.concat(
         [
             ind_cdr,
-            oae_cdr,
+            # oae_cdr,
             # oae_co2, # Part of other emissions
             dac_cdr,
         ],
