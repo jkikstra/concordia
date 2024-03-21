@@ -77,6 +77,7 @@ def mariteam_shipping():
                 .assign_coords(gas=[gas])
                 .transpose(*dim_order, missing_dims="ignore")
                 .astype("float32")
+                .sel(lat=slice(None, None, -1))
             )
 
     for gas in gases:
