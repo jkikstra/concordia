@@ -160,11 +160,11 @@ class Proxy:
 
         global_weight = proxy_reduced.sum(["lat", "lon"]).chunk(-1)
         if self.only_global:
-            return Weight(global_weight.persist(), None)
+            return Weight(global_weight, None)
 
         regional_weight = self.indexraster.aggregate(proxy_reduced).chunk(-1)
 
-        return Weight(*dask.persist(global_weight, regional_weight))
+        return Weight(global_weight, regional_weight)
 
     @staticmethod
     def assert_single_pathway(downscaled):
@@ -212,7 +212,7 @@ class Proxy:
             sectors = weight.indexes["sector"].intersection(scen.pix.unique("sector"))
             scen = xr.DataArray.from_series(scen).reindex(sector=sectors, fill_value=0)
             weight = weight.reindex_like(scen)
-            return (scen / weight).where(weight, 0).chunk().persist()
+            return (scen / weight).where(weight, 0).chunk()
 
         is_global = isin(country="World")
 
