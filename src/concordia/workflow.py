@@ -276,7 +276,7 @@ class WorkflowDriver:
             downscaled.append(
                 add_zeros_like(
                     down,
-                    model,
+                    harm,
                     country=missing_countries,
                     method=["all_zero"],
                     derive=dict(region=self.regionmapping.index),
@@ -312,7 +312,7 @@ class WorkflowDriver:
             downscaled = self.harmonize_and_downscale(variabledefs)
         else:
             downscaled = downscaled.pix.semijoin(
-                variabledefs.variable_index, how="inner"
+                variabledefs.downscaling.variable_index, how="inner"
             )
 
         hist = aggregate_subsectors(self.hist.drop(self.settings.base_year, axis=1))
