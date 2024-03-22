@@ -40,7 +40,7 @@ from concordia import (
 )
 from concordia.rescue import utils as rescue_utils
 from concordia.settings import Settings
-from concordia.utils import DaskSetWorkerLoglevel, MultiLineFormatter
+from concordia.utils import MultiLineFormatter
 from concordia.workflow import WorkflowDriver
 
 
@@ -64,7 +64,7 @@ ur = set_openscm_registry_as_default()
 #
 
 # %%
-settings = Settings.from_config(version="2024-03-18")
+settings = Settings.from_config(version="2024-03-21")
 
 # %%
 fh = logging.FileHandler(settings.out_path / f"debug_{settings.version}.log", mode="w")
@@ -83,6 +83,7 @@ streamhandler.setFormatter(
 )
 
 logger().handlers = [streamhandler, fh]
+logging.getLogger("flox").setLevel("WARNING")
 
 # %% [markdown]
 # ## Variable definition files
@@ -261,10 +262,10 @@ gdp = semijoin(
 # %%
 # Test with one scenario only
 if True:
+    # num_scenarios = 1
     model = model.loc[ismatch(scenario="RESCUE-Tier1-Direct-*-PkBudg500-OAE_on")]
-
     # model = model.pix.semijoin(
-    #     model.pix.unique(["model", "scenario"])[:2], how="right"
+    #     model.pix.unique(["model", "scenario"])[:num_scenarios], how="right"
     # )
 logger().info(
     "Running with %d scenario(s):\n- %s",
@@ -274,7 +275,7 @@ logger().info(
 
 # %%
 client = Client()
-client.register_plugin(DaskSetWorkerLoglevel(logger().getEffectiveLevel()))
+# client.register_plugin(DaskSetWorkerLoglevel(logger().getEffectiveLevel()))
 client.forward_logging()
 
 # %%
@@ -327,7 +328,7 @@ res = workflow.grid(
 #
 
 # %%
-workflow.harmonize_and_downscale()
+downscaled = workflow.harmonize_and_downscale()
 
 # %% [markdown]
 # ## Alternative 3) Investigations
@@ -338,7 +339,7 @@ workflow.harmonize_and_downscale()
 # `workflow.grid_proxy` returns an iterator of the gridded scenarios. We are looking at the first one in depth.
 
 # %%
-gridded = next(workflow.grid_proxy("CO2_em_anthro"))
+gridded = next(workflow.grid_proxy("CO2_em_anthro", downscaled))
 
 # %%
 ds = gridded.prepare_dataset(callback=rescue_utils.DressUp(version=settings.version))
@@ -427,3 +428,5 @@ workflow.downscaled.data.to_csv(
 # %%
 remote_path = Path("/forcings/emissions") / settings.version
 rescue_utils.ftp_upload(settings.ftp, version_path, remote_path)
+
+# %%
