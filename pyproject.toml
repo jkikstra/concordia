@@ -16,6 +16,8 @@ classifiers = [
   "License :: OSI Approved :: Apache Software License",
 ]
 dependencies = [
+  "attrs",
+  "cattrs",
   "ptolemy-iamc>=0.3",
   "aneris-iamc>=0.2.6",
   "pandas-indexing>=0.2.10",
@@ -29,6 +31,14 @@ dynamic = ["version"]
 lint = [
   "black",
   "ruff",
+]
+rescue = [
+  "cartopy",
+  "geoutils",
+  "geopandas",
+  "pyreadr",
+  "rasterio",
+  "rioxarray",
 ]
 test = [
   "coverage",

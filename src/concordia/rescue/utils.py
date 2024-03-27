@@ -1,12 +1,16 @@
 import datetime
 import ftplib
+from typing import Any
 
-import cftime
-import cf_xarray
+import cf_xarray  # noqa
+import dask
 import dateutil
 import pandas as pd
 import xarray as xr
-from xarray.coding.times import convert_times
+from cattrs import structure, transform_error
+from tqdm.auto import tqdm
+
+from ..settings import FtpSettings
 
 
 SECTOR_MAPPING = {
@@ -98,46 +102,55 @@ DS_ATTRS = dict(
 )
 
 
-def convert_to_datetime(da):
-    da = da.stack(time=("year", "month"))
+def convert_to_datetime(da: xr.DataArray) -> xr.DataArray:
+    with dask.config.set(**{"array.slicing.split_large_chunks": False}):
+        da = da.stack(time=("year", "month"))
     dates = pd.DatetimeIndex(
         da.indexes["time"].map(
             lambda t: datetime.date(t[0], t[1], 16 if t[1] != 2 else 15)
         )
     )
-    return da.drop_vars(["time", "year", "month"]).assign_coords(time=dates)
+    return (
+        da.drop_vars(["time", "year", "month"])
+        .assign_coords(
+            time=xr.IndexVariable(
+                "time",
+                dates,
+                encoding=dict(units="days since 2015-1-1 0:0:0", calendar="noleap"),
+            )
+        )
+        .transpose("time", ...)
+    )
 
 
-def clean_coords(da, whitelist=["lat", "lon", "time", "sector", "level"]):
-    return da.squeeze(dim=set(da.coords) - set(whitelist), drop=True)
+def clean_coords(da):
+    return da.squeeze(drop=True)
 
 
 def add_bounds(da, bounds=["lat", "lon", "time", "level"]):
     bounds = list(set(bounds) & set(da.coords))
     da = da.cf.add_bounds(bounds, output_dim="bound")
-    da = (
-        da.assign_coords(
-            time=convert_times(da.time.data, cftime.DatetimeNoLeap),
-            time_bounds=(
-                ("time", "bound"),
-                convert_times(
-                    da.time_bounds.data.ravel(), cftime.DatetimeNoLeap
-                ).reshape(-1, 2),
-            ),
-        )
-        .reset_coords([f"{b}_bounds" for b in bounds])
-        .rename({f"{b}_bounds": f"{b}_bnds" for b in bounds})
+    da = da.reset_coords([f"{b}_bounds" for b in bounds]).rename(
+        {f"{b}_bounds": f"{b}_bnds" for b in bounds}
     )
+    for b in bounds:
+        da.coords[b].attrs["bounds"] = f"{b}_bnds"
     return da
 
 
 def add_sector_mapping(da, sector_mapping):
+    if "sector" not in da.indexes:
+        return da
+
     keys = da.indexes["sector"]
     vals = keys.map(sector_mapping)
     return da.assign_coords(
         sector=xr.DataArray(
             vals,
-            attrs=dict(long_name="sector", id=str({v: k for v, k in zip(vals, keys)})),
+            attrs=dict(
+                long_name="sector",
+                id="; ".join(f"{v}: {k}" for v, k in zip(vals, keys)),
+            ),
         )
     )
 
@@ -167,7 +180,7 @@ def ds_attrs(name, model, scenario, version, date):
     extra_attrs = dict(
         source_version=version,
         source_id=f"{DS_ATTRS['institution']}-{model}-{scenario}-{version}".replace(
-            " ", "__"
+            " ", "-"
         ),
         variable_id=name,
         creation_date=date,
@@ -203,12 +216,18 @@ class DressUp:
         )
 
 
-def ftp_upload(cfg, local_path, remote_path):
+def ftp_upload(cfg: FtpSettings | dict[str, Any], local_path, remote_path):
     paths = list(local_path.iterdir())
 
+    if not isinstance(cfg, FtpSettings):
+        try:
+            cfg = structure(cfg, FtpSettings)
+        except Exception as exc:
+            raise ValueError(", ".join(transform_error(exc, path="cfg"))) from None
+
     ftp = ftplib.FTP()
-    ftp.connect(cfg["server"], cfg["port"])
-    ftp.login(cfg["user"], cfg["pass"])
+    ftp.connect(cfg.server, cfg.port)
+    ftp.login(cfg.user, cfg.password)
 
     try:
         if remote_path.as_posix() not in ftp.nlst(remote_path.parent.as_posix()):
@@ -218,20 +237,34 @@ def ftp_upload(cfg, local_path, remote_path):
         remote_files = ftp.nlst(remote_path.as_posix())
         for lpath in paths:
             rpath = (remote_path / lpath.name).as_posix()
+            lsize = lpath.stat().st_size
+
+            msg = lpath.name
             if rpath in remote_files:
                 rtimestamp = dateutil.parser.parse(ftp.voidcmd(f"MDTM {rpath}")[4:])
                 ltimestamp = datetime.datetime.fromtimestamp(lpath.lstat().st_mtime)
 
                 rsize = ftp.size(rpath)
-                lsize = lpath.stat().st_size
-                if rtimestamp > ltimestamp and rsize == lsize:
-                    print(
-                        f"{lpath.name} already on {remote_path.as_posix()}, not uploading"
-                    )
+                msg += f" already on {remote_path.as_posix()}"
+                if rtimestamp < ltimestamp:
+                    msg += f", but local file is newer ({rtimestamp} < {ltimestamp})"
+                elif rsize != lsize:
+                    msg += f", but file size differs ({rsize} != {lsize})"
+                else:
+                    print(msg + ", not uploading")
                     continue
+            else:
+                msg += f" not on {remote_path.as_posix()}"
 
-            print(f"{lpath.name} not on {remote_path.as_posix()}, uploading")
-            ftp.storbinary("STOR " + lpath.name, open(lpath, "rb"))
+            print(msg + ", uploading")
+            with open(lpath, "rb") as fp, tqdm(
+                total=lsize, unit="B", unit_scale=True, unit_divisor=1024
+            ) as pbar:
+
+                def update_pbar(data):
+                    pbar.update(len(data))
+
+                ftp.storbinary("STOR " + lpath.name, fp, callback=update_pbar)
 
     finally:
         ftp.close()

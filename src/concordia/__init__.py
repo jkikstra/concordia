@@ -9,7 +9,6 @@ from .utils import (
     CondordiaMagics,
     RegionMapping,
     VariableDefinitions,
-    combine_countries,
 )
 
 
