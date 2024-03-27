@@ -9,8 +9,8 @@ __pycache__/
 # vim
 *.swp
 
-# ipython notebooks
-notebooks/*.ipynb
+# ipython notebooks (use jupytext --sync for conversion)
+notebooks/**/*.ipynb
 
 # Ignore output files
 data/out

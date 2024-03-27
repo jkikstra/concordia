@@ -31,6 +31,8 @@ dependencies:
 - pooch
 - zarr
 - flox
+- pyogrio
+- geopandas
 - bottleneck
 - cf_xarray
 
@@ -47,7 +49,7 @@ dependencies:
 
 - pip
 - pip:
-  - pandas-indexing[units] >=0.2.10
+  - pandas-indexing[units] >=0.4.1
   # Need to integrate new indexraster changes into ptolemy
   - git+https://github.com/gidden/ptolemy.git@add-index-raster#egg=ptolemy-iamc
   - git+https://github.com/iiasa/aneris.git@workflow#egg=aneris-iamc

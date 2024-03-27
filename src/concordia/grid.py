@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 @dask.delayed
 def verify_global_values(
-    aggregated, tabular, proxy_name, index, abstol=1e-8, reltol=1e-8
+    aggregated, tabular, proxy_name, index, abstol=1e-8, reltol=1e-6
 ) -> pd.DataFrame:
     tab_df = tabular.groupby(level=index).sum().unstack("year")
     grid_df = aggregated.to_series().groupby(level=index).sum().unstack("year")
@@ -145,7 +145,7 @@ class Proxy:
     def proxy_as_flux(self):
         da = self.data
         if self.as_flux:
-            da /= self.indexraster.cell_area.chunk().persist()
+            da /= self.indexraster.cell_area.astype(self.data.dtype, copy=False)
         return da
 
     def reduce_dimensions(self, da):
@@ -160,11 +160,11 @@ class Proxy:
 
         global_weight = proxy_reduced.sum(["lat", "lon"]).chunk(-1)
         if self.only_global:
-            return Weight(global_weight.persist(), None)
+            return Weight(global_weight, None)
 
         regional_weight = self.indexraster.aggregate(proxy_reduced).chunk(-1)
 
-        return Weight(*dask.persist(global_weight, regional_weight))
+        return Weight(global_weight, regional_weight)
 
     @staticmethod
     def assert_single_pathway(downscaled):
@@ -186,6 +186,7 @@ class Proxy:
             )
             .pix.project(["gas", "sector", "country", "year"])
             .sort_index()
+            .astype(self.data.dtype, copy=False)
         )
         downscaled.attrs.update(meta)
         return downscaled
@@ -195,7 +196,9 @@ class Proxy:
 
         global_gridded = self.reduce_dimensions(gridded)
         if self.as_flux:
-            global_gridded *= self.indexraster.cell_area
+            global_gridded *= self.indexraster.cell_area.astype(
+                self.data.dtype, copy=False
+            )
         global_gridded = global_gridded.sum(["lat", "lon"])
         diff = verify_global_values(
             global_gridded, scen, self.name, ("sector", "gas", "year")
@@ -209,7 +212,7 @@ class Proxy:
             sectors = weight.indexes["sector"].intersection(scen.pix.unique("sector"))
             scen = xr.DataArray.from_series(scen).reindex(sector=sectors, fill_value=0)
             weight = weight.reindex_like(scen)
-            return (scen / weight).where(weight, 0).chunk().persist()
+            return (scen / weight).where(weight, 0).chunk()
 
         is_global = isin(country="World")
 

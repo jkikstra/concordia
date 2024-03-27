@@ -5,11 +5,11 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.0
+#       jupytext_version: 1.16.1
 #   kernelspec:
-#     display_name: Python [conda env:concordia]
+#     display_name: concordia
 #     language: python
-#     name: conda-env-concordia-py
+#     name: python3
 # ---
 
 # %%
@@ -18,6 +18,8 @@
 
 # %%
 import aneris
+
+
 aneris.__file__
 
 # %%
@@ -27,7 +29,7 @@ from pathlib import Path
 import dask
 import pandas as pd
 from dask.distributed import Client
-from pandas_indexing import concat, isin, semijoin
+from pandas_indexing import concat, isin, ismatch, semijoin
 from pandas_indexing.units import set_openscm_registry_as_default
 from ptolemy.raster import IndexRaster
 
@@ -38,7 +40,7 @@ from concordia import (
 )
 from concordia.rescue import utils as rescue_utils
 from concordia.settings import Settings
-from concordia.utils import DaskSetWorkerLoglevel, MultiLineFormatter
+from concordia.utils import MultiLineFormatter
 from concordia.workflow import WorkflowDriver
 
 
@@ -62,7 +64,7 @@ ur = set_openscm_registry_as_default()
 #
 
 # %%
-settings = Settings.from_config(version="2023-12-08")
+settings = Settings.from_config(version="2024-03-21")
 
 # %%
 fh = logging.FileHandler(settings.out_path / f"debug_{settings.version}.log", mode="w")
@@ -81,6 +83,7 @@ streamhandler.setFormatter(
 )
 
 logger().handlers = [streamhandler, fh]
+logging.getLogger("flox").setLevel("WARNING")
 
 # %% [markdown]
 # ## Variable definition files
@@ -138,7 +141,11 @@ hist_global = (
     )
     .rename_axis(index=str.lower)
     .rename_axis(index={"region": "country"})
-    .rename(index=lambda s: s.removesuffix("|Unharmonized") + "|Total", level="variable")
+    .rename(
+        index=lambda s: s.removesuffix("|Unharmonized")
+        + ("|Total" if "Agriculture and LUC" not in s else ""),
+        level="variable",
+    )
 )
 
 # %%
@@ -253,12 +260,22 @@ gdp = semijoin(
 ).pix.project(["model", "scenario", "country"])
 
 # %%
-# Test with two scenarios only
-# model = model.pix.semijoin(model.pix.unique(["model", "scenario"])[:2], how="right")
+# Test with one scenario only
+if True:
+    # num_scenarios = 1
+    model = model.loc[ismatch(scenario="RESCUE-Tier1-Direct-*-PkBudg500-OAE_on")]
+    # model = model.pix.semijoin(
+    #     model.pix.unique(["model", "scenario"])[:num_scenarios], how="right"
+    # )
+logger().info(
+    "Running with %d scenario(s):\n- %s",
+    len(model.pix.unique(["model", "scenario"])),
+    "\n- ".join(model.pix.unique("scenario")),
+)
 
 # %%
 client = Client()
-client.register_plugin(DaskSetWorkerLoglevel(20))
+# client.register_plugin(DaskSetWorkerLoglevel(logger().getEffectiveLevel()))
 client.forward_logging()
 
 # %%
@@ -266,7 +283,7 @@ dask.distributed.utils_perf.disable_gc_diagnosis()
 
 # %%
 indexraster = IndexRaster.from_netcdf(
-    settings.shared_path / "gridding_process_files" / "ssp_comb_indexraster.nc",
+    settings.gridding_path / "ssp_comb_indexraster.nc",
     chunks={},
 ).persist()
 
@@ -296,11 +313,11 @@ version_path.mkdir(parents=True, exist_ok=True)
 
 # %%
 res = workflow.grid(
-    template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}-{version}_{grid_label}_202001-210012.nc".format(
+    template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}-{version}_{grid_label}_201501-210012.nc".format(
         **rescue_utils.DS_ATTRS | {"version": settings.version}
     ),
     callback=rescue_utils.DressUp(version=settings.version),
-    encoding_kwargs=dict(_FillValue=1.0e20),
+    encoding_kwargs=dict(_FillValue=1e20),
     directory=version_path,
 )
 
@@ -311,16 +328,25 @@ res = workflow.grid(
 #
 
 # %%
-workflow.harmonize_and_downscale()
+downscaled = workflow.harmonize_and_downscale()
 
 # %% [markdown]
 # ## Alternative 3) Investigations
 
 # %% [markdown]
 # ### Process single proxy
+#
+# `workflow.grid_proxy` returns an iterator of the gridded scenarios. We are looking at the first one in depth.
 
 # %%
-gridded = next(workflow.grid_proxy("CO2_em_anthro"))
+gridded = next(workflow.grid_proxy("CO2_em_anthro", downscaled))
+
+# %%
+ds = gridded.prepare_dataset(callback=rescue_utils.DressUp(version=settings.version))
+ds
+
+# %%
+ds.isnull().any(["time", "lat", "lon"])["CO2_em_anthro"].to_pandas()
 
 # %%
 reldiff, _ = dask.compute(
@@ -328,7 +354,7 @@ reldiff, _ = dask.compute(
     gridded.to_netcdf(
         template_fn=(
             "{{name}}_{activity_id}_emissions_{target_mip}_{institution}-"
-            "{{model}}-{{scenario}}-{version}_{grid_label}_202001-210012.nc"
+            "{{model}}-{{scenario}}-{version}_{grid_label}_201501-210012.nc"
         ).format(**rescue_utils.DS_ATTRS | {"version": settings.version}),
         callback=rescue_utils.DressUp(version=settings.version),
         encoding_kwargs=dict(_FillValue=1e20),
@@ -402,3 +428,5 @@ workflow.downscaled.data.to_csv(
 # %%
 remote_path = Path("/forcings/emissions") / settings.version
 rescue_utils.ftp_upload(settings.ftp, version_path, remote_path)
+
+# %%

@@ -1,5 +1,6 @@
 import logging
-from itertools import chain
+from functools import reduce
+from itertools import chain, product
 from pathlib import Path
 from typing import Optional, Self, Sequence, Union
 
@@ -67,10 +68,6 @@ class VariableDefinitions:
         return pd.Index(self.data["proxy_name"].unique()).dropna()
 
     @property
-    def history(self):
-        return self.__class__(self.data.loc[self.data.has_history])
-
-    @property
     def downscaling(self):
         data = self.data
         subsectors = (
@@ -96,6 +93,10 @@ class VariableDefinitions:
     @property
     def index_regional(self):
         return self.data.index[~self.data["global"]]
+
+    @property
+    def skip_for_total(self):
+        return self.data.index[~self.data.include_in_total]
 
     def load_data(
         self,
@@ -146,27 +147,43 @@ class VariableDefinitions:
         if "variable" in df.index.names and settings is not None:
             df = df.pix.extract(variable=settings.variable_template, drop=True)
 
-        if ignore_undefined and ignore_missing:
-            how = "inner"
-        elif ignore_undefined:
-            how = "right"
-        else:
-            how = "outer"
-        index, li, ri = df.index.join(
-            self.variable_index, how=how, return_indexers=True
-        )
+        fill_value = 0 if extend_missing is True else extend_missing
 
-        def unique_variable_str(index):
-            return "\n  " + ",\n  ".join(index.unique("variable"))
+        # Warn about missing or unused data
+        def unique_gas_sector_str(index):
+            return "\n- " + "\n- ".join(
+                index.pix.unique(["gas", "sector"]).map("::".join)
+            )
+
+        index, li, ri = df.index.join(
+            self.variable_index, how="outer", return_indexers=True
+        )
+        if (li == -1).any() and extend_missing:
+            logger.warning(
+                f"Variables missing from data (extending with {fill_value}):"
+                + unique_gas_sector_str(index[li == -1])
+            )
+        if (ri == -1).any() and ignore_undefined:
+            logger.warning(
+                "Unused variables exist in data (ignoring):"
+                + unique_gas_sector_str(index[ri == -1])
+            )
+
+        if ignore_undefined or ignore_missing:
+            index, li, ri = df.index.join(
+                self.variable_index,
+                how="inner" if ignore_undefined and ignore_missing else "right",
+                return_indexers=True,
+            )
 
         if (li == -1).any() and extend_missing is False:
             raise ValueError(
-                "Variables missing from data:" + unique_variable_str(index[li == -1])
+                "Variables missing from data:" + unique_gas_sector_str(index[li == -1])
             )
         if (ri == -1).any():
             raise ValueError(
                 "Undefined variables exist in data:"
-                + unique_variable_str(index[ri == -1])
+                + unique_gas_sector_str(index[ri == -1])
             )
 
         if (li == -1).any():
@@ -177,7 +194,6 @@ class VariableDefinitions:
                 ),
             )
 
-        fill_value = 0 if extend_missing is True else extend_missing
         df = pd.DataFrame(
             np.where((li != -1)[:, np.newaxis], df.values[li], fill_value),
             index=index,
@@ -349,8 +365,9 @@ def make_totals(df):
     return ret
 
 
-def add_totals(df):
-    return concat([df, make_totals(df)])
+def add_totals(df, skip_for_total=None):
+    reduced = df if skip_for_total is None else df.pix.antijoin(skip_for_total)
+    return concat([df, make_totals(reduced)])
 
 
 def as_seaborn(
@@ -384,28 +401,51 @@ def skipnone(*args):
     return [x for x in args if x is not None]
 
 
-def add_regions_as_zero(df: pd.DataFrame, regions: Sequence[str]) -> pd.DataFrame:
-    """Adds regions to DataFrame as 0 values
+def add_zeros_like(
+    df: pd.DataFrame,
+    reference: pd.MultiIndex | pd.DataFrame | pd.Series,
+    /,
+    derive: Optional[dict[str, pd.MultiIndex]] = None,
+    **levels: Sequence[str],
+):
+    """Adds explicit `levels` to `df` as 0 values
+
+    Remaining levels in `df` not found in `levels` or `derive` are taken from
+    `reference` (or its index).
 
     df : DataFrame
         data in time-series representation with years on columns
-    regions : [str]
-        regions to be added
+    reference : [str]
+        expected level labels (like model, scenario combinations)
+    derive : dict
+        derive labels in a level from a multiindex with allowed combinations
+    **levels : [str]
+        which labels should be added to df
 
     Returns
     -------
     DataFrame
-        unsorted data with additional regions
+        unsorted data with additional zero data
 
     Note
     ----
     May lead to duplicates!"""
-    if not regions:
+
+    if any(len(labels) == 0 for labels in levels.values()):
         return df
 
-    levels = df.index.names
-    index = df.index[~isin(df, region="World")].pix.unique(
-        levels.difference(["region"])
+    if isinstance(reference, pd.Series | pd.DataFrame):
+        reference = reference.index
+
+    if "region" in levels and "region" in reference.names:
+        reference = reference[~isin(reference, region="World")]
+
+    if derive is None:
+        derive = {}
+
+    target_levels = df.index.names
+    index = reference.pix.unique(
+        target_levels.difference(levels.keys()).difference(derive.keys())
     )
 
     return concat(
@@ -413,10 +453,16 @@ def add_regions_as_zero(df: pd.DataFrame, regions: Sequence[str]) -> pd.DataFram
         + [
             pd.DataFrame(
                 0,
-                index=index.pix.assign(region=region, order=levels),
+                index=(
+                    reduce(
+                        lambda ind, d: ind.join(d, how="left"),
+                        derive.values(),
+                        index.pix.assign(**dict(zip(levels.keys(), labels))),
+                    ).reorder_levels(target_levels)
+                ),
                 columns=df.columns,
             )
-            for region in regions
+            for labels in product(*levels.values())
         ]
     )
 
@@ -424,6 +470,28 @@ def add_regions_as_zero(df: pd.DataFrame, regions: Sequence[str]) -> pd.DataFram
 def iso_to_name(x):
     cntry = pycountry.countries.get(alpha_3=x.upper())
     return cntry.name if cntry is not None else x
+
+
+class DaskSetLogging(dd.diagnostics.plugin.WorkerPlugin):
+    """Applies a dictionary logging configuration to workers
+
+    Note
+    ----
+    The configuration format is described in
+    https://docs.python.org/3/library/logging.config.html#logging-config-dictschema
+
+    Example
+    -------
+    >>> client = Client()
+    >>> client.register_plugin(DaskSetLogging(dict(version=1, root={"level": "INFO"})))
+    >>> client.forward_logging()
+    """
+
+    def __init__(self, config: dict):
+        self.config = config
+
+    def setup(self, worker: dd.Worker):
+        logging.config.dictConfig(self.config)
 
 
 class DaskSetWorkerLoglevel(dd.diagnostics.plugin.WorkerPlugin):

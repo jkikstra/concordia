@@ -5,11 +5,11 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.0
+#       jupytext_version: 1.16.1
 #   kernelspec:
-#     display_name: Python [conda env:concordia]
+#     display_name: concordia
 #     language: python
-#     name: conda-env-concordia-py
+#     name: python3
 # ---
 
 # %%
@@ -42,7 +42,7 @@ pio.templates.default = "ggplot2"
 
 # %%
 version_old = None  # "2023-08-18"
-version = "2023-12-08"
+version = "2024-03-21"
 
 # %%
 settings = Settings.from_config(version=version)
@@ -265,21 +265,21 @@ import matplotlib.pyplot as plt
 # %%
 plot_harm(
     isin(region="CHA", sector="Energy Sector", gas="CH4"),
-    scenario="RESCUE-Tier1-Direct-*-PkBudg500-OAE_off",
+    scenario="RESCUE-Tier1-Direct-*-PkBudg500-OAE_on",
 )
 plt.legend(labels=["CEDS", "CMIP6", "Unharmonized", "Harmonized"], frameon=False)
 
 # %%
 g = plot_harm(
     isin(sector="Total", gas="CO2"),
-    scenario="RESCUE-Tier1-Direct-*-PkBudg500-OAE_off",
+    scenario="RESCUE-Tier1-Direct-*-PkBudg500-OAE_on",
     useplotly=False,
 )
 
 # %%
 g = plot_harm(
     isin(sector="Aggregate - Agriculture and LUC", gas="CO2"),
-    scenario="RESCUE-Tier1-Direct-*-PkBudg500-OAE_off",
+    scenario="RESCUE-Tier1-Direct-*-PkBudg500-OAE_on",
     useplotly=False,
 )
 

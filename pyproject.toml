@@ -20,7 +20,7 @@ dependencies = [
   "cattrs",
   "ptolemy-iamc>=0.3",
   "aneris-iamc>=0.2.6",
-  "pandas-indexing>=0.2.10",
+  "pandas-indexing>=0.4.1",
   "pycountry",
   "python-slugify",
   "dominate",

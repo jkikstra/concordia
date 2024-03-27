@@ -14,6 +14,9 @@ def downscale(
     regionmapping: RegionMapping,
     settings: Settings,
 ) -> pd.DataFrame:
+    if harmonized.empty:
+        return harmonized.pix.assign(country=[], method=[])
+
     downscaler = Downscaler(
         harmonized.loc[~isin(region="World")],
         hist,

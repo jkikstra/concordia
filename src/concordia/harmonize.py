@@ -41,6 +41,9 @@ def _harmonize(
 def harmonize(
     model: pd.DataFrame, hist: pd.DataFrame, overrides: pd.DataFrame, settings: Settings
 ) -> pd.DataFrame:
+    if model.empty:
+        return model.loc[:, settings.base_year :].pix.assign(method=[])
+
     is_luc = isin(sector=settings.luc_sectors)
     harmonized = concat(
         skipnone(
@@ -69,16 +72,19 @@ class Harmonized:
     hist: pd.DataFrame
     model: pd.DataFrame
     harmonized: pd.DataFrame
+    skip_for_total: pd.MultiIndex
 
     def drop_method(self):
         return evolve(self, harmonized=self.harmonized.droplevel("method"))
 
     def pipe(self, func: callable, *args, **kwargs):
         f = partial(func, *args, **kwargs)
-        return self.__class__(f(self.hist), f(self.model), f(self.harmonized))
+        return self.__class__(
+            f(self.hist), f(self.model), f(self.harmonized), self.skip_for_total
+        )
 
     def add_totals(self):
-        return self.pipe(add_totals)
+        return self.pipe(add_totals, skip_for_total=self.skip_for_total)
 
     def aggregate_subsectors(self):
         return self.pipe(aggregate_subsectors)

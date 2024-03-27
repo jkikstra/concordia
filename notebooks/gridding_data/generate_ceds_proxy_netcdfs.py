@@ -40,6 +40,7 @@ from concordia.settings import Settings
 
 settings = Settings.from_config("../config.yaml", version=None)
 
+dim_order = ["gas", "sector", "level", "year", "month", "lat", "lon"]
 
 sector_mapping = {
     "anthro": ["AGR", "ENE", "IND", "TRA", "RCO", "SLV", "WST"],
@@ -122,12 +123,11 @@ df_files = df_files[df_files["year"].isin(years)]
 # **Rows are latitudes, Columns are longitudes**
 def mask_to_ary(row):
     a = pyreadr.read_r(row.file)[f"{row.iso}_mask"]
-    lat = template.lat[row.start_row - 1 : row.end_row]
+    lat = template.lat[::-1][row.start_row - 1 : row.end_row]
     lon = template.lon[row.start_col - 1 : row.end_col]
     da = xr.DataArray(
         np.asarray(a, dtype="float32"), coords={"lat": lat, "lon": lon}
     ).reindex(lat=template.lat, lon=template.lon, fill_value=0)
-    da["lat"] = da["lat"] * -1  # NB: Inversion!
     return da
 
 
@@ -222,7 +222,7 @@ def gen_indexraster():
 def read_r_variable(file):
     print(f"Reading in {file}\n")
     a = pyreadr.read_r(file)[file.stem]
-    return np.asarray(a, dtype="float32")
+    return np.asarray(a, dtype="float32")[::-1]
 
 
 @lru_cache
@@ -256,7 +256,6 @@ def make_year_ary(fname, air=False, waste=False, with_dask=True):
         da = xr.where(da > threshold, threshold, da)
         # cast back to total people
         da = da * grid_area_m2
-    da["lat"] = da["lat"] * -1  # NB: Inversion!
     return da
 
 
@@ -303,7 +302,6 @@ def make_season_ary(fname, air=False, with_dask=True):
     else:
         a = read_func(fname)
     da = xr.DataArray(a, coords=coords, name=name)
-    da["lat"] = da["lat"] * -1  # NB: Inversion!
     return da
 
 
@@ -348,7 +346,7 @@ def gen_da_for_gas(gas, sector_key, with_dask=True):
         print(gas, sector)
         da = gen_da_for_sector(gas, sector, with_dask=with_dask)
         das.append(da)
-    return xr.concat(das, "sector")
+    return xr.concat(das, "sector").transpose(*dim_order, missing_dims="ignore")
 
 
 # # Full Processing

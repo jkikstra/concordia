@@ -3,6 +3,7 @@ import re
 import textwrap
 from collections import namedtuple
 from functools import cached_property
+from itertools import chain
 from typing import Iterator, Optional, Sequence
 
 import dask
@@ -21,7 +22,7 @@ from .utils import (
     Pathy,
     RegionMapping,
     VariableDefinitions,
-    add_regions_as_zero,
+    add_zeros_like,
     aggregate_subsectors,
     skipnone,
 )
@@ -102,11 +103,17 @@ class WorkflowDriver:
         if variabledefs is None:
             variabledefs = self.variabledefs
 
-        regional_proxies = set(
-            variabledefs.data.loc[~variabledefs.data["global"], "proxy_name"]
+        all_countries = self.regionmapping.data.index
+
+        # only regional
+        variabledefs = VariableDefinitions(
+            variabledefs.data.loc[lambda s: ~s["global"]]
         )
-        variables = [
-            w.to_series().loc[lambda s: abs(s) > 0].index
+
+        # determine proxy weights for all related proxy variables
+        regional_proxies = variabledefs.proxies
+        variable_weights = [
+            w.to_series()
             for w in dask.compute(
                 *[
                     proxy.weight.regional.sum("year")
@@ -117,39 +124,63 @@ class WorkflowDriver:
             )
         ]
 
-        variables = concat(variables) if variables else pd.DataFrame()
-        if not variables.empty:
-            sectors = variabledefs.index_regional.pix.unique("sector")
-            variables = (
-                variables.rename({"sector": "short_sector"})
-                .join(
-                    pd.MultiIndex.from_arrays(
-                        [
-                            sectors,
-                            sectors.to_series()
-                            .str.split("|")
-                            .str[0]
-                            .rename("short_sector"),
-                        ]
-                    )
-                )
-                .droplevel("short_sector")
+        if not variable_weights:
+            # No proxies, so all variables fall into one group with all countries
+            country_groups = [(all_countries, variabledefs.variable_index)]
+        else:
+            variable_weights = concat(variable_weights)
+
+            # Add a short_sector (which is Energy Sector for Energy Sector|Modelled)
+            variables = variabledefs.variable_index.pix.assign(
+                short_sector=variabledefs.variable_index.pix.project("sector")
+                .str.split("|")
+                .str[0]
             )
-            countries = (
-                variables.to_frame()
+
+            # Bring weights into the same form as the variables we want,
+            # there are three different types of variables now:
+            # 1. those that did not show up in the proxies (here with nan)
+            # 2. those that did not have any associated weight
+            # 3. those that had ome proxy weight for some countries
+            variable_weights = variable_weights.rename_axis(
+                index={"sector": "short_sector"}
+            ).pix.semijoin(variables, how="right")
+
+            total_weight = (
+                abs(variable_weights).groupby(["gas", "sector"]).sum(min_count=1)
+            )
+
+            noproxy_vars = total_weight.index[total_weight.isna()]
+            emptyproxy_vars = total_weight.index[total_weight == 0]
+            weight_countries = (
+                variable_weights.index[abs(variable_weights) > 0]
+                # Only consider countries which we can harmonize and downscale
+                .join(all_countries, how="inner")
+                .to_frame()
                 .country.groupby(["gas", "sector"])
                 .apply(lambda s: tuple(sorted(s)))
             )
-            for cntries, variables in countries.index.groupby(countries).items():
-                logger.info(
-                    textwrap.fill(
-                        print_list(cntries, n=40)
-                        + " : "
-                        + ", ".join(variables.map("::".join)),
-                        width=88,
-                    )
+
+            country_groups = chain(
+                [
+                    (all_countries, noproxy_vars),  # type 1
+                    ([], emptyproxy_vars),  # type 2
+                ],
+                weight_countries.index.groupby(weight_countries).items(),  # type 3
+            )
+
+        for countries, variables in country_groups:
+            if variables.empty:
+                continue
+            logger.info(
+                textwrap.fill(
+                    print_list(countries, n=40)
+                    + " : "
+                    + ", ".join(variables.map("::".join)),
+                    width=88,
                 )
-                yield CountryGroup(countries=pd.Index(cntries), variables=variables)
+            )
+            yield CountryGroup(countries=pd.Index(countries), variables=variables)
 
     def harmdown_global(
         self, variabledefs: Optional[VariableDefinitions] = None
@@ -207,25 +238,30 @@ class WorkflowDriver:
             missing_regions = set(self.regionmapping.data.unique()).difference(
                 regionmapping.data.unique()
             )
+            missing_countries = self.regionmapping.data.index.difference(
+                group.countries
+            )
 
-            model = self.model.pix.semijoin(group.variables, how="right").loc[
-                isin(region=regionmapping.data.unique())
-            ]
+            model = self.model.pix.semijoin(group.variables, how="right")
             hist = self.hist.pix.semijoin(group.variables, how="right")
             hist_agg = regionmapping.aggregate(hist, dropna=True)
 
             log_uncovered_history(hist, hist_agg, base_year=self.settings.base_year)
-            history_aggregated.append(add_regions_as_zero(hist_agg, missing_regions))
+            history_aggregated.append(
+                add_zeros_like(hist_agg, hist, region=missing_regions)
+            )
 
             harm = harmonize(
-                model,
+                model.loc[isin(region=regionmapping.data.unique())],
                 hist_agg,
                 overrides=self.harm_overrides.pix.semijoin(
                     group.variables, how="inner"
                 ),
                 settings=self.settings,
             )
-            harmonized.append(add_regions_as_zero(harm, missing_regions))
+            harmonized.append(
+                add_zeros_like(harm, model, region=missing_regions, method=["all_zero"])
+            )
 
             harm = aggregate_subsectors(harm.droplevel("method"))
             hist = aggregate_subsectors(hist)
@@ -237,7 +273,15 @@ class WorkflowDriver:
                 regionmapping,
                 settings=self.settings,
             )
-            downscaled.append(down)
+            downscaled.append(
+                add_zeros_like(
+                    down,
+                    harm,
+                    country=missing_countries,
+                    method=["all_zero"],
+                    derive=dict(region=self.regionmapping.index),
+                )
+            )
 
         if not downscaled:
             return
@@ -268,16 +312,20 @@ class WorkflowDriver:
             downscaled = self.harmonize_and_downscale(variabledefs)
         else:
             downscaled = downscaled.pix.semijoin(
-                variabledefs.variable_index, how="inner"
+                variabledefs.downscaling.variable_index, how="inner"
             )
 
+        hist = aggregate_subsectors(self.hist.drop(self.settings.base_year, axis=1))
+        downscaled, hist = downscaled.align(hist, join="left", axis=0)
+        tabular = concat([hist, downscaled], axis=1)
+
         # Convert unit to kg/s of the repective gas
-        downscaled = downscaled.pix.convert_unit(
+        tabular = tabular.pix.convert_unit(
             lambda s: re.sub("(?:Gt|Mt|kt|t|kg) (.*)/yr", r"kg \1/s", s)
         )
 
-        for model, scenario in downscaled.pix.unique(["model", "scenario"]):
-            yield proxy.grid(downscaled.loc[isin(model=model, scenario=scenario)])
+        for model, scenario in tabular.pix.unique(["model", "scenario"]):
+            yield proxy.grid(tabular.loc[isin(model=model, scenario=scenario)])
 
     def grid(
         self,
@@ -314,4 +362,9 @@ class WorkflowDriver:
         hist = self.history_aggregated.data
         model = self.model.pix.semijoin(hist.index, how="right")
 
-        return Harmonized(hist=hist, model=model, harmonized=self.harmonized.data)
+        return Harmonized(
+            hist=hist,
+            model=model,
+            harmonized=self.harmonized.data,
+            skip_for_total=self.variabledefs.skip_for_total,
+        )
