@@ -50,9 +50,7 @@ class Settings:
     postprocess_path: Path
 
     @staticmethod
-    def resolve_paths(config):
-        base_path = Path(config["base_path"]) if "base_path" in config else None
-
+    def resolve_paths(config, base_path=None):
         def expand(path):
             if path[0] == "$":
                 reference, relative = path[1:].split("/", 1)
@@ -66,7 +64,6 @@ class Settings:
         expanded = {
             key: (expand(val) if key.endswith("_path") else val)
             for key, val in config.items()
-            if key != "base_path"
         }
 
         # Special treatment for path entry in regionmappings
@@ -80,12 +77,23 @@ class Settings:
         return expanded
 
     @classmethod
-    def from_config(cls, config_path: Pathy = "config.yaml", **overwrites) -> Self:
+    def from_config(
+        cls,
+        config_path: Pathy = "config.yaml",
+        base_path: Pathy | None = None,
+        **overwrites,
+    ) -> Self:
+        if base_path is not None:
+            base_path = Path(base_path)
+            config_path = base_path / config_path
+
         with open(config_path) as f:
             config = yaml.safe_load(f)
 
         # TODO might want to replace with merge for nested dictionaries
         try:
-            return structure(cls.resolve_paths(config | overwrites), cls)
+            return structure(
+                cls.resolve_paths(config | overwrites, base_path=base_path), cls
+            )
         except ClassValidationError as exc:
             raise ValueError(", ".join(transform_error(exc, path="config"))) from None

@@ -24,7 +24,7 @@ from concordia.settings import Settings
 
 
 # %%
-settings = Settings.from_config("../config.yaml", version=None)
+settings = Settings.from_config("config.yaml", base_path="..", version=None)
 
 # %%
 dim_order = ["gas", "sector", "level", "year", "month", "lat", "lon"]
