@@ -33,6 +33,7 @@ luc_sectors:
   - "Peat Burning"
   - "Agriculture"
   - "Aggregate - Agriculture and LUC"
+  - "CDR Afforestation"
 
 ftp:
   server: "127.0.0.1"
