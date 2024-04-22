@@ -141,7 +141,7 @@ class WorkflowDriver:
             # there are three different types of variables now:
             # 1. those that did not show up in the proxies (here with nan)
             # 2. those that did not have any associated weight
-            # 3. those that had ome proxy weight for some countries
+            # 3. those that had proxy weight for some countries
             variable_weights = variable_weights.rename_axis(
                 index={"sector": "short_sector"}
             ).pix.semijoin(variables, how="right")
