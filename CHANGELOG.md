@@ -1,5 +1,27 @@
 # Emissions
 
+## 2024-04-25
+
+### REMIND-MAgPIE
+- MAgPIE
+  - Update model version from v4.7.0 to v4.7.1
+  - Switch to `forestryExo` realization to keep timber area constant
+- REMIND
+  - Switch from a regional "keep net-zero CO2 emissions after peak"-target to
+    a global one. This way we allow individual regions to still generate net
+    negative emissions in order to compensate for emissions in other regions,
+    as long as global net emissions do not become negative.
+  - Activate global 5 Gt CO2/yr OAE bound with GDP-based regional shares.
+- Update CEDS reporting
+  - Change definition of CDR from re- and afforestation. Before we assumed
+    CDR from re- and afforestation is simply the amount of regional net
+    negative LUC emissions. Now we explicitly use the natural regrowth in
+    `Secondary Forest`, `Other Land` and `Timber Plantations`, as well as in
+    forests that were intentionally planted to generate negative emissions,
+    that is, via price-incentives `CO2-price AR`, or via specific policy
+    targets `NPI_NDC AR`. This is based on the UNFCCC convention that all
+    LUC emissions that can be attributed to “human activity” is defined as CDR.
+
 ## 2024-03-21
 
 - gridded dataset for 2015-2100 in 10-year for 1 scenario:
