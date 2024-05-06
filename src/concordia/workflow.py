@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import logging
 import re
 import textwrap
 from collections import namedtuple
+from collections.abc import Callable, Iterator, Sequence
 from functools import cached_property
 from itertools import chain
-from typing import Iterator, Optional, Sequence
 
 import dask
 import pandas as pd
@@ -62,8 +64,8 @@ def log_uncovered_history(
 
 @define
 class GlobalRegional:
-    global_: Optional[pd.DataFrame] = None
-    regional: Optional[pd.DataFrame] = None
+    global_: pd.DataFrame | None = None
+    regional: pd.DataFrame | None = None
 
     @property
     def data(self):
@@ -98,7 +100,7 @@ class WorkflowDriver:
         }
 
     def country_groups(
-        self, variabledefs: Optional[VariableDefinitions] = None
+        self, variabledefs: VariableDefinitions | None = None
     ) -> Iterator[CountryGroup]:
         if variabledefs is None:
             variabledefs = self.variabledefs
@@ -183,7 +185,7 @@ class WorkflowDriver:
             yield CountryGroup(countries=pd.Index(countries), variables=variables)
 
     def harmdown_global(
-        self, variabledefs: Optional[VariableDefinitions] = None
+        self, variabledefs: VariableDefinitions | None = None
     ) -> pd.DataFrame:
         if variabledefs is None:
             variabledefs = self.variabledefs
@@ -221,7 +223,7 @@ class WorkflowDriver:
         return harmonized.droplevel("method").rename_axis(index={"region": "country"})
 
     def harmdown_regional(
-        self, variabledefs: Optional[VariableDefinitions] = None
+        self, variabledefs: VariableDefinitions | None = None
     ) -> pd.DataFrame:
         if variabledefs is None:
             variabledefs = self.variabledefs
@@ -293,7 +295,7 @@ class WorkflowDriver:
         return downscaled.droplevel(["method", "region"])
 
     def harmonize_and_downscale(
-        self, variabledefs: Optional[VariableDefinitions] = None
+        self, variabledefs: VariableDefinitions | None = None
     ) -> pd.DataFrame:
         if variabledefs is None:
             variabledefs = self.variabledefs
@@ -304,7 +306,7 @@ class WorkflowDriver:
             )
         )
 
-    def grid_proxy(self, proxy_name: str, downscaled: Optional[pd.DataFrame] = None):
+    def grid_proxy(self, proxy_name: str, downscaled: pd.DataFrame | None = None):
         proxy = self.proxies[proxy_name]
 
         variabledefs = self.variabledefs.for_proxy(proxy_name)
@@ -330,9 +332,9 @@ class WorkflowDriver:
     def grid(
         self,
         template_fn: str,
-        directory: Optional[Pathy] = None,
-        callback: Optional[callable] = None,
-        encoding_kwargs: Optional[dict] = None,
+        directory: Pathy | None = None,
+        callback: Callable | None = None,
+        encoding_kwargs: dict | None = None,
         verify: bool = True,
         skip_exists: bool = False,
     ):

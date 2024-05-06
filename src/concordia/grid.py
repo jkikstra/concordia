@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import logging
 from collections import namedtuple
+from collections.abc import Callable
 from functools import cached_property
 from pathlib import Path
-from typing import Optional
 
 import dask
 import pandas as pd
@@ -58,13 +60,13 @@ Weight = namedtuple("Weight", ["global_", "regional"])
 class Gridded:
     data: xr.DataArray
     downscaled: pd.DataFrame
-    proxy: "Proxy"
+    proxy: Proxy
     meta: dict[str, str] = field(factory=dict)
 
     def verify(self, compute: bool = True):
         return self.proxy.verify_gridded(self.data, self.downscaled, compute=compute)
 
-    def prepare_dataset(self, callback: Optional[callable] = None):
+    def prepare_dataset(self, callback: Callable | None = None):
         name = self.proxy.name
         ds = self.data.to_dataset(name=name)
 
@@ -76,7 +78,7 @@ class Gridded:
     def fname(
         self,
         template_fn: str,
-        directory: Optional[Pathy] = None,
+        directory: Pathy | None = None,
     ):
         meta = self.meta | dict(name=self.proxy.name)
         fn = template_fn.format(
@@ -89,9 +91,9 @@ class Gridded:
     def to_netcdf(
         self,
         template_fn: str,
-        callback: Optional[callable] = None,
-        encoding_kwargs: Optional[dict] = None,
-        directory: Optional[Pathy] = None,
+        callback: Callable = None,
+        encoding_kwargs: dict | None = None,
+        directory: Pathy | None = None,
         compute: bool = True,
     ):
         ds = self.prepare_dataset(callback)

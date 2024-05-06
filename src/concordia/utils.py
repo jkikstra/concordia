@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import logging
+from collections.abc import Sequence
 from functools import reduce
 from itertools import chain, product
 from pathlib import Path
-from typing import Optional, Self, Sequence, Union
+from typing import Self, TypeAlias
 
 import dask.distributed as dd
 import numpy as np
@@ -21,7 +24,7 @@ from .settings import Settings
 logger = logging.getLogger(__name__)
 
 
-Pathy = str | Path
+Pathy: TypeAlias = str | Path
 
 
 @magics_class
@@ -101,12 +104,12 @@ class VariableDefinitions:
     def load_data(
         self,
         df: DataFrame,
-        levels: Optional[list[str]] = None,
+        levels: list[str] | None = None,
         ignore_undefined: bool = True,
         ignore_missing: bool = False,
-        extend_missing: Union[bool, float] = False,
+        extend_missing: bool | float = False,
         timeseries: bool = True,
-        settings: Optional[Settings] = None,
+        settings: Settings | None = None,
     ):
         """Load data from dataframe.
 
@@ -370,9 +373,7 @@ def add_totals(df, skip_for_total=None):
     return concat([df, make_totals(reduced)])
 
 
-def as_seaborn(
-    df: DataFrame, meta: Optional[DataFrame] = None, value_name: str = "value"
-):
+def as_seaborn(df: DataFrame, meta: DataFrame | None = None, value_name: str = "value"):
     """Convert multi-indexed time-series dataframe to tidy dataframe.
 
     Parameters
@@ -405,10 +406,10 @@ def add_zeros_like(
     df: pd.DataFrame,
     reference: pd.MultiIndex | pd.DataFrame | pd.Series,
     /,
-    derive: Optional[dict[str, pd.MultiIndex]] = None,
+    derive: dict[str, pd.MultiIndex] | None = None,
     **levels: Sequence[str],
 ):
-    """Adds explicit `levels` to `df` as 0 values
+    """Adds explicit `levels` to `df` as 0 values.
 
     Remaining levels in `df` not found in `levels` or `derive` are taken from
     `reference` (or its index).
@@ -429,7 +430,8 @@ def add_zeros_like(
 
     Note
     ----
-    May lead to duplicates!"""
+    May lead to duplicates!
+    """
 
     if any(len(labels) == 0 for labels in levels.values()):
         return df
@@ -473,7 +475,7 @@ def iso_to_name(x):
 
 
 class DaskSetLogging(dd.diagnostics.plugin.WorkerPlugin):
-    """Applies a dictionary logging configuration to workers
+    """Applies a dictionary logging configuration to workers.
 
     Note
     ----

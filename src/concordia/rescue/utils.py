@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import datetime
 import ftplib
-from typing import Any, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import cf_xarray  # noqa
 import dask
@@ -170,7 +173,7 @@ def rename_sectors(da, renames: dict):
     )
 
 
-def ensure_sector_ordering(da, sector_ordering: Optional[Sequence]):
+def ensure_sector_ordering(da, sector_ordering: Sequence | None):
     if sector_ordering is None:
         return da
 
@@ -297,9 +300,10 @@ def ftp_upload(cfg: FtpSettings | dict[str, Any], local_path, remote_path):
                 msg += f" not on {remote_path.as_posix()}"
 
             print(msg + ", uploading")
-            with open(lpath, "rb") as fp, tqdm(
-                total=lsize, unit="B", unit_scale=True, unit_divisor=1024
-            ) as pbar:
+            with (
+                open(lpath, "rb") as fp,
+                tqdm(total=lsize, unit="B", unit_scale=True, unit_divisor=1024) as pbar,
+            ):
 
                 def update_pbar(data):
                     pbar.update(len(data))

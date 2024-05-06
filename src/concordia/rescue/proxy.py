@@ -2,8 +2,9 @@
 Proxy generation helpers.
 """
 
+from __future__ import annotations
+
 import textwrap
-from typing import Optional
 
 import cartopy.crs as ccrs
 import geoutils as gu
@@ -31,9 +32,9 @@ def gu_to_xarray(raster: gu.Raster, grid_ref=None, name=None):
 
 def plot_map(
     da: xr.DataArray,
-    title: Optional[str] = None,
+    title: str | None = None,
     robust: bool = True,
-    add_colorbar: Optional[bool] = None,
+    add_colorbar: bool | None = None,
     **kwargs,
 ):
     fig, axis = plt.subplots(

@@ -7,7 +7,7 @@ description = "Harmonization, downscaling and gridding pipeline"
 license = {text = "Apache License 2.0"}
 name = "concordia"
 readme = "README.rst"
-requires-python = ">=3.6"
+requires-python = ">=3.9"
 
 # Add here all kinds of additional classifiers as defined under
 # https://pypi.org/classifiers/
@@ -60,7 +60,7 @@ exclude = [
   "doc",
   "_typed_ops.pyi",
 ]
-target-version = "py38"
+target-version = "py39"
 # E402: module level import not at top of file
 # E501: line too long - let black worry about that
 # E731: do not assign a lambda expression, use a def

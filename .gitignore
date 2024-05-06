@@ -17,6 +17,8 @@ notebooks/**/*.ipynb
 
 # Ignore output files
 data/out
+data/rescue
+data/rescue_old
 
 # Distribution / packaging
 .Python
