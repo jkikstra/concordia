@@ -115,7 +115,7 @@ settings.data_path
 # %%
 regionmappings = {}
 
-for model, kwargs in settings.region_mappings.items():
+for model, kwargs in settings.regionmappings.items():
     regionmapping = RegionMapping.from_regiondef(**kwargs)
     regionmapping.data = regionmapping.data.pix.aggregate(
         country=settings.country_combinations, agg_func="last"
