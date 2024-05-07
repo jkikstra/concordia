@@ -70,7 +70,7 @@ ur = set_openscm_registry_as_default()
 #
 
 # %%
-settings = Settings.from_config(version="2024-03-21")
+settings = Settings.from_config(version="2024-04-25")
 
 # %%
 fh = logging.FileHandler(settings.out_path / f"debug_{settings.version}.log", mode="w")
@@ -101,7 +101,7 @@ logging.getLogger("flox").setLevel("WARNING")
 
 # %%
 variabledefs = VariableDefinitions.from_csv(
-    settings.data_path / "variabledefs-rescue.csv"
+    settings.data_path / "variabledefs-region.csv"
 )
 variabledefs.data.tail()
 
@@ -141,7 +141,17 @@ hist_ceds = (
     .pix.assign(model="History", scenario="CEDS")
 )
 
+
 # %%
+def patch_global_hist_variable(var):
+    var = var.removesuffix("|Unharmonized")
+    return (
+        var
+        if any(var.endswith(s) for s in ("CDR Afforestation", "Agriculture and LUC"))
+        else f"{var}|Total"
+    )
+
+
 hist_global = (
     pd.read_excel(
         settings.history_path / "global_trajectories.xlsx",
@@ -150,8 +160,7 @@ hist_global = (
     .rename_axis(index=str.lower)
     .rename_axis(index={"region": "country"})
     .rename(
-        index=lambda s: s.removesuffix("|Unharmonized")
-        + ("|Total" if "Agriculture and LUC" not in s else ""),
+        index=patch_global_hist_variable,
         level="variable",
     )
 )
@@ -188,7 +197,7 @@ def patch_model_variable(var):
 with ur.context("AR4GWP100"):
     model = (
         pd.read_csv(
-            settings.scenario_path / "REMIND-MAgPIE-CEDS-RESCUE-Tier1-2023-12-13.csv",
+            settings.scenario_path / "REMIND-MAgPIE-CEDS-RESCUE-Tier1-2024-04-25.csv",
             index_col=list(range(5)),
             sep=";",
         )
@@ -209,7 +218,6 @@ with ur.context("AR4GWP100"):
             levels=["model", "scenario", "region", "gas", "sector", "unit"],
             settings=settings,
         )
-        .loc[~ismatch(scenario=["*Ext*"])]
     )
 model.pix
 
@@ -286,19 +294,26 @@ client.forward_logging()
 dask.distributed.utils_perf.disable_gc_diagnosis()
 
 # %%
+(model_name,) = model.pix.unique("model")
+regionmapping = regionmappings[model_name]
+
+# %%
 indexraster = IndexRaster.from_netcdf(
     settings.gridding_path / "ssp_comb_indexraster.nc",
     chunks={},
 ).persist()
+indexraster_region = indexraster.dissolve(
+    regionmapping.filter(indexraster.index).data.rename("country")
+).persist()
 
 # %%
-(model_name,) = model.pix.unique("model")
 workflow = WorkflowDriver(
     model,
     hist,
     gdp,
-    regionmappings[model_name].filter(gdp.pix.unique("country")),
+    regionmapping.filter(gdp.pix.unique("country")),
     indexraster,
+    indexraster_region,
     variabledefs,
     harm_overrides,
     settings,
@@ -350,6 +365,9 @@ gridded = next(workflow.grid_proxy("CO2_em_anthro", downscaled))
 # %%
 ds = gridded.prepare_dataset(callback=rescue_utils.DressUp(version=settings.version))
 ds
+
+# %%
+ds["CO2_em_anthro"].sel(sector="CDR OAE", time="2015-09-16").plot()
 
 # %%
 ds.isnull().any(["time", "lat", "lon"])["CO2_em_anthro"].to_pandas()
