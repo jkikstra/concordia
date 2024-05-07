@@ -21,6 +21,7 @@ SECTOR_RENAMES = {
     "Industrial Sector": "Industrial",
     "Transportation Sector": "Transportation",
     "Residential Commercial Other": "Residential, Commercial, Other",
+    "CDR OAE Uptake Ocean": "CDR OAE",
 }
 
 SECTOR_ORDERING_DEFAULT = {
