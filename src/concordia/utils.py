@@ -86,16 +86,24 @@ class VariableDefinitions:
         )
 
     @property
-    def variable_index(self):
+    def globallevel(self):
+        return self.__class__(self.data.loc[self.data["griddinglevel"] == "global"])
+
+    @property
+    def regionlevel(self):
+        return self.__class__(self.data.loc[self.data["griddinglevel"] == "region"])
+
+    @property
+    def countrylevel(self):
+        return self.__class__(self.data.loc[self.data["griddinglevel"] == "country"])
+
+    @property
+    def index(self):
         return self.data.index
 
     @property
-    def index_global(self):
-        return self.data.index[self.data["global"]]
-
-    @property
-    def index_regional(self):
-        return self.data.index[~self.data["global"]]
+    def empty(self):
+        return self.data.empty
 
     @property
     def skip_for_total(self):
@@ -158,9 +166,7 @@ class VariableDefinitions:
                 index.pix.unique(["gas", "sector"]).map("::".join)
             )
 
-        index, li, ri = df.index.join(
-            self.variable_index, how="outer", return_indexers=True
-        )
+        index, li, ri = df.index.join(self.index, how="outer", return_indexers=True)
         if (li == -1).any() and extend_missing:
             logger.warning(
                 f"Variables missing from data (extending with {fill_value}):"
@@ -174,7 +180,7 @@ class VariableDefinitions:
 
         if ignore_undefined or ignore_missing:
             index, li, ri = df.index.join(
-                self.variable_index,
+                self.index,
                 how="inner" if ignore_undefined and ignore_missing else "right",
                 return_indexers=True,
             )
@@ -224,9 +230,7 @@ class VariableDefinitions:
 
         if (li == -1).any():
             # Need to expand nan values
-            nanlevels = df.index.names.difference(self.variable_index.names).difference(
-                ["unit"]
-            )
+            nanlevels = df.index.names.difference(self.index.names).difference(["unit"])
 
             variations = pd.MultiIndex.from_product(
                 chain(

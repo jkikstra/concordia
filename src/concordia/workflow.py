@@ -108,9 +108,7 @@ class WorkflowDriver:
         all_countries = self.regionmapping.data.index
 
         # only regional
-        variabledefs = VariableDefinitions(
-            variabledefs.data.loc[lambda s: ~s["global"]]
-        )
+        variabledefs = variabledefs.countrylevel
 
         # determine proxy weights for all related proxy variables
         regional_proxies = variabledefs.proxies
@@ -128,13 +126,13 @@ class WorkflowDriver:
 
         if not variable_weights:
             # No proxies, so all variables fall into one group with all countries
-            country_groups = [(all_countries, variabledefs.variable_index)]
+            country_groups = [(all_countries, variabledefs.index)]
         else:
             variable_weights = concat(variable_weights)
 
             # Add a short_sector (which is Energy Sector for Energy Sector|Modelled)
-            variables = variabledefs.variable_index.pix.assign(
-                short_sector=variabledefs.variable_index.pix.project("sector")
+            variables = variabledefs.index.pix.assign(
+                short_sector=variabledefs.index.pix.project("sector")
                 .str.split("|")
                 .str[0]
             )
@@ -190,7 +188,7 @@ class WorkflowDriver:
         if variabledefs is None:
             variabledefs = self.variabledefs
 
-        variables = variabledefs.index_global
+        variables = variabledefs.globallevel.index
         if variables.empty:
             return
 
@@ -229,8 +227,8 @@ class WorkflowDriver:
             variabledefs = self.variabledefs
 
         logger.info(
-            "Harmonizing and downscaling %d regional variables",
-            len(variabledefs.index_regional),
+            "Harmonizing and downscaling %d variables to country level",
+            len(variabledefs.countrylevel.index),
         )
         history_aggregated = []
         harmonized = []
@@ -314,7 +312,7 @@ class WorkflowDriver:
             downscaled = self.harmonize_and_downscale(variabledefs)
         else:
             downscaled = downscaled.pix.semijoin(
-                variabledefs.downscaling.variable_index, how="inner"
+                variabledefs.downscaling.index, how="inner"
             )
 
         hist = aggregate_subsectors(self.hist.drop(self.settings.base_year, axis=1))
