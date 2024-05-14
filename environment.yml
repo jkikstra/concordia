@@ -50,6 +50,6 @@ dependencies:
 - pip
 - pip:
   # Need to integrate new indexraster changes into ptolemy
-  - git+https://github.com/gidden/ptolemy.git#egg=ptolemy-iamc
-  - git+https://github.com/iiasa/aneris.git@workflow#egg=aneris-iamc
-  - -e .[rescue]
+  # - git+https://github.com/gidden/ptolemy.git@add-index-raster#egg=ptolemy-iamc
+  # - git+https://github.com/iiasa/aneris.git@workflow#egg=aneris-iamc
+  # - -e .[rescue]
