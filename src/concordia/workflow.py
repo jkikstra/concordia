@@ -141,7 +141,7 @@ class WorkflowDriver:
             # there are three different types of variables now:
             # 1. those that did not show up in the proxies (here with nan)
             # 2. those that did not have any associated weight
-            # 3. those that had ome proxy weight for some countries
+            # 3. those that had proxy weight for some countries
             variable_weights = variable_weights.rename_axis(
                 index={"sector": "short_sector"}
             ).pix.semijoin(variables, how="right")
@@ -334,8 +334,19 @@ class WorkflowDriver:
         callback: Optional[callable] = None,
         encoding_kwargs: Optional[dict] = None,
         verify: bool = True,
+        skip_exists: bool = False,
     ):
         def verify_and_save(pathways: Sequence[Gridded]):
+            def skip(gridded, template_fn, directory):
+                fname = gridded.fname(template_fn, directory)
+                to_skip = skip_exists and fname.exists()
+                if to_skip:
+                    logger.log(
+                        logging.INFO,
+                        f"Skipping {fname} because the file already exists",
+                    )
+                return to_skip
+
             return dask.compute(
                 (
                     gridded.to_netcdf(
@@ -348,6 +359,7 @@ class WorkflowDriver:
                     gridded.verify(compute=False) if verify else None,
                 )
                 for gridded in pathways
+                if not skip(gridded, template_fn, directory)
             )
 
         downscaled = self.harmonize_and_downscale()

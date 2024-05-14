@@ -14,6 +14,8 @@
 
 # %%
 import geoutils as gu
+import ptolemy as pt
+import pyogrio as pio
 import rasterio as rio
 import xarray as xr
 from ptolemy.raster import IndexRaster
@@ -24,13 +26,12 @@ from concordia.settings import Settings
 
 
 # %%
-settings = Settings.from_config("../config.yaml", version=None)
+settings = Settings.from_config("config.yaml", base_path="..", version=None)
 
 # %%
 dim_order = ["gas", "sector", "level", "year", "month", "lat", "lon"]
 
 # %%
-
 missing_countries = ReportMissingCountries(
     IndexRaster.from_netcdf(settings.gridding_path / "ssp_comb_indexraster.nc")
 )
@@ -95,7 +96,7 @@ mariteam_shipping()
 #
 # We provide proxies for several CDR technologies:
 #
-# 1. OAE CDR re-uses shipping CO2 emissions (to be updated and spread evenly into EEZ)
+# 1. OAE CDR uses a full ocean map (together with the country indexraster this results in OAE being applied equally to within country's EEZ)
 # 2. DACCS CDR incorporates renewable potentials and CO2 storage potentials
 # 3. Industry CDR uses the composition of renewables, CO2 storage and industry co2 emissions
 #
@@ -107,30 +108,41 @@ ind_co2 = (
 ).emissions
 ind_co2
 
+# %%
+ind_co2_dimensions = xr.ones_like(ind_co2.drop_vars("sector"))
+ind_co2_seasonality = ind_co2.sum(["gas", "year"])
+ind_co2_seasonality /= ind_co2_seasonality.sum(["lat", "lon"]).mean("month")
+
 # %% [markdown]
-# # OAE CDR and emissions
+# ## OAE CDR and emissions
 #
 
 # %% [markdown]
-#
-
-# %% [markdown]
-# Use shipping CO2 for OAE CDR emissions
-#
+# Rasterize natural earth ocean shape to proxy grids.
 
 # %%
+rasterize = pt.Rasterize(
+    shape=(ind_co2.sizes["lat"], ind_co2.sizes["lon"]),
+    coords={"lat": ind_co2.coords["lat"], "lon": ind_co2.coords["lon"]},
+)
+rasterize.read_shpf(
+    pio.read_dataframe(
+        settings.gridding_path / "non_ceds_input" / "ne_10m_ocean"
+    ).reset_index(),
+    idxkey="index",
+)
 oae_cdr = (
-    (xr.open_dataset(settings.proxy_path / "shipping_CO2.nc"))
-    .emissions.sel(sector="SHP")
-    .assign_coords(sector="OAE_CDR")
+    rasterize.rasterize(strategy="weighted", normalize_weights=False)
+    .sel(index=0, drop=True)
+    .assign_coords(gas="CO2", sector="OAE_CDR")
+    * ind_co2_dimensions
 )
 
-# %% [markdown]
-# **TODO** We might want to try to give the OAE CDR negative emissions some seasonality that correlates with industry emissions. Unfortunately, the industry co2 seasonality is different between regions (compare `ind_co2.sel(lon=slice(0, 20), lat=slice(40, 20)).mean(["year", "gas", "lat", "lon"]).plot()` (Europe) to `ind_co2.sel(lon=slice(0, 20), lat=slice(-10, 30)).mean(["year", "gas", "lat", "lon"]).plot()` (Africa))
-#
+# %%
+plot_map(oae_cdr.sel(year=2050, month=1).assign_attrs(long_name="OAE CDR emissions"))
 
 # %% [markdown]
-# # DACCS and Industrial CDR
+# ## DACCS and Industrial CDR
 #
 # Combine renewable potential from GaSP, Global Wind and Solar Atlas with CO2 storage potential
 #
@@ -220,11 +232,6 @@ plot_map(
 )
 
 # %%
-ind_co2_dimensions = xr.ones_like(ind_co2.drop_vars("sector"))
-ind_co2_seasonality = ind_co2.sum(["gas", "year"])
-ind_co2_seasonality /= ind_co2_seasonality.sum(["lat", "lon"]).mean("month")
-
-# %%
 # industry CDR is composition of daccs potential and availability of industrial co2 emissions
 ind_cdr = (daccs_potential * ind_co2).assign_coords(sector="IND_CDR")
 
@@ -255,7 +262,7 @@ da = (
     xr.concat(
         [
             ind_cdr,
-            # oae_cdr,
+            oae_cdr,
             # oae_co2, # Part of other emissions
             dac_cdr,
         ],
