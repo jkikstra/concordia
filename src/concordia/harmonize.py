@@ -29,7 +29,9 @@ def _harmonize(
         result = h.harmonize(
             year=settings.base_year, overrides=None if overrides.empty else overrides
         ).sort_index()
-        methods = h.methods(year=settings.base_year)
+        methods = h.methods_used
+        if isinstance(methods, pd.DataFrame):
+            methods = methods["method"]
         result = result.pix.assign(
             method=methods.pix.semijoin(result.index, how="right")
         )

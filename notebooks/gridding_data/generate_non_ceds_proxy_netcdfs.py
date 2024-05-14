@@ -120,26 +120,51 @@ ind_co2_seasonality /= ind_co2_seasonality.sum(["lat", "lon"]).mean("month")
 # %% [markdown]
 # Rasterize natural earth ocean shape to proxy grids.
 
+
 # %%
+
 rasterize = pt.Rasterize(
     shape=(ind_co2.sizes["lat"], ind_co2.sizes["lon"]),
     coords={"lat": ind_co2.coords["lat"], "lon": ind_co2.coords["lon"]},
 )
+
 rasterize.read_shpf(
     pio.read_dataframe(
-        settings.gridding_path / "non_ceds_input" / "ne_10m_ocean"
-    ).reset_index(),
-    idxkey="index",
+        settings.gridding_path / "non_ceds_input" / "eez_v12.gpkg",
+        where="ISO_TER1 IS NOT NULL and POL_TYPE='200NM'",
+    )
+    .dissolve(by="ISO_TER1")
+    .reset_index(names=["iso"]),
+    idxkey="iso",
 )
 oae_cdr = (
     rasterize.rasterize(strategy="weighted", normalize_weights=False)
-    .sel(index=0, drop=True)
+    .sum(dim="iso")
     .assign_coords(gas="CO2", sector="OAE_CDR")
     * ind_co2_dimensions
 )
 
 # %%
-plot_map(oae_cdr.sel(year=2050, month=1).assign_attrs(long_name="OAE CDR emissions"))
+# rasterize = pt.Rasterize(
+#     shape=(ind_co2.sizes["lat"], ind_co2.sizes["lon"]),
+#     coords={"lat": ind_co2.coords["lat"], "lon": ind_co2.coords["lon"]},
+# )
+# rasterize.read_shpf(
+#     pio.read_dataframe(
+#         settings.gridding_path / "non_ceds_input" / "ne_10m_ocean"
+#     ).reset_index(),
+#     idxkey="index",
+# )
+
+# oae_cdr = (
+#     rasterize.rasterize(strategy="weighted", normalize_weights=False)
+#     .sel(index=0, drop=True)
+#     .assign_coords(gas="CO2", sector="OAE_CDR")
+#     * ind_co2_dimensions
+# )
+
+# %%
+plot_map(oae_cdr.sel(year=2050, month=1).assign_attrs(long_name="CDR OAE Uptake Ocean"))
 
 # %% [markdown]
 # ## DACCS and Industrial CDR
