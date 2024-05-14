@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.1
+#       jupytext_version: 1.16.2
 #   kernelspec:
 #     display_name: concordia
 #     language: python
@@ -17,11 +17,10 @@
 # %autoreload 2
 
 # %%
+from functools import reduce
 from subprocess import run
 
 import pandas as pd
-
-# %%
 import plotly.express as px
 import plotly.io as pio
 import seaborn as sns
@@ -41,8 +40,8 @@ from concordia.utils import RegionMapping
 pio.templates.default = "ggplot2"
 
 # %%
-version_old = None  # "2023-08-18"
-version = "2024-03-21"
+version_old = "2024-03-21"
+version = "2024-04-25"
 
 # %%
 settings = Settings.from_config(version=version)
@@ -51,22 +50,42 @@ settings = Settings.from_config(version=version)
 out_path = settings.out_path / settings.version
 
 # %%
-regionmapping = RegionMapping.from_regiondef(
-    settings.shared_path / "iam_files/rescue/regionmappingH12.csv",
-    country_column="CountryCode",
-    region_column="RegionCode",
-    sep=";",
-)
-regionmapping.data = regionmapping.data.pix.aggregate(
-    country=settings.country_combinations, agg_func="last"
-)
+regionmappings = {}
+
+for model, kwargs in settings.regionmappings.items():
+    regionmapping = RegionMapping.from_regiondef(**kwargs)
+    regionmapping.data = regionmapping.data.pix.aggregate(
+        country=settings.country_combinations, agg_func="last"
+    )
+    regionmappings[model] = regionmapping
+
+
+# %%
+def add_net_luc(df):
+    positive = df.loc[isin(sector="Aggregate - Agriculture and LUC")]
+    negative = df.loc[isin(sector="CDR Afforestation")]
+
+    new_df = [df]
+    if "World" not in negative.pix.unique("region"):
+        negative = (
+            negative.groupby(negative.index.names.difference(["region"]))
+            .sum()
+            .pix.assign(region="World")
+        )
+        new_df.append(negative)
+    assign = {"sector": "Net LUC"}
+    if "method" in df.index.names:
+        assign["method"] = "aggregated"
+    new_df.append(positive.pix.add(negative, join="left", assign=assign))
+
+    return concat(new_df)
 
 
 # %%
 def read_version(version, variable_template):
     data = (
         pd.read_csv(
-            out_path / f"harmonization-{version}.csv",
+            settings.out_path / version / f"harmonization-{version}.csv",
             index_col=list(range(5)),
             engine="pyarrow",
         )
@@ -76,17 +95,22 @@ def read_version(version, variable_template):
             | isin(model="Historic")
         ]
     )
-    model = data.pix.extract(
-        variable=variable_template + "|Unharmonized", drop=True
-    ).dropna(how="all", axis=1)
-    harm = data.pix.extract(
-        variable=variable_template + "|Harmonized|{method}", drop=True
-    ).dropna(how="all", axis=1)
+    model = (
+        data.pix.extract(variable=variable_template + "|Unharmonized", drop=True)
+        .dropna(how="all", axis=1)
+        .pipe(add_net_luc)
+    )
+    harm = (
+        data.pix.extract(variable=variable_template + "|Harmonized|{method}", drop=True)
+        .dropna(how="all", axis=1)
+        .pipe(add_net_luc)
+    )
     hist = (
         data.loc[isin(model="Historic")]
         .pix.extract(variable=variable_template, drop=True)
         .dropna(how="all", axis=1)
         .pix.dropna(subset="region")
+        .pipe(add_net_luc)
     )
 
     def aggregate_subsectors(df):
@@ -123,7 +147,9 @@ model, harm, hist = read_version(version, settings.variable_template)
 
 # %%
 if version_old is not None:
-    model_old, harm_old, _ = read_version(version_old)
+    model_old, harm_old, hist_old = read_version(
+        version_old, settings.variable_template
+    )
 
 
 # %%
@@ -142,9 +168,14 @@ def extract_sector_gas(df):
 
 
 # %%
+# TODO currently only works for a single model
+(model_name,) = model.pix.unique("model")
+regionmapping = regionmappings[model_name]
+
+# %%
 cmip6_hist = regionmapping.aggregate(
     pd.read_csv(
-        settings.shared_path / "historical" / "cmip6" / "history.csv",
+        settings.data_path / "cmip6_history.csv",
         index_col=list(range(5)),
         engine="pyarrow",
     )
@@ -166,11 +197,17 @@ cmip6_hist = regionmapping.aggregate(
 # Recompute regional CO2 total (since they include wrongly fire emissions)
 cmip6_hist = concat(
     [
-        cmip6_hist.loc[~(isin(gas="CO2", sector="Total") & ~isin(region="World"))],
+        cmip6_hist.loc[
+            ~(isin(gas="CO2", sector="Total") & ~isin(region="World"))
+            & ~isin(gas="CO2", sector="Aggregate - Agriculture and LUC")
+        ],
         cmip6_hist.loc[isin(gas="CO2") & ~isin(sector="Total") & ~isin(region="World")]
         .pix.assign(sector="Total")
         .groupby(cmip6_hist.index.names)
         .sum(),
+        cmip6_hist.loc[
+            isin(gas="CO2", sector="Aggregate - Agriculture and LUC")
+        ].pix.assign(sector="Net LUC"),
     ]
 ).sort_index()
 
@@ -199,7 +236,9 @@ def plot_harm(sel, scenario=None, levels=["gas", "sector", "region"], useplotly=
         h_old = harm_old.loc[model_sel]
         data[version_old] = concat(
             dict(
-                Unharmonized=model.loc[model_sel], Harmonized=h_old.droplevel("method")
+                CEDS=hist_old.loc[sel & isin(scenario="Synthetic (GFED/CEDS/Global)")],
+                Unharmonized=model_old.loc[model_sel],
+                Harmonized=h_old.droplevel("method"),
             ),
             keys="pathway",
         ).loc[:, 2000:]
@@ -208,13 +247,8 @@ def plot_harm(sel, scenario=None, levels=["gas", "sector", "region"], useplotly=
 
     non_uniques = [lvl for lvl in levels if len(h.pix.unique(lvl)) > 1]
     if not non_uniques:
-        method = h.pix.unique("method").item()
-        return data.T.plot(
-            ylabel=data.pix.unique("unit").item(),
-            title=" - ".join(data.pix.unique(["gas", "sector", "region"]).item())
-            + f": {method}",
-            legend=False,
-        )
+        non_uniques = ["region"]
+        data = data.pix.semijoin(h.pix.unique(levels), how="right")
 
     (non_unique,) = non_uniques
     methods = pd.Series(h.index.pix.project("method"), h.index.pix.project(non_unique))
@@ -239,19 +273,19 @@ def plot_harm(sel, scenario=None, levels=["gas", "sector", "region"], useplotly=
         g.for_each_annotation(lambda a: a.update(text=add_method(a.text)))
         return g
 
+    num_facets = len(data.pix.unique(non_unique))
+    multirow_args = dict(col_wrap=4, height=2, aspect=1.5) if num_facets > 1 else dict()
     g = sns.relplot(
-        data.rename_axis(columns="year").stack().to_frame("value").reset_index(),
+        data.pix.to_tidy(),
         kind="line",
         x="year",
         y="value",
         col=non_unique,
-        col_wrap=4,
         hue="pathway",
         style="version",
         facet_kws=dict(sharey=False),
         legend=True,
-        height=2,
-        aspect=1.5,
+        **multirow_args,
     ).set(ylabel=data.pix.unique("unit").item())
     for label, ax in g.axes_dict.items():
         ax.set_title(f"{non_unique} = {label}, method = {methods[label]}", fontsize=9)
@@ -259,15 +293,10 @@ def plot_harm(sel, scenario=None, levels=["gas", "sector", "region"], useplotly=
 
 
 # %%
-import matplotlib.pyplot as plt
-
-
-# %%
 plot_harm(
     isin(region="CHA", sector="Energy Sector", gas="CH4"),
     scenario="RESCUE-Tier1-Direct-*-PkBudg500-OAE_on",
 )
-plt.legend(labels=["CEDS", "CMIP6", "Unharmonized", "Harmonized"], frameon=False)
 
 # %%
 g = plot_harm(
@@ -278,7 +307,21 @@ g = plot_harm(
 
 # %%
 g = plot_harm(
+    isin(sector="Net LUC", gas="CO2"),
+    scenario="RESCUE-Tier1-Direct-*-PkBudg500-OAE_on",
+    useplotly=False,
+)
+
+# %%
+g = plot_harm(
     isin(sector="Aggregate - Agriculture and LUC", gas="CO2"),
+    scenario="RESCUE-Tier1-Direct-*-PkBudg500-OAE_on",
+    useplotly=False,
+)
+
+# %%
+g = plot_harm(
+    isin(sector="CDR Afforestation", gas="CO2"),
     scenario="RESCUE-Tier1-Direct-*-PkBudg500-OAE_on",
     useplotly=False,
 )
@@ -292,7 +335,7 @@ def what_changed(next, prev):
     length = len(next)
     if prev is None:
         return range(length)
-    for i in range(len(next)):
+    for i in range(length):
         if prev[i] != next[i]:
             return range(i, length)
 
@@ -336,8 +379,14 @@ def make_doc(order, scenario=None, compact=False, useplotly=False):
 
 # %%
 def shorten(scenario):
-    return scenario.removeprefix("RESCUE-Tier1-Direct-*-").removeprefix(
-        "RESCUE-Tier1-Extension-*-"
+    return reduce(
+        lambda scen, pref: scen.removeprefix(pref),
+        [
+            "RESCUE-Tier1-Direct-*-",
+            "RESCUE-Tier1-Extension-*-",
+            "Rescue-Tier1-Sensitivity-*-",
+        ],
+        scenario,
     )
 
 
@@ -385,5 +434,3 @@ files.extend(
 # %%
 for fn in files:
     run(["aws", "s3", "cp", fn, f"s3://rescue-task1.3/harmonization/{version}/"])
-
-# %%
