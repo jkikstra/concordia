@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import logging
 import re
 import textwrap
 from collections import namedtuple
+from collections.abc import Callable, Iterator, Sequence
 from functools import cached_property
 from itertools import chain
-from typing import Iterator, Optional, Sequence
 
 import dask
 import pandas as pd
@@ -62,12 +64,13 @@ def log_uncovered_history(
 
 @define
 class GlobalRegional:
-    global_: Optional[pd.DataFrame] = None
-    regional: Optional[pd.DataFrame] = None
+    globallevel: pd.DataFrame | None = None
+    regionlevel: pd.DataFrame | None = None
+    countrylevel: pd.DataFrame | None = None
 
     @property
     def data(self):
-        return concat([self.global_, self.regional])
+        return concat([self.globallevel, self.regionlevel, self.countrylevel])
 
 
 @define(slots=False)
@@ -76,7 +79,8 @@ class WorkflowDriver:
     hist: pd.DataFrame
     gdp: pd.DataFrame
     regionmapping: RegionMapping
-    indexraster: pt.IndexRaster
+    indexraster_country: pt.IndexRaster
+    indexraster_region: pt.IndexRaster
 
     variabledefs: VariableDefinitions
     harm_overrides: pd.DataFrame
@@ -91,14 +95,14 @@ class WorkflowDriver:
         return {
             proxy_name: Proxy.from_variables(
                 self.variabledefs.for_proxy(proxy_name),
-                self.indexraster,
+                dict(country=self.indexraster_country, region=self.indexraster_region),
                 self.settings.proxy_path,
             )
             for proxy_name in self.variabledefs.proxies
         }
 
     def country_groups(
-        self, variabledefs: Optional[VariableDefinitions] = None
+        self, variabledefs: VariableDefinitions | None = None
     ) -> Iterator[CountryGroup]:
         if variabledefs is None:
             variabledefs = self.variabledefs
@@ -106,9 +110,7 @@ class WorkflowDriver:
         all_countries = self.regionmapping.data.index
 
         # only regional
-        variabledefs = VariableDefinitions(
-            variabledefs.data.loc[lambda s: ~s["global"]]
-        )
+        variabledefs = variabledefs.countrylevel
 
         # determine proxy weights for all related proxy variables
         regional_proxies = variabledefs.proxies
@@ -116,23 +118,23 @@ class WorkflowDriver:
             w.to_series()
             for w in dask.compute(
                 *[
-                    proxy.weight.regional.sum("year")
+                    proxy.weight.countrylevel.sum("year")
                     for proxy_name, proxy in self.proxies.items()
                     if proxy_name in regional_proxies
-                    and proxy.weight.regional is not None
+                    and proxy.weight.countrylevel is not None
                 ]
             )
         ]
 
         if not variable_weights:
             # No proxies, so all variables fall into one group with all countries
-            country_groups = [(all_countries, variabledefs.variable_index)]
+            country_groups = [(all_countries, variabledefs.index)]
         else:
             variable_weights = concat(variable_weights)
 
             # Add a short_sector (which is Energy Sector for Energy Sector|Modelled)
-            variables = variabledefs.variable_index.pix.assign(
-                short_sector=variabledefs.variable_index.pix.project("sector")
+            variables = variabledefs.index.pix.assign(
+                short_sector=variabledefs.index.pix.project("sector")
                 .str.split("|")
                 .str[0]
             )
@@ -182,13 +184,13 @@ class WorkflowDriver:
             )
             yield CountryGroup(countries=pd.Index(countries), variables=variables)
 
-    def harmdown_global(
-        self, variabledefs: Optional[VariableDefinitions] = None
+    def harmdown_globallevel(
+        self, variabledefs: VariableDefinitions | None = None
     ) -> pd.DataFrame:
         if variabledefs is None:
             variabledefs = self.variabledefs
 
-        variables = variabledefs.index_global
+        variables = variabledefs.globallevel.index
         if variables.empty:
             return
 
@@ -212,23 +214,60 @@ class WorkflowDriver:
         harmonized = aggregate_subsectors(harmonized)
         hist = aggregate_subsectors(hist)
 
-        self.history_aggregated.global_ = hist
-        self.harmonized.global_ = harmonized
-        self.downscaled.global_ = harmonized.pix.format(
+        self.history_aggregated.globallevel = hist
+        self.harmonized.globallevel = harmonized
+        self.downscaled.globallevel = harmonized.pix.format(
             method="single", country="{region}"
         )
 
         return harmonized.droplevel("method").rename_axis(index={"region": "country"})
 
-    def harmdown_regional(
-        self, variabledefs: Optional[VariableDefinitions] = None
+    def harmdown_regionlevel(
+        self, variabledefs: VariableDefinitions | None = None
+    ) -> pd.DataFrame:
+        if variabledefs is None:
+            variabledefs = self.variabledefs
+        variabledefs = variabledefs.regionlevel
+
+        if variabledefs.empty:
+            return
+
+        logger.info(
+            "Harmonizing and downscaling %d variables to region level",
+            len(variabledefs.index),
+        )
+
+        model = self.model.pix.semijoin(variabledefs.index, how="right")
+        hist = self.hist.pix.semijoin(variabledefs.index, how="right")
+        hist_agg = self.regionmapping.aggregate(hist, dropna=True)
+
+        harmonized = harmonize(
+            model.loc[isin(region=self.regionmapping.data.unique())],
+            hist_agg,
+            overrides=self.harm_overrides.pix.semijoin(variabledefs.index, how="inner"),
+            settings=self.settings,
+        )
+
+        harmonized = aggregate_subsectors(harmonized)
+        hist_agg = aggregate_subsectors(hist_agg)
+
+        self.history_aggregated.regionlevel = hist_agg
+        self.harmonized.regionlevel = harmonized
+        self.downscaled.regionlevel = harmonized.pix.format(
+            method="single", country="{region}"
+        )
+
+        return harmonized.droplevel("method").rename_axis(index={"region": "country"})
+
+    def harmdown_countrylevel(
+        self, variabledefs: VariableDefinitions | None = None
     ) -> pd.DataFrame:
         if variabledefs is None:
             variabledefs = self.variabledefs
 
         logger.info(
-            "Harmonizing and downscaling %d regional variables",
-            len(variabledefs.index_regional),
+            "Harmonizing and downscaling %d variables to country level",
+            len(variabledefs.countrylevel.index),
         )
         history_aggregated = []
         harmonized = []
@@ -286,25 +325,27 @@ class WorkflowDriver:
         if not downscaled:
             return
 
-        self.history_aggregated.regional = concat(history_aggregated)
-        self.harmonized.regional = concat(harmonized)
-        downscaled = self.downscaled.regional = concat(downscaled)
+        self.history_aggregated.countrylevel = concat(history_aggregated)
+        self.harmonized.countrylevel = concat(harmonized)
+        downscaled = self.downscaled.countrylevel = concat(downscaled)
 
         return downscaled.droplevel(["method", "region"])
 
     def harmonize_and_downscale(
-        self, variabledefs: Optional[VariableDefinitions] = None
+        self, variabledefs: VariableDefinitions | None = None
     ) -> pd.DataFrame:
         if variabledefs is None:
             variabledefs = self.variabledefs
 
         return concat(
             skipnone(
-                self.harmdown_global(variabledefs), self.harmdown_regional(variabledefs)
+                self.harmdown_globallevel(variabledefs),
+                self.harmdown_regionlevel(variabledefs),
+                self.harmdown_countrylevel(variabledefs),
             )
         )
 
-    def grid_proxy(self, proxy_name: str, downscaled: Optional[pd.DataFrame] = None):
+    def grid_proxy(self, proxy_name: str, downscaled: pd.DataFrame | None = None):
         proxy = self.proxies[proxy_name]
 
         variabledefs = self.variabledefs.for_proxy(proxy_name)
@@ -312,10 +353,19 @@ class WorkflowDriver:
             downscaled = self.harmonize_and_downscale(variabledefs)
         else:
             downscaled = downscaled.pix.semijoin(
-                variabledefs.downscaling.variable_index, how="inner"
+                variabledefs.downscaling.index, how="inner"
             )
 
-        hist = aggregate_subsectors(self.hist.drop(self.settings.base_year, axis=1))
+        hist = aggregate_subsectors(
+            concat(
+                [
+                    self.hist,
+                    self.history_aggregated.regionlevel.rename_axis(
+                        index={"region": "country"}
+                    ),
+                ]
+            ).drop(self.settings.base_year, axis=1)
+        )
         downscaled, hist = downscaled.align(hist, join="left", axis=0)
         tabular = concat([hist, downscaled], axis=1)
 
@@ -330,9 +380,9 @@ class WorkflowDriver:
     def grid(
         self,
         template_fn: str,
-        directory: Optional[Pathy] = None,
-        callback: Optional[callable] = None,
-        encoding_kwargs: Optional[dict] = None,
+        directory: Pathy | None = None,
+        callback: Callable | None = None,
+        encoding_kwargs: dict | None = None,
         verify: bool = True,
         skip_exists: bool = False,
     ):

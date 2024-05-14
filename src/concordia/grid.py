@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import logging
 from collections import namedtuple
+from collections.abc import Callable
 from functools import cached_property
 from pathlib import Path
-from typing import Optional
 
 import dask
 import pandas as pd
@@ -51,20 +53,20 @@ def sector_map(variables):
     )
 
 
-Weight = namedtuple("Weight", ["global_", "regional"])
+Weight = namedtuple("Weight", ["globallevel", "regionlevel", "countrylevel"])
 
 
 @define
 class Gridded:
     data: xr.DataArray
     downscaled: pd.DataFrame
-    proxy: "Proxy"
+    proxy: Proxy
     meta: dict[str, str] = field(factory=dict)
 
     def verify(self, compute: bool = True):
         return self.proxy.verify_gridded(self.data, self.downscaled, compute=compute)
 
-    def prepare_dataset(self, callback: Optional[callable] = None):
+    def prepare_dataset(self, callback: Callable | None = None):
         name = self.proxy.name
         ds = self.data.to_dataset(name=name)
 
@@ -76,7 +78,7 @@ class Gridded:
     def fname(
         self,
         template_fn: str,
-        directory: Optional[Pathy] = None,
+        directory: Pathy | None = None,
     ):
         meta = self.meta | dict(name=self.proxy.name)
         fn = template_fn.format(
@@ -89,9 +91,9 @@ class Gridded:
     def to_netcdf(
         self,
         template_fn: str,
-        callback: Optional[callable] = None,
-        encoding_kwargs: Optional[dict] = None,
-        directory: Optional[Pathy] = None,
+        callback: Callable = None,
+        encoding_kwargs: dict | None = None,
+        directory: Pathy | None = None,
         compute: bool = True,
     ):
         ds = self.prepare_dataset(callback)
@@ -106,13 +108,12 @@ class Gridded:
 @define(slots=False)  # cached_property's need __dict__
 class Proxy:
     data: xr.DataArray
-    indexraster: pt.IndexRaster
-    only_global: bool
+    indexrasters: dict[str, pt.IndexRaster]
     name: str = "unnamed"
     as_flux: bool = True
 
     @classmethod
-    def from_variables(cls, df, indexraster=None, proxy_dir=None, **kwargs):
+    def from_variables(cls, df, indexrasters=None, proxy_dir=None, **kwargs):
         if isinstance(df, VariableDefinitions):
             df = df.data
         if proxy_dir is None:
@@ -120,9 +121,9 @@ class Proxy:
         name = df["proxy_name"].unique().item()
         proxy = xr.concat(
             [
-                xr.open_dataset(
+                xr.open_dataarray(
                     proxy_dir / proxy_path, chunks="auto", engine="h5netcdf"
-                ).chunk({"lat": -1, "lon": -1})["emissions"]
+                ).chunk({"lat": -1, "lon": -1})
                 for proxy_path in df["proxy_path"].unique()
             ],
             dim="sector",
@@ -139,17 +140,27 @@ class Proxy:
             sectors = sectors.dropna()
         proxy["sector"] = sectors
 
-        only_global = df["global"].all()
-        if indexraster is None and not only_global:
-            raise ValueError("indexraster needs to be given for regional variables")
+        griddinglevels = set(df["griddinglevel"])
 
-        return cls(proxy, indexraster, only_global, name=name, **kwargs)
+        if griddinglevels > (set(indexrasters) | {"global"}):
+            raise ValueError(
+                f"Variables need indexrasters for all griddinglevels: {', '.join(griddinglevels)}"
+            )
+
+        return cls(
+            proxy, {l: indexrasters.get(l) for l in griddinglevels}, name=name, **kwargs
+        )
+
+    @property
+    def cell_area(self):
+        indexraster = next(i for i in self.indexrasters.values() if i is not None)
+        return indexraster.cell_area.astype(self.data.dtype, copy=False)
 
     @cached_property
     def proxy_as_flux(self):
         da = self.data
         if self.as_flux:
-            da /= self.indexraster.cell_area.astype(self.data.dtype, copy=False)
+            da = da / self.cell_area
         return da
 
     def reduce_dimensions(self, da):
@@ -162,13 +173,20 @@ class Proxy:
     def weight(self):
         proxy_reduced = self.reduce_dimensions(self.data)
 
-        global_weight = proxy_reduced.sum(["lat", "lon"]).chunk(-1)
-        if self.only_global:
-            return Weight(global_weight, None)
-
-        regional_weight = self.indexraster.aggregate(proxy_reduced).chunk(-1)
-
-        return Weight(global_weight, regional_weight)
+        weights = {
+            level: (
+                proxy_reduced.sum(["lat", "lon"])
+                if indexraster is None
+                else indexraster.aggregate(proxy_reduced)
+            ).chunk(-1)
+            for level, indexraster in self.indexrasters.items()
+        }
+        return Weight(
+            **{
+                f"{level}level": weights.get(level)
+                for level in ("global", "region", "country")
+            }
+        )
 
     @staticmethod
     def assert_single_pathway(downscaled):
@@ -200,9 +218,7 @@ class Proxy:
 
         global_gridded = self.reduce_dimensions(gridded)
         if self.as_flux:
-            global_gridded *= self.indexraster.cell_area.astype(
-                self.data.dtype, copy=False
-            )
+            global_gridded *= self.cell_area
         global_gridded = global_gridded.sum(["lat", "lon"])
         diff = verify_global_values(
             global_gridded, scen, self.name, ("sector", "gas", "year")
@@ -218,27 +234,19 @@ class Proxy:
             weight = weight.reindex_like(scen)
             return (scen / weight).where(weight, 0).chunk()
 
-        is_global = isin(country="World")
+        gridded = []
+        for level, indexraster in self.indexrasters.items():
+            weight = getattr(self.weight, f"{level}level")
+            if indexraster is None:
+                gridded_ = weighted(
+                    scen.loc[isin(country="World")].droplevel("country"), weight
+                )
+            else:
+                gridded_ = indexraster.grid(
+                    weighted(scen.loc[isin(country=indexraster.index)], weight)
+                ).drop_vars(indexraster.dim)
 
-        gridded_global = weighted(
-            scen.loc[is_global].droplevel("country"), self.weight.global_
-        )
-        if self.only_global:
-            return Gridded(
-                self.proxy_as_flux * gridded_global,
-                downscaled.loc[is_global],
-                self,
-                scen.attrs,
-            )
+            if gridded_.size > 0:
+                gridded.append(self.proxy_as_flux * gridded_)
 
-        gridded_regional = self.indexraster.grid(
-            weighted(scen.loc[~is_global], self.weight.regional)
-        ).drop_vars("country")
-
-        gridded = (
-            xr.concat([gridded_regional, gridded_global], dim="sector")
-            if gridded_global.size > 0
-            else gridded_regional
-        )
-
-        return Gridded(self.proxy_as_flux * gridded, downscaled, self, scen.attrs)
+        return Gridded(xr.concat(gridded, dim="sector"), downscaled, self, scen.attrs)
