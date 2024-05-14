@@ -13,7 +13,7 @@ encoding:
 
 regionmappings:
   MyModelName:
-    path: "$data_path/regionmapping_mymodelname.csv"
+    path: "$scenario_path/regionmapping_mymodelname.csv"
     country_column: "CountryCode"
     region_column: "RegionCode"
     sep: ";"
