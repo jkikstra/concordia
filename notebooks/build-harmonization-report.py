@@ -40,8 +40,8 @@ from concordia.utils import RegionMapping
 pio.templates.default = "ggplot2"
 
 # %%
-version_old = "2024-03-21"
-version = "2024-04-25"
+version_old = "2024-05-14"
+version = "2024-05-14-v2"
 
 # %%
 settings = Settings.from_config(version=version)
@@ -294,7 +294,7 @@ def plot_harm(sel, scenario=None, levels=["gas", "sector", "region"], useplotly=
 
 # %%
 plot_harm(
-    isin(region="CHA", sector="Energy Sector", gas="CH4"),
+    isin(region="CHN", sector="Energy Sector", gas="CH4"),
     scenario="RESCUE-Tier1-Direct-*-PkBudg500-OAE_on",
 )
 

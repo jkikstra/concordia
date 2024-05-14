@@ -70,7 +70,7 @@ ur = set_openscm_registry_as_default()
 #
 
 # %%
-settings = Settings.from_config(version="2024-04-25")
+settings = Settings.from_config(version="2024-05-14-v2")
 
 # %%
 fh = logging.FileHandler(settings.out_path / f"debug_{settings.version}.log", mode="w")
@@ -197,11 +197,10 @@ def patch_model_variable(var):
 with ur.context("AR4GWP100"):
     model = (
         pd.read_csv(
-            settings.scenario_path / "REMIND-MAgPIE-CEDS-RESCUE-Tier1-2024-04-25.csv",
+            settings.scenario_path / "pretend_REMIND_is_MESSAGE.csv",
             index_col=list(range(5)),
-            sep=";",
-        )
-        .drop(["Unnamed: 21"], axis=1)
+            sep=",",
+        )# .drop(["Unnamed: 21"], axis=1)
         .rename(
             index={
                 "Mt CO2-equiv/yr": "Mt CO2eq/yr",
