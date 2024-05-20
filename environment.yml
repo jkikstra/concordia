@@ -6,6 +6,7 @@ dependencies:
 - cattrs
 - pandas >=1.1
 - pandas-indexing
+- openscm-units
 - pyyaml
 - xlrd >=2.0
 - openpyxl
@@ -41,7 +42,7 @@ dependencies:
 # raster generation
 - rasterio
 - rioxarray
-- geoutils >=0.1
+- geoutils >=0.1.2 # Added that version lower-bound since they introduced a python 3.11 upper bound then, limiting our environment to python 3.11 effectively
 - cartopy
 - geopandas
 - pyreadr
