@@ -100,9 +100,7 @@ logging.getLogger("flox").setLevel("WARNING")
 #
 
 # %%
-variabledefs = VariableDefinitions.from_csv(
-    settings.data_path / "variabledefs-region.csv"
-)
+variabledefs = VariableDefinitions.from_csv(settings.variabledefs_path)
 variabledefs.data.tail()
 
 # %% [markdown]
