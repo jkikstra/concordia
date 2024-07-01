@@ -9,6 +9,7 @@ from typing import Any
 import cf_xarray  # noqa
 import dask
 import dateutil
+import numpy as np
 import pandas as pd
 import xarray as xr
 from cattrs import structure, transform_error
@@ -70,7 +71,6 @@ ATTRS = {
         "units": "degrees_north",
         "long_name": "latitude",
         "axis": "Y",
-        "bounds": "lat_bnds",
         "realtopology": "linear",
         "standard_name": "latitude",
     },
@@ -78,7 +78,6 @@ ATTRS = {
         "units": "degrees_east",
         "long_name": "longitude",
         "axis": "X",
-        "bounds": "lon_bnds",
         "modulo": 360.0,
         "realtopology": "circular",
         "standard_name": "longitude",
@@ -87,7 +86,6 @@ ATTRS = {
     "time": {
         "long_name": "time",
         "axis": "T",
-        "bounds": "time_bnds",
         "realtopology": "linear",
         "standard_name": "time",
     },
@@ -146,7 +144,11 @@ def convert_to_datetime(da: xr.DataArray) -> xr.DataArray:
             time=xr.IndexVariable(
                 "time",
                 dates,
-                encoding=dict(units="days since 2015-1-1 0:0:0", calendar="noleap"),
+                encoding=dict(
+                    units="days since 2015-1-1 0:0:0",
+                    calendar="noleap",
+                    dtype=np.dtype(float),
+                ),
             )
         )
         .transpose("time", ...)
@@ -209,10 +211,10 @@ def set_sector_encoding(da):
     return da
 
 
-def replace_attrs(da, attrs):
+def update_attrs(da, attrs):
     for k, v in attrs.items():
         if k in da:
-            da[k].attrs = v
+            da[k].attrs.update(v)
     return da
 
 
@@ -222,8 +224,21 @@ def clean_var(da, name, gas, handle):
         "cell_methods": "time: mean",
         "long_name": f"{gas} {handle} emissions",
     }
-    da[name].attrs = attrs
+    da[name].attrs.update(attrs)
     return da
+
+
+def set_var_encoding(ds, name):
+    da = ds[name]
+    da.encoding.update(
+        {
+            "zlib": True,
+            "complevel": 2,
+            "chunksizes": tuple((dict(da.sizes) | dict(time=1)).values()),
+            "_FillValue": da.dtype.type(1e20),
+        }
+    )
+    return ds
 
 
 def ds_attrs(name, model, scenario, version, date):
@@ -267,8 +282,9 @@ class DressUp:
                 SECTOR_ORDERING_GAS.get(name, SECTOR_ORDERING_DEFAULT.get(rest)),
             )
             .pipe(add_sector_mapping)
+            .pipe(set_var_encoding, name)
             .pipe(set_sector_encoding)
-            .pipe(replace_attrs, ATTRS)
+            .pipe(update_attrs, ATTRS)
             .pipe(clean_var, name, gas, handle)
             .assign_attrs(ds_attrs(name, model, scenario, self.version, self.date))
         )
