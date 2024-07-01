@@ -27,7 +27,7 @@ CH4,Residential Commercial Other,Mt CH4/yr,TRUE,country,anthro_CH4.nc,CH4_em_ant
 CH4,Solvents Production and Application,Mt CH4/yr,TRUE,country,anthro_CH4.nc,CH4_em_anthro,SLV
 CH4,Transportation Sector,Mt CH4/yr,TRUE,country,anthro_CH4.nc,CH4_em_anthro,TRA
 CH4,Waste,Mt CH4/yr,TRUE,country,anthro_CH4.nc,CH4_em_anthro,WST
-CO2,Aggregate - Agriculture and LUC,Mt CO2/yr,TRUE,global,,,
+CO2,Deforestation and other LUC,Mt CO2/yr,TRUE,global,CDR_CO2.nc,CO2_em_anthro,A/R
 CO2,Agriculture,Mt CO2/yr,FALSE,global,anthro_CO2.nc,CO2_em_anthro,AGR
 CO2,Aircraft,Mt CO2/yr,TRUE,global,aircraft_CO2.nc,CO2_em_AIR_anthro,AIR
 CO2,Energy Sector|Modelled,Mt CO2/yr,TRUE,country,anthro_CO2.nc,CO2_em_anthro,ENE
@@ -44,7 +44,7 @@ CO2,CDR DACCS,Mt CO2/yr,TRUE,country,CDR_CO2.nc,CO2_em_anthro,DAC_CDR
 CO2,CDR EW,Mt CO2/yr,TRUE,country,,,
 CO2,CDR Industry,Mt CO2/yr,TRUE,country,CDR_CO2.nc,CO2_em_anthro,IND_CDR
 CO2,CDR OAE Uptake Ocean,Mt CO2/yr,TRUE,region,CDR_CO2.nc,CO2_em_anthro,OAE_CDR
-CO2,Ocean Alkalinity,,FALSE,region,CDR_CO2.nc,CO2_em_anthro,OAE_CDR
+CO2,Alkalinity Addition,Mt ?/yr,FALSE,region,CDR_CO2.nc,CO2_em_anthro,OAE_CDR
 CO,Agricultural Waste Burning,Mt CO/yr,TRUE,country,openburning_CO.nc,CO_em_openburning,AWB
 CO,Agriculture,Mt CO/yr,TRUE,country,anthro_CO.nc,CO_em_anthro,AGR
 CO,Aircraft,Mt CO/yr,TRUE,global,aircraft_CO.nc,CO_em_AIR_anthro,AIR
