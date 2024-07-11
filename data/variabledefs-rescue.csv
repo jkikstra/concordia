@@ -41,7 +41,7 @@ CO2,Waste,Mt CO2/yr,TRUE,country,anthro_CO2.nc,CO2_em_anthro,WST
 CO2,CDR Afforestation,Mt CO2/yr,TRUE,global,CDR_CO2.nc,CO2_em_anthro,A/R
 CO2,CDR BECCS,Mt CO2/yr,TRUE,region,CDR_CO2.nc,CO2_em_anthro,BECCS
 CO2,CDR DACCS,Mt CO2/yr,TRUE,country,CDR_CO2.nc,CO2_em_anthro,DAC_CDR
-CO2,CDR EW,Mt CO2/yr,TRUE,country,,,
+CO2,CDR EW,Mt CO2/yr,TRUE,region,CDR_CO2.nc,CO2_em_anthro,EW_CDR
 CO2,CDR Industry,Mt CO2/yr,TRUE,country,CDR_CO2.nc,CO2_em_anthro,IND_CDR
 CO2,CDR OAE Uptake Ocean,Mt CO2/yr,TRUE,region,CDR_CO2.nc,CO2_em_anthro,OAE_CDR
 CO2,Alkalinity Addition,Mt ?/yr,FALSE,region,CDR_CO2.nc,CO2_em_anthro,OAE_CDR
