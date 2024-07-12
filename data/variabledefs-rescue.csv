@@ -1,4 +1,4 @@
-gas,sector,unit,include_in_total,griddinglevel,proxy_path,proxy_name,proxy_sector
+gas,sector,unit,include_in_total,griddinglevel,proxy_path,output_variable,proxy_sector
 BC,Agricultural Waste Burning,Mt BC/yr,TRUE,country,openburning_BC.nc,BC_em_openburning,AWB
 BC,Agriculture,Mt BC/yr,TRUE,country,anthro_BC.nc,BC_em_anthro,AGR
 BC,Aircraft,Mt BC/yr,TRUE,global,aircraft_BC.nc,BC_em_AIR_anthro,AIR
