@@ -13,12 +13,15 @@
 # ---
 
 # %%
+import geopandas as gpd
 import geoutils as gu
+import numpy as np
 import ptolemy as pt
 import pyogrio as pio
 import rasterio as rio
 import xarray as xr
 from ptolemy.raster import IndexRaster
+from pyogrio import read_dataframe
 from scipy.ndimage import gaussian_filter
 
 from concordia.rescue.proxy import ReportMissingCountries, gu_to_xarray, plot_map
@@ -335,6 +338,61 @@ beccs_potential = cmip6_beccs_potential()
 plot_map(beccs_potential, "BECCS Potential")
 
 # %% [markdown]
+# ## Non-urban land mask
+
+# %%
+landmask = (
+    xr.open_dataarray(settings.gridding_path / "ssp_comb_countrymask.nc")
+    .sum("iso")
+    .clip(max=1)
+)
+
+# %%
+land = read_dataframe(settings.gridding_path / "non_ceds_input" / "ne_10m_land")
+years = [2020, 2100]
+
+
+def rasterize_nonurbanland(year, buffer="25km"):
+    urban = read_dataframe(
+        settings.gridding_path
+        / "non-urban_land"
+        / "Export_25kmbuffer"
+        / f"Buffer_{buffer}_Urb_Boundary_{year}_SSP.shp"
+    )
+    nonurban = gpd.GeoSeries(
+        [land.to_crs(urban.crs).unary_union.difference(urban.unary_union)],
+        crs=urban.crs,
+    )
+
+    shape = (landmask.sizes["lat"], landmask.sizes["lon"])
+    coords = {"lat": landmask.coords["lat"], "lon": landmask.coords["lon"]}
+    raster = xr.DataArray(
+        pt.raster.rasterize_pctcover(
+            nonurban.to_crs(epsg=4326).iat[0],
+            pt.raster.transform_from_latlon(coords["lat"], coords["lon"]),
+            shape,
+        ),
+        dims=["lat", "lon"],
+        coords=coords,
+    ).where(landmask, 0)
+    return raster
+
+
+nonurb2020 = rasterize_nonurbanland(2020)
+nonurb2100 = rasterize_nonurbanland(2100)
+
+
+# %%
+alpha = xr.DataArray(
+    np.linspace(0, 1, ind_co2_dimensions.sizes["year"]),
+    [ind_co2_dimensions.coords["year"]],
+)
+nonurban = (1 - alpha) * nonurb2020 + alpha * nonurb2100
+
+# %%
+plot_map(nonurban.sel(year=2080), title="Non-urban land")
+
+# %% [markdown]
 # # Combine and Save
 #
 
@@ -344,10 +402,12 @@ da = (
         [
             ind_cdr,
             oae_cdr,
-            # oae_co2, # Part of other emissions
             dac_cdr,
             (beccs_potential * ind_co2_dimensions).assign_coords(sector="BECCS"),
             (ar_potential * ind_co2_dimensions).assign_coords(sector="A/R"),
+            (nonurban * ind_co2_dimensions).assign_coords(
+                sector="NONURB"
+            ),  # Sort of a fallback
         ],
         dim="sector",
     )

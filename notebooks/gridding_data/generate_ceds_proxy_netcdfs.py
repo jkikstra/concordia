@@ -208,6 +208,7 @@ def mask_to_indexraster(mask):
 
 def gen_indexraster():
     mask = gen_mask()
+    mask.to_netcdf(settings.gridding_path / "ssp_comb_countrymask.nc")
     mask = add_eez_to_mask(mask)
     mask = recombine_mask(mask, include_world=False)
     indexraster = mask_to_indexraster(mask)
