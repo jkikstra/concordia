@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 @dask.delayed
 def verify_global_values(
     aggregated, tabular, output_variable, index, abstol=1e-8, reltol=1e-6
-) -> pd.DataFrame:
+) -> pd.DataFrame | None:
     tab_df = tabular.groupby(level=index).sum().unstack("year")
     grid_df = aggregated.to_series().groupby(level=index).sum().unstack("year")
     grid_df, tab_df = grid_df.align(tab_df, join="inner")
@@ -91,7 +91,7 @@ class Gridded:
     def to_netcdf(
         self,
         template_fn: str,
-        callback: Callable = None,
+        callback: Callable | None = None,
         encoding_kwargs: dict | None = None,
         directory: Pathy | None = None,
         compute: bool = True,

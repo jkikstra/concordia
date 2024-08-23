@@ -83,7 +83,7 @@ class WorkflowDriver:
     indexraster_region: pt.IndexRaster
 
     variabledefs: VariableDefinitions
-    harm_overrides: pd.DataFrame
+    harm_overrides: pd.Series[str]
     settings: Settings
 
     history_aggregated: GlobalRegional = GlobalRegional()
@@ -187,7 +187,7 @@ class WorkflowDriver:
 
     def harmdown_globallevel(
         self, variabledefs: VariableDefinitions | None = None
-    ) -> pd.DataFrame:
+    ) -> pd.DataFrame | None:
         if variabledefs is None:
             variabledefs = self.variabledefs
 
@@ -225,7 +225,7 @@ class WorkflowDriver:
 
     def harmdown_regionlevel(
         self, variabledefs: VariableDefinitions | None = None
-    ) -> pd.DataFrame:
+    ) -> pd.DataFrame | None:
         if variabledefs is None:
             variabledefs = self.variabledefs
         variabledefs = variabledefs.regionlevel
@@ -262,7 +262,7 @@ class WorkflowDriver:
 
     def harmdown_countrylevel(
         self, variabledefs: VariableDefinitions | None = None
-    ) -> pd.DataFrame:
+    ) -> pd.DataFrame | None:
         if variabledefs is None:
             variabledefs = self.variabledefs
 
