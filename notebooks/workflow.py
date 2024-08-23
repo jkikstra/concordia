@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.1
+#       jupytext_version: 1.16.2
 #   kernelspec:
 #     display_name: concordia
 #     language: python
@@ -70,7 +70,7 @@ ur = set_openscm_registry_as_default()
 #
 
 # %%
-settings = Settings.from_config(version="2024-04-25")
+settings = Settings.from_config(version="2024-08-19")
 
 # %%
 fh = logging.FileHandler(settings.out_path / f"debug_{settings.version}.log", mode="w")
@@ -207,7 +207,7 @@ def patch_model_variable(var):
 with ur.context("AR4GWP100"):
     model = (
         pd.read_csv(
-            settings.scenario_path / "REMIND-MAgPIE-CEDS-RESCUE-Tier1-2024-04-25.csv",
+            settings.scenario_path / "REMIND-MAgPIE-CEDS-RESCUE-Tier1-2024-08-19.csv",
             index_col=list(range(5)),
             sep=";",
         )
@@ -230,6 +230,10 @@ with ur.context("AR4GWP100"):
         )
     )
 model.pix
+
+# %%
+#
+model = model.fillna(0)
 
 # %%
 harm_overrides = pd.read_excel(
@@ -308,9 +312,12 @@ gdp = semijoin(
 
 # %%
 # Test with one scenario only
-one_scenario = True
+one_scenario = False
+only_direct = True
 if one_scenario:
     model = model.loc[ismatch(scenario="RESCUE-Tier1-Direct-*-PkBudg500-OAE_on")]
+elif only_direct:
+    model = model.loc[ismatch(scenario="RESCUE-Tier1-Direct-*")]
 logger().info(
     "Running with %d scenario(s):\n- %s",
     len(model.pix.unique(["model", "scenario"])),
