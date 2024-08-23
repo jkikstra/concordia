@@ -25,6 +25,7 @@ country_combinations:
   srb_ksv: ["srb", "srb (kosovo)"]
 
 variable_template: "CEDS+|9+ Sectors|Emissions|{gas}|{sector}"
+alkalinity_variable: "RESCUE|OAE|Alkalinity Addition"
 base_year: 2020
 
 luc_sectors:

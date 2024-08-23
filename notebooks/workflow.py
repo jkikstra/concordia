@@ -192,7 +192,7 @@ hist.head()
 
 # %%
 def patch_model_variable(var):
-    if var.endswith("|Alkalinity Addition"):
+    if var == settings.alkalinity_variable:
         var = settings.variable_template.format(gas="CO2", sector="Alkalinity Addition")
     elif var.endswith("|CO2|Aggregate - Agriculture and LUC"):
         var = var.replace(
@@ -405,13 +405,29 @@ gridded.proxy.weight.regional.sel(
     sector="Transportation Sector", year=2050, gas="CO2"
 ).compute().to_pandas().plot.hist(bins=100, logx=True, logy=True)
 
+
 # %% [markdown]
 # ## Export harmonized scenarios
 #
 
+
 # %%
-data = workflow.harmonized_data.add_totals().to_iamc(
-    settings.variable_template, hist_scenario="Synthetic (GFED/CEDS/Global)"
+def rename_alkalinity_addition(df):
+    return df.rename(
+        lambda v: v.replace(
+            settings.variable_template.format(gas="CO2", sector="Alkalinity Addition"),
+            settings.alkalinity_variable,
+        ),
+        level="variable",
+    )
+
+
+# %%
+data = (
+    workflow.harmonized_data.add_totals()
+    .to_iamc(settings.variable_template, hist_scenario="Synthetic (GFED/CEDS/Global)")
+    .pipe(rename_alkalinity_addition)
+    .rename_axis(index=str.capitalize)
 )
 data.to_csv(version_path / f"harmonization-{settings.version}.csv")
 
@@ -436,6 +452,8 @@ data = (
     .aggregate_subsectors()
     .split_hfc(hfc_distribution)
     .to_iamc(settings.variable_template, hist_scenario="Synthetic (GFED/CEDS/Global)")
+    .pipe(rename_alkalinity_addition)
+    .rename_axis(index=str.capitalize)
 )
 data.to_csv(version_path / f"harmonization-{settings.version}-splithfc.csv")
 
