@@ -46,7 +46,7 @@ from concordia import (
 )
 from concordia.rescue import utils as rescue_utils
 from concordia.settings import Settings
-from concordia.utils import MultiLineFormatter
+from concordia.utils import MultiLineFormatter, extend_overrides
 from concordia.workflow import WorkflowDriver
 
 
@@ -238,6 +238,28 @@ harm_overrides = pd.read_excel(
 ).method
 harm_overrides
 
+# %%
+model_baseyear_iszero = (
+    model.loc[ismatch(sector="* Burning"), settings.base_year]
+    .groupby(["gas", "sector", "region"])
+    .sum()
+    == 0
+)
+model_baseyear_iszero = model_baseyear_iszero.index[model_baseyear_iszero]
+
+# %%
+harm_overrides = extend_overrides(
+    harm_overrides,
+    "constant_ratio",
+    sector=[
+        f"{sec} Burning"
+        for sec in ["Agricultural Waste", "Forest", "Grassland", "Peat"]
+    ],
+    variables=variabledefs.data.index,
+    regionmappings=regionmappings,
+    model_baseyear=model[settings.base_year],
+)
+
 # %% [markdown]
 # ## Prepare GDP proxy
 #
@@ -369,11 +391,20 @@ downscaled = workflow.harmonize_and_downscale()
 # `workflow.grid_proxy` returns an iterator of the gridded scenarios. We are looking at the first one in depth.
 
 # %%
-gridded = next(workflow.grid_proxy("CO2_em_anthro", downscaled))
+gridded = next(workflow.grid_proxy("CO2_em_anthro"))
 
 # %%
 ds = gridded.prepare_dataset(callback=rescue_utils.DressUp(version=settings.version))
 ds
+
+# %%
+gridded.to_netcdf(
+    template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}-{version}_{grid_label}_201501-210012.nc".format(
+        **rescue_utils.DS_ATTRS | {"version": settings.version}
+    ),
+    callback=rescue_utils.DressUp(version=settings.version),
+    directory=version_path,
+)
 
 # %%
 ds["CO2_em_anthro"].sel(sector="CDR OAE", time="2015-09-16").plot()

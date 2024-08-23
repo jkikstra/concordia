@@ -323,6 +323,40 @@ class RegionMapping:
         )
 
 
+def extend_overrides(
+    overrides: pd.Series[str],
+    method: str,
+    variables: pd.MultiIndex,
+    regionmappings: dict[str, RegionMapping],
+    gas: Sequence[str] | None = None,
+    sector: Sequence[str] | None = None,
+    model_baseyear: pd.DataFrame | None = None,
+) -> pd.Series[str]:
+    regions: pd.Index[str] = pd.Index(
+        np.concatenate([rm.data.unique() for rm in regionmappings.values()]),
+        name="region",
+    ).unique()
+    levels = [regions]
+    if gas is not None:
+        levels.append(pd.Index(gas, name="gas"))
+    if sector is not None:
+        levels.append(pd.Index(sector, name="sector"))
+    methods = pd.Series(
+        method, pd.MultiIndex.from_product(levels).join(variables, how="inner")
+    )
+
+    if model_baseyear is not None:
+        model_iszero = (
+            model_baseyear.pix.semijoin(methods.index, how="inner")
+            .groupby(methods.index.names)
+            .sum()
+            == 0
+        )
+        methods = methods.pix.antijoin(model_iszero.index[model_iszero])
+
+    return concat([overrides, methods.pix.antijoin(overrides.index).rename("method")])
+
+
 def aggregate_subsectors(df):
     subsectors = (
         df.pix.unique("sector")
