@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 
 @dask.delayed
 def verify_global_values(
-    aggregated, tabular, proxy_name, index, abstol=1e-8, reltol=1e-6
-) -> pd.DataFrame:
+    aggregated, tabular, output_variable, index, abstol=1e-8, reltol=1e-6
+) -> pd.DataFrame | None:
     tab_df = tabular.groupby(level=index).sum().unstack("year")
     grid_df = aggregated.to_series().groupby(level=index).sum().unstack("year")
     grid_df, tab_df = grid_df.align(tab_df, join="inner")
@@ -31,13 +31,13 @@ def verify_global_values(
     if (absdiff >= abstol + reltol * abs(tab_df)).any(axis=None):
         reldiff = (absdiff / tab_df).where(abs(tab_df) > 0, 0)
         logger.warning(
-            f"Yearly global totals relative values between grids and global data for ({proxy_name}) not within {reltol}:\n"
+            f"Yearly global totals relative values between grids and global data for ({output_variable}) not within {reltol}:\n"
             f"{reldiff}"
         )
         return reldiff
     else:
         logger.info(
-            f"Yearly global totals relative values between grids and global data for ({proxy_name}) within tolerance"
+            f"Yearly global totals relative values between grids and global data for ({output_variable}) within tolerance"
         )
         return
 
@@ -91,7 +91,7 @@ class Gridded:
     def to_netcdf(
         self,
         template_fn: str,
-        callback: Callable = None,
+        callback: Callable | None = None,
         encoding_kwargs: dict | None = None,
         directory: Pathy | None = None,
         compute: bool = True,
@@ -127,7 +127,7 @@ class Proxy:
             df = df.data
         if proxy_dir is None:
             proxy_dir = Path.getcwd()
-        name = df["proxy_name"].unique().item()
+        name = df["output_variable"].unique().item()
         proxy = xr.concat(
             [
                 xr.open_dataarray(

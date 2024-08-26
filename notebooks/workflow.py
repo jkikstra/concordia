@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.1
+#       jupytext_version: 1.16.2
 #   kernelspec:
 #     display_name: concordia
 #     language: python
@@ -46,7 +46,7 @@ from concordia import (
 )
 from concordia.rescue import utils as rescue_utils
 from concordia.settings import Settings
-from concordia.utils import MultiLineFormatter
+from concordia.utils import MultiLineFormatter, extend_overrides
 from concordia.workflow import WorkflowDriver
 
 
@@ -70,7 +70,7 @@ ur = set_openscm_registry_as_default()
 #
 
 # %%
-settings = Settings.from_config(version="2024-04-25")
+settings = Settings.from_config(version="2024-08-19")
 
 # %%
 fh = logging.FileHandler(settings.out_path / f"debug_{settings.version}.log", mode="w")
@@ -100,9 +100,7 @@ logging.getLogger("flox").setLevel("WARNING")
 #
 
 # %%
-variabledefs = VariableDefinitions.from_csv(
-    settings.data_path / "variabledefs-region.csv"
-)
+variabledefs = VariableDefinitions.from_csv(settings.variabledefs_path)
 variabledefs.data.tail()
 
 # %% [markdown]
@@ -145,11 +143,17 @@ hist_ceds = (
 # %%
 def patch_global_hist_variable(var):
     var = var.removesuffix("|Unharmonized")
-    return (
-        var
-        if any(var.endswith(s) for s in ("CDR Afforestation", "Agriculture and LUC"))
-        else f"{var}|Total"
-    )
+    if any(
+        var.endswith(s)
+        for s in ("|Aggregate - Agriculture and LUC", "|CDR Afforestation")
+    ):
+        # TODO upstream into `global_trajectories.xlsx` once this is on main
+        var = var.replace(
+            "|Aggregate - Agriculture and LUC", "|Deforestation and other LUC"
+        )
+        return var
+
+    return f"{var}|Total"
 
 
 hist_global = (
@@ -188,7 +192,13 @@ hist.head()
 
 # %%
 def patch_model_variable(var):
-    if var.endswith("|Energy Sector"):
+    if var == settings.alkalinity_variable:
+        var = settings.variable_template.format(gas="CO2", sector="Alkalinity Addition")
+    elif var.endswith("|CO2|Aggregate - Agriculture and LUC"):
+        var = var.replace(
+            "|Aggregate - Agriculture and LUC", "|Deforestation and other LUC"
+        )
+    elif var.endswith("|Energy Sector"):
         var += "|Modelled"
     return var
 
@@ -197,7 +207,7 @@ def patch_model_variable(var):
 with ur.context("AR4GWP100"):
     model = (
         pd.read_csv(
-            settings.scenario_path / "REMIND-MAgPIE-CEDS-RESCUE-Tier1-2024-04-25.csv",
+            settings.scenario_path / "REMIND-MAgPIE-CEDS-RESCUE-Tier1-2024-08-19.csv",
             index_col=list(range(5)),
             sep=";",
         )
@@ -222,11 +232,37 @@ with ur.context("AR4GWP100"):
 model.pix
 
 # %%
+#
+model = model.fillna(0)
+
+# %%
 harm_overrides = pd.read_excel(
     settings.scenario_path / "harmonization_overrides.xlsx",
     index_col=list(range(3)),
 ).method
 harm_overrides
+
+# %%
+model_baseyear_iszero = (
+    model.loc[ismatch(sector="* Burning"), settings.base_year]
+    .groupby(["gas", "sector", "region"])
+    .sum()
+    == 0
+)
+model_baseyear_iszero = model_baseyear_iszero.index[model_baseyear_iszero]
+
+# %%
+harm_overrides = extend_overrides(
+    harm_overrides,
+    "constant_ratio",
+    sector=[
+        f"{sec} Burning"
+        for sec in ["Agricultural Waste", "Forest", "Grassland", "Peat"]
+    ],
+    variables=variabledefs.data.index,
+    regionmappings=regionmappings,
+    model_baseyear=model[settings.base_year],
+)
 
 # %% [markdown]
 # ## Prepare GDP proxy
@@ -276,9 +312,12 @@ gdp = semijoin(
 
 # %%
 # Test with one scenario only
-one_scenario = True
+one_scenario = False
+only_direct = True
 if one_scenario:
     model = model.loc[ismatch(scenario="RESCUE-Tier1-Direct-*-PkBudg500-OAE_on")]
+elif only_direct:
+    model = model.loc[ismatch(scenario="RESCUE-Tier1-Direct-*")]
 logger().info(
     "Running with %d scenario(s):\n- %s",
     len(model.pix.unique(["model", "scenario"])),
@@ -359,11 +398,20 @@ downscaled = workflow.harmonize_and_downscale()
 # `workflow.grid_proxy` returns an iterator of the gridded scenarios. We are looking at the first one in depth.
 
 # %%
-gridded = next(workflow.grid_proxy("CO2_em_anthro", downscaled))
+gridded = next(workflow.grid_proxy("CO2_em_anthro"))
 
 # %%
 ds = gridded.prepare_dataset(callback=rescue_utils.DressUp(version=settings.version))
 ds
+
+# %%
+gridded.to_netcdf(
+    template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}-{version}_{grid_label}_201501-210012.nc".format(
+        **rescue_utils.DS_ATTRS | {"version": settings.version}
+    ),
+    callback=rescue_utils.DressUp(version=settings.version),
+    directory=version_path,
+)
 
 # %%
 ds["CO2_em_anthro"].sel(sector="CDR OAE", time="2015-09-16").plot()
@@ -395,13 +443,29 @@ gridded.proxy.weight.regional.sel(
     sector="Transportation Sector", year=2050, gas="CO2"
 ).compute().to_pandas().plot.hist(bins=100, logx=True, logy=True)
 
+
 # %% [markdown]
 # ## Export harmonized scenarios
 #
 
+
 # %%
-data = workflow.harmonized_data.add_totals().to_iamc(
-    settings.variable_template, hist_scenario="Synthetic (GFED/CEDS/Global)"
+def rename_alkalinity_addition(df):
+    return df.rename(
+        lambda v: v.replace(
+            settings.variable_template.format(gas="CO2", sector="Alkalinity Addition"),
+            settings.alkalinity_variable,
+        ),
+        level="variable",
+    )
+
+
+# %%
+data = (
+    workflow.harmonized_data.add_totals()
+    .to_iamc(settings.variable_template, hist_scenario="Synthetic (GFED/CEDS/Global)")
+    .pipe(rename_alkalinity_addition)
+    .rename_axis(index=str.capitalize)
 )
 data.to_csv(version_path / f"harmonization-{settings.version}.csv")
 
@@ -426,6 +490,8 @@ data = (
     .aggregate_subsectors()
     .split_hfc(hfc_distribution)
     .to_iamc(settings.variable_template, hist_scenario="Synthetic (GFED/CEDS/Global)")
+    .pipe(rename_alkalinity_addition)
+    .rename_axis(index=str.capitalize)
 )
 data.to_csv(version_path / f"harmonization-{settings.version}-splithfc.csv")
 

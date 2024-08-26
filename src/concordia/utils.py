@@ -58,17 +58,17 @@ class VariableDefinitions:
             ]
         )
 
-    def for_proxy(self, proxy_name: str | float) -> Self:
+    def for_proxy(self, output_variable: str | float) -> Self:
         data = self.data.loc[
-            self.data.proxy_name.isna()
-            if isna(proxy_name)
-            else (self.data.proxy_name == proxy_name)
+            self.data.output_variable.isna()
+            if isna(output_variable)
+            else (self.data.output_variable == output_variable)
         ]
         return self.__class__(data)
 
     @property
     def proxies(self):
-        return pd.Index(self.data["proxy_name"].unique()).dropna()
+        return pd.Index(self.data["output_variable"].unique()).dropna()
 
     @property
     def downscaling(self):
@@ -321,6 +321,40 @@ class RegionMapping:
             )
             .agg(agg_func)
         )
+
+
+def extend_overrides(
+    overrides: pd.Series[str],
+    method: str,
+    variables: pd.MultiIndex,
+    regionmappings: dict[str, RegionMapping],
+    gas: Sequence[str] | None = None,
+    sector: Sequence[str] | None = None,
+    model_baseyear: pd.DataFrame | None = None,
+) -> pd.Series[str]:
+    regions: pd.Index[str] = pd.Index(
+        np.concatenate([rm.data.unique() for rm in regionmappings.values()]),
+        name="region",
+    ).unique()
+    levels = [regions]
+    if gas is not None:
+        levels.append(pd.Index(gas, name="gas"))
+    if sector is not None:
+        levels.append(pd.Index(sector, name="sector"))
+    methods = pd.Series(
+        method, pd.MultiIndex.from_product(levels).join(variables, how="inner")
+    )
+
+    if model_baseyear is not None:
+        model_iszero = (
+            model_baseyear.pix.semijoin(methods.index, how="inner")
+            .groupby(methods.index.names)
+            .sum()
+            == 0
+        )
+        methods = methods.pix.antijoin(model_iszero.index[model_iszero])
+
+    return concat([overrides, methods.pix.antijoin(overrides.index).rename("method")])
 
 
 def aggregate_subsectors(df):

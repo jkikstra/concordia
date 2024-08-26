@@ -28,6 +28,7 @@ class Settings:
     regionmappings: dict[str, dict[str, str]]
     country_combinations: dict[str, list[str]]
     variable_template: str
+    alkalinity_variable: str
 
     encoding: dict
 
@@ -37,6 +38,8 @@ class Settings:
     out_path: Path
     # where to load data from
     data_path: Path
+    # where to load variabledefinitions from
+    variabledefs_path: Path
     # where historical data is stored
     history_path: Path
     # where scenario data is stored
