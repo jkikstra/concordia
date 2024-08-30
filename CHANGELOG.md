@@ -1,5 +1,43 @@
 # Emissions
 
+## 2024-08-19
+
+### REMIND-MAgPIE
+- MAgPIE
+  - Update model version from v4.7.1 to v4.8.0
+  - Use of raw land-use change emissions to inform the CO2 budget (see below).
+- REMIND
+  - In non-overshoot 1.5° scenarios (`PkBudg500-OAE_off`, `PkBudg500-OAE_off`)
+    allow the carbon price to slowly decrease after the peak again. This was
+    necessary to attain model convergence, while ensuring that cumulative
+    emissions in the year of emissions peaking (typically 2045) and in 2100 are
+    equal. This has the consequence that - after a short period of net negative
+    CO2 emissions after the peak - CO2 emissions will rise again slowly in the
+    second half of the century.
+- Update CEDS reporting
+  - Change in land-use change (LUC) emissions representation. In previous
+    versions LUC CO2 emissions (positive gross emissions
+    `CEDS+|9+ Sectors|Emissions|CO2|Deforestation and other LUC` and negative
+    afforestation CDR `CEDS+|9+ Sectors|Emissions|CO2|CDR Afforestation`) were
+    based on a smoothed MAgPIE output variable, in which spikes in single time
+    steps were dampend via a low-pass filter function. This smoothing, however,
+    led to inconsistencies in the CO2 budget between scenarios with and without
+    overshoot. Therefore, in this release version the raw LUC emissions are
+    used instead.
+  - Rename `CEDS+|9+ Sectors|Emissions|CO2|Aggregate - Agriculture and LUC` to
+    `CEDS+|9+ Sectors|Emissions|CO2|Deforestation and other LUC`. Please note
+    that for other gases the original sector `Aggregate - Agriculture and LUC`
+    was kept, as it comprises the sub-sectors `Agriculture`,
+    `Agricultural Waste Burning`, `Forest Burning` and `Grassland Burning`,
+    which are not resolved for `CO2`.
+  - Remove positive OAE emissions (coming from burning synfuels originating
+    from limestone calcination) from the end-use sectors. Instead the variable
+    `CEDS+|9+ Sectors|Emissions|CO2|OAE Calcination Emissions` is now required
+    to be used by all ESMs to capture these positive emissions fromt the OAE
+    technology.
+  - Add total alkalinity additions to the ocean as variable
+    (`RESCUE|OAE|Alkalinity Addition` in `Tmol TA/yr`).
+
 ## 2024-04-25
 
 - gridded dataset for 2015-2100 in 10-year for 1 scenario:
