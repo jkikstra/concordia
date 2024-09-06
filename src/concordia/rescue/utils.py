@@ -25,7 +25,6 @@ SECTOR_RENAMES = {
     "Industrial Sector": "Industrial",
     "Transportation Sector": "Transportation",
     "Residential Commercial Other": "Residential, Commercial, Other",
-    "CDR OAE Uptake Ocean": "CDR OAE",
 }
 
 SECTOR_ORDERING_DEFAULT = {
@@ -57,12 +56,15 @@ SECTOR_ORDERING_GAS = {
         "Solvents Production and Application",
         "Waste",
         "International Shipping",
+        "Deforestation and other LUC",
+        "OAE Calcination Emissions",
         "CDR Afforestation",
         "CDR BECCS",
         "CDR DACCS",
         "CDR EW",
         "CDR Industry",
-        "CDR OAE",
+        "CDR OAE Uptake Ocean",
+        "Akalinity Addition",
     ],
 }
 

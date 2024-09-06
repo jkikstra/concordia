@@ -43,13 +43,10 @@ def verify_global_values(
 
 
 def sector_map(variables):
-    return dict(
-        zip(
-            variables["proxy_sector"],
-            variables.index.pix.project("sector")
-            .str.split("|")
-            .str[0],  # We assume that sector-splits fall back to the same sector
-        )
+    return xr.DataArray(
+        variables["proxy_sector"]
+        .groupby(variables.index.pix.project("sector").str.split("|").str[0])
+        .first()  # We assume that sector-splits fall back to the same sector
     )
 
 
@@ -128,29 +125,23 @@ class Proxy:
         if proxy_dir is None:
             proxy_dir = Path.getcwd()
         name = df["output_variable"].unique().item()
-        proxy = xr.concat(
-            [
-                xr.open_dataarray(
-                    proxy_dir / proxy_path, chunks="auto", engine="h5netcdf"
-                ).chunk({"lat": -1, "lon": -1})
-                for proxy_path in df["proxy_path"].unique()
-            ],
-            dim="sector",
-        )
-        sectors = proxy.indexes["sector"].map(sector_map(df))
-        if sectors.isna().any():
-            unused_sectors = proxy.indexes["sector"][sectors.isna()]
-            logger.warn(
-                "Proxy %s has unused sectors: %s",
-                name,
-                ", ".join(unused_sectors),
+        proxy = (
+            xr.concat(
+                [
+                    xr.open_dataarray(
+                        proxy_dir / proxy_path,
+                        chunks="auto",  # engine="h5netcdf"
+                    ).chunk({"lat": -1, "lon": -1})
+                    for proxy_path in df["proxy_path"].unique()
+                ],
+                dim="sector",
             )
-            proxy = proxy.sel(sector=~sectors.isna())
-            sectors = sectors.dropna()
-        proxy["sector"] = sectors
+            .rename(sector="proxy_sector")
+            .sel(proxy_sector=sector_map(df))
+            .drop_vars("proxy_sector")
+        )
 
         griddinglevels = set(df["griddinglevel"])
-
         if griddinglevels > (set(indexrasters) | {"global"}):
             raise ValueError(
                 f"Variables need indexrasters for all griddinglevels: {', '.join(griddinglevels)}"
