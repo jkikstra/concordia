@@ -368,10 +368,14 @@ class WorkflowDriver:
         downscaled, hist = downscaled.align(hist, join="left", axis=0)
         tabular = concat([hist, downscaled], axis=1)
 
-        # Convert unit to kg/s of the repective gas
+        # Convert unit to kg/s of the repective gas, and ?mol/yr to kmol/s
         tabular = tabular.pix.convert_unit(
-            lambda s: re.sub("(?:Gt|Mt|kt|t|kg) (.*)/yr", r"kg \1/s", s)
-        )
+            lambda s: re.sub(
+                "(?:T|G|M|k|)mol (.*)/yr",
+                r"kmol \1/s",
+                re.sub("(?:Gt|Mt|kt|t|kg) (.*)/yr", r"kg \1/s", s),
+            )
+        ).rename(index=lambda s: s.rsplit(" ", 1)[0] + " s-1", level="unit")
 
         for model, scenario in tabular.pix.unique(["model", "scenario"]):
             yield proxy.grid(tabular.loc[isin(model=model, scenario=scenario)])

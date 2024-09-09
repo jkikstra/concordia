@@ -141,6 +141,20 @@ class Proxy:
             .drop_vars("proxy_sector")
         )
 
+        if (
+            proxy.sizes["gas"] == 1
+            and len(df.pix.unique("gas")) == 1
+            and not (proxy.indexes["gas"] == df.pix.unique("gas")).all()
+        ):
+            logger.warn(
+                "Proxy built for gas %s is being used for gas %s (sectors: %s)",
+                proxy.indexes["gas"][0],
+                df.pix.unique("gas")[0],
+                ", ".join(proxy.indexes["sector"]),
+            )
+            # We overwrite the gas dimension of the proxy manually
+            proxy["gas"] = df.pix.unique("gas")
+
         griddinglevels = set(df["griddinglevel"])
         if griddinglevels > (set(indexrasters) | {"global"}):
             raise ValueError(
@@ -233,6 +247,7 @@ class Proxy:
 
     def grid(self, downscaled: pd.DataFrame) -> Gridded:
         scen = self.prepare_downscaled(downscaled)
+        (unit,) = downscaled.pix.unique("unit")
 
         def weighted(scen, weight):
             sectors = weight.indexes["sector"].intersection(scen.pix.unique("sector"))
@@ -255,4 +270,9 @@ class Proxy:
             if gridded_.size > 0:
                 gridded.append(self.proxy_as_flux * gridded_)
 
-        return Gridded(xr.concat(gridded, dim="sector"), downscaled, self, scen.attrs)
+        return Gridded(
+            xr.concat(gridded, dim="sector").assign_attrs(units=f"{unit} m-2"),
+            downscaled,
+            self,
+            scen.attrs,
+        )

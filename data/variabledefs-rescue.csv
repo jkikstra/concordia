@@ -45,7 +45,7 @@ CO2,CDR DACCS,Mt CO2/yr,TRUE,country,CDR_CO2.nc,CO2_em_anthro,DAC_CDR
 CO2,CDR EW,Mt CO2/yr,TRUE,region,CDR_CO2.nc,CO2_em_anthro,NONURB
 CO2,CDR Industry,Mt CO2/yr,TRUE,country,CDR_CO2.nc,CO2_em_anthro,IND_CDR
 CO2,CDR OAE Uptake Ocean,Mt CO2/yr,TRUE,region,CDR_CO2.nc,CO2_em_anthro,OAE_CDR
-CO2,Alkalinity Addition,Tmol TA/yr,FALSE,region,CDR_CO2.nc,CO2_em_anthro,OAE_CDR
+TA,Alkalinity Addition,Tmol TA/yr,FALSE,region,CDR_CO2.nc,TA_em_anthro,OAE_CDR
 CO,Agricultural Waste Burning,Mt CO/yr,TRUE,country,openburning_CO.nc,CO_em_openburning,AWB
 CO,Agriculture,Mt CO/yr,TRUE,country,anthro_CO.nc,CO_em_anthro,AGR
 CO,Aircraft,Mt CO/yr,TRUE,global,aircraft_CO.nc,CO_em_AIR_anthro,AIR

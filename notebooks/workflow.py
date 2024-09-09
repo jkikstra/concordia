@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.2
+#       jupytext_version: 1.16.4
 #   kernelspec:
 #     display_name: concordia
 #     language: python
@@ -193,7 +193,7 @@ hist.head()
 # %%
 def patch_model_variable(var):
     if var == settings.alkalinity_variable:
-        var = settings.variable_template.format(gas="CO2", sector="Alkalinity Addition")
+        var = settings.variable_template.format(gas="TA", sector="Alkalinity Addition")
     elif var.endswith("|CO2|Aggregate - Agriculture and LUC"):
         var = var.replace(
             "|Aggregate - Agriculture and LUC", "|Deforestation and other LUC"
@@ -330,7 +330,7 @@ client = Client()
 client.forward_logging()
 
 # %%
-dask.distributed.utils_perf.disable_gc_diagnosis()
+dask.distributed.gc.disable_gc_diagnosis()
 
 # %%
 (model_name,) = model.pix.unique("model")
@@ -453,7 +453,7 @@ gridded.proxy.weight.regional.sel(
 def rename_alkalinity_addition(df):
     return df.rename(
         lambda v: v.replace(
-            settings.variable_template.format(gas="CO2", sector="Alkalinity Addition"),
+            settings.variable_template.format(gas="TA", sector="Alkalinity Addition"),
             settings.alkalinity_variable,
         ),
         level="variable",

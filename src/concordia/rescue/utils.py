@@ -7,7 +7,6 @@ from collections.abc import Sequence
 from typing import Any
 
 import cf_xarray  # noqa
-import dask
 import dateutil
 import numpy as np
 import pandas as pd
@@ -64,8 +63,7 @@ SECTOR_ORDERING_GAS = {
         "CDR EW",
         "CDR Industry",
         "CDR OAE Uptake Ocean",
-        "Akalinity Addition",
-    ],
+    ]
 }
 
 ATTRS = {
@@ -131,17 +129,18 @@ DS_ATTRS = dict(
     end_date="210012",
 )
 
+ALKALINITY_ADDITION_LONGNAME = "Alkalinity Addition as part of OAE"
 
-def convert_to_datetime(da: xr.DataArray) -> xr.DataArray:
-    with dask.config.set(**{"array.slicing.split_large_chunks": False}):
-        da = da.stack(time=("year", "month"))
+
+def convert_to_datetime(ds: xr.Dataset) -> xr.Dataset:
+    ds = ds.stack(time=("year", "month"))
     dates = pd.DatetimeIndex(
-        da.indexes["time"].map(
+        ds.indexes["time"].map(
             lambda t: datetime.date(t[0], t[1], 16 if t[1] != 2 else 15)
         )
     )
     return (
-        da.drop_vars(["time", "year", "month"])
+        ds.drop_vars(["time", "year", "month"])
         .assign_coords(
             time=xr.IndexVariable(
                 "time",
@@ -157,77 +156,77 @@ def convert_to_datetime(da: xr.DataArray) -> xr.DataArray:
     )
 
 
-def clean_coords(da):
-    return da.squeeze(drop=True)
+def clean_coords(ds):
+    return ds.squeeze(drop=True)
 
 
-def add_bounds(da, bounds=["lat", "lon", "time", "level"]):
-    bounds = list(set(bounds) & set(da.coords))
-    da = da.cf.add_bounds(bounds, output_dim="bound")
-    da = da.reset_coords([f"{b}_bounds" for b in bounds]).rename(
+def add_bounds(ds, bounds=["lat", "lon", "time", "level"]):
+    bounds = list(set(bounds) & set(ds.coords))
+    ds = ds.cf.add_bounds(bounds, output_dim="bound")
+    ds = ds.reset_coords([f"{b}_bounds" for b in bounds]).rename(
         {f"{b}_bounds": f"{b}_bnds" for b in bounds}
     )
     for b in bounds:
-        da.coords[b].attrs["bounds"] = f"{b}_bnds"
-    return da
+        ds.coords[b].attrs["bounds"] = f"{b}_bnds"
+    return ds
 
 
-def rename_sectors(da, renames: dict):
-    if "sector" not in da.indexes:
-        return da
+def rename_sectors(ds, renames: dict):
+    if "sector" not in ds.indexes:
+        return ds
 
-    return da.assign_coords(
-        sector=da.indexes["sector"].map(lambda s: renames.get(s, s))
+    return ds.assign_coords(
+        sector=ds.indexes["sector"].map(lambda s: renames.get(s, s))
     )
 
 
-def ensure_sector_ordering(da, sector_ordering: Sequence | None):
+def ensure_sector_ordering(ds, sector_ordering: Sequence | None):
     if sector_ordering is None:
-        return da
+        return ds
 
-    return da.reindex(sector=sector_ordering)
+    return ds.reindex(sector=sector_ordering)
 
 
-def add_sector_mapping(da, keep_sector_names=True):
-    if "sector" not in da.indexes:
-        return da
+def add_sector_mapping(ds, keep_sector_names=True):
+    if "sector" not in ds.indexes:
+        return ds
 
-    keys = da.indexes["sector"]
+    keys = ds.indexes["sector"]
     if not keep_sector_names:
-        da = da.assign_coords(sector=pd.RangeIndex(len(keys)))
+        ds = ds.assign_coords(sector=pd.RangeIndex(len(keys)))
 
-    da["sector"].attrs.update(
+    ds["sector"].attrs.update(
         long_name="sector", ids="; ".join(f"{i}: {k}" for i, k in enumerate(keys))
     )
 
-    return da
+    return ds
 
 
-def set_sector_encoding(da):
-    if "sector" not in da.indexes:
-        return da
+def set_sector_encoding(ds):
+    if "sector" not in ds.indexes:
+        return ds
 
     # Saves strings as fixed-length character types (necessary for tools like CDO)
-    da["sector"].encoding["dtype"] = "S1"
+    ds["sector"].encoding["dtype"] = "S1"
 
-    return da
+    return ds
 
 
-def update_attrs(da, attrs):
+def update_attrs(ds, attrs):
     for k, v in attrs.items():
-        if k in da:
-            da[k].attrs.update(v)
-    return da
+        if k in ds:
+            ds[k].attrs.update(v)
+    return ds
 
 
-def clean_var(da, name, gas, handle):
-    attrs = {
-        "units": "kg m-2 s-1",
-        "cell_methods": "time: mean",
-        "long_name": f"{gas} {handle} emissions",
-    }
-    da[name].attrs.update(attrs)
-    return da
+def clean_var(ds, name, gas, handle):
+    long_name = (
+        f"{gas} {handle} emissions"
+        if name != "TA_em_anthro"
+        else ALKALINITY_ADDITION_LONGNAME
+    )
+    ds[name].attrs.update({"cell_methods": "time: mean", "long_name": long_name})
+    return ds
 
 
 def set_var_encoding(ds, name):
@@ -246,6 +245,11 @@ def set_var_encoding(ds, name):
 def ds_attrs(name, model, scenario, version, date):
     gas, rest = name.split("_", 1)
     handle = DATA_HANDLES[rest]
+    title = (
+        f"Future {handle} emissions of {gas} in {scenario}"
+        if name != "TA_em_anthro"
+        else f"{ALKALINITY_ADDITION_LONGNAME} in {scenario}"
+    )
 
     extra_attrs = dict(
         source_version=version,
@@ -254,7 +258,7 @@ def ds_attrs(name, model, scenario, version, date):
         ),
         variable_id=name,
         creation_date=date,
-        title=f"Future {handle} emissions of {gas} in {scenario}",
+        title=title,
         reporting_unit=f"Mass flux of {gas}",
     )
     attrs = DS_ATTRS | extra_attrs
@@ -266,8 +270,8 @@ class DressUp:
         self.version = version
         self.date = str(datetime.datetime.today())
 
-    def __call__(self, da, model, scenario, **kwargs):
-        vars = list(da.data_vars)
+    def __call__(self, ds, model, scenario, **kwargs):
+        vars = list(ds.data_vars)
         assert len(vars) == 1, vars
 
         name = vars[0]
@@ -275,7 +279,7 @@ class DressUp:
         handle = DATA_HANDLES[rest]
 
         return (
-            da.pipe(convert_to_datetime)
+            ds.pipe(convert_to_datetime)
             .pipe(clean_coords)
             .pipe(add_bounds)
             .pipe(rename_sectors, SECTOR_RENAMES)
