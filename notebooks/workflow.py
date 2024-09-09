@@ -372,7 +372,7 @@ version_path.mkdir(parents=True, exist_ok=True)
 
 # %%
 res = workflow.grid(
-    template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}-{version}_{grid_label}_201501-210012.nc".format(
+    template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}_{grid_label}_201501-210012.nc".format(
         **rescue_utils.DS_ATTRS | {"version": settings.version}
     ),
     callback=rescue_utils.DressUp(version=settings.version),
@@ -406,7 +406,7 @@ ds
 
 # %%
 gridded.to_netcdf(
-    template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}-{version}_{grid_label}_201501-210012.nc".format(
+    template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}_{grid_label}_201501-210012.nc".format(
         **rescue_utils.DS_ATTRS | {"version": settings.version}
     ),
     callback=rescue_utils.DressUp(version=settings.version),
