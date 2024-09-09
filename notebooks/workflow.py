@@ -243,15 +243,6 @@ harm_overrides = pd.read_excel(
 harm_overrides
 
 # %%
-model_baseyear_iszero = (
-    model.loc[ismatch(sector="* Burning"), settings.base_year]
-    .groupby(["gas", "sector", "region"])
-    .sum()
-    == 0
-)
-model_baseyear_iszero = model_baseyear_iszero.index[model_baseyear_iszero]
-
-# %%
 harm_overrides = extend_overrides(
     harm_overrides,
     "constant_ratio",
