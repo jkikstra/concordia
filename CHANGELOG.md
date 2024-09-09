@@ -2,39 +2,110 @@
 
 ## 2024-08-19
 
+- gridded dataset for 2015-2100 in 10-year steps for 8 scenarios:
+  - RESCUE-Tier1-Direct-2024-08-19-PkBudg500-OAE_off
+  - RESCUE-Tier1-Direct-2024-08-19-PkBudg1150-OAE_off
+  - RESCUE-Tier1-Direct-2024-08-19-PkBudg500-OAE_on
+  - RESCUE-Tier1-Direct-2024-08-19-PkBudg1150-OAE_on
+  - RESCUE-Tier1-Direct-2024-08-19-EocBudg500-OAE_off
+  - RESCUE-Tier1-Direct-2024-08-19-EocBudg1150-OAE_off
+  - RESCUE-Tier1-Direct-2024-08-19-EocBudg500-OAE_on
+  - RESCUE-Tier1-Direct-2024-08-19-EocBudg1150-OAE_on
+
+- harmonized data for 2020-2100 in 5-year steps until 2060 and 10-year steps until 2100 for 30 scenarios (8 direct scenarios above and 22 additional sensitivity runs):
+
+  - RESCUE-Tier1-Sensitivity-2024-08-19-Baseline
+  - RESCUE-Tier1-Sensitivity-2024-08-19-NPi
+  - RESCUE-Tier1-Sensitivity-2024-08-19-EocBudg_cp0400-OAE_off
+  - RESCUE-Tier1-Sensitivity-2024-08-19-EocBudg_cp0450-OAE_off
+  - RESCUE-Tier1-Sensitivity-2024-08-19-EocBudg_cp0500-OAE_off
+  - RESCUE-Tier1-Sensitivity-2024-08-19-EocBudg_cp0600-OAE_off
+  - RESCUE-Tier1-Sensitivity-2024-08-19-EocBudg_cp0750-OAE_off
+  - RESCUE-Tier1-Sensitivity-2024-08-19-EocBudg_cp1000-OAE_off
+  - RESCUE-Tier1-Sensitivity-2024-08-19-EocBudg_cp1300-OAE_off
+  - RESCUE-Tier1-Sensitivity-2024-08-19-EocBudg_cp1700-OAE_off
+  - RESCUE-Tier1-Sensitivity-2024-08-19-EocBudg_cp2300-OAE_off
+  - RESCUE-Tier1-Sensitivity-2024-08-19-EocBudg_cp3000-OAE_off
+  - RESCUE-Tier1-Sensitivity-2024-08-19-EocBudg_cp0400-OAE_on
+  - RESCUE-Tier1-Sensitivity-2024-08-19-EocBudg_cp0450-OAE_on
+  - RESCUE-Tier1-Sensitivity-2024-08-19-EocBudg_cp0500-OAE_on
+  - RESCUE-Tier1-Sensitivity-2024-08-19-EocBudg_cp0600-OAE_on
+  - RESCUE-Tier1-Sensitivity-2024-08-19-EocBudg_cp0750-OAE_on
+  - RESCUE-Tier1-Sensitivity-2024-08-19-EocBudg_cp1000-OAE_on
+  - RESCUE-Tier1-Sensitivity-2024-08-19-EocBudg_cp1300-OAE_on
+  - RESCUE-Tier1-Sensitivity-2024-08-19-EocBudg_cp1700-OAE_on
+  - RESCUE-Tier1-Sensitivity-2024-08-19-EocBudg_cp2300-OAE_on
+  - RESCUE-Tier1-Sensitivity-2024-08-19-EocBudg_cp3000-OAE_on
+
+### Gridding
+- Grids all cdr sectors in CO2_em_anthro with simple patterns:
+  - `CDR Afforestation`,
+  - `CDR BECCS`,
+  - `CDR DACCS`,
+  - `CDR EW` (no data in Tier 1 scenarios),
+  - `CDR Industry`,
+  - `CDR OAE Uptake Ocean`
+
+- Adds two new sectors to the `CO2_em_anthro` variable (for anthropogenic CO2 emissions):
+  - The sector `Deforestation and LUC` are the positive emissions from LUC and
+    deforestation, as counter-part to the separate `CDR Afforestation` sector.
+  - The sector `OAE Calcination Emissions` represents the positive
+    emissions from OAE (coming from burning synfuels originating from limestone
+    calcination)
+
+  After both changes, the sector list for `CO2_em_anthro` becomes:
+  1. `Agriculture`
+  2. `Energy`
+  3. `Industrial`
+  4. `Transportation`
+  5. `Residential, Commercial, Other`
+  6. `Solvents Production and Application`
+  7. `Waste`
+  8. `International Shipping`
+  9. `Deforestation and other LUC`
+  10. `OAE Calcination Emissions`
+  11. `CDR Afforestation`
+  12. `CDR BECCS`
+  13. `CDR DACCS`
+  14. `CDR EW`
+  15. `CDR Industry`
+  16. `CDR OAE Uptake Ocean`
+
+  For all other emissions species only the sectors 1-8 apply.
+- Adds the total alkalinity additions to the ocean for OAE as a new variable
+  `TA_em_anthro` with units of `kmol TA s-1 m-2` into separate gridded files named like
+  `TA-em-anthro_input4MIPs_emissions_RESCUE....nc`
+- Fixes datatype issues that were breaking cdo
+
 ### REMIND-MAgPIE
 - MAgPIE
   - Update model version from v4.7.1 to v4.8.0
   - Use of raw land-use change emissions to inform the CO2 budget (see below).
 - REMIND
-  - In non-overshoot 1.5° scenarios (`PkBudg500-OAE_off`, `PkBudg500-OAE_off`)
-    allow the carbon price to slowly decrease after the peak again. This was
-    necessary to attain model convergence, while ensuring that cumulative
-    emissions in the year of emissions peaking (typically 2045) and in 2100 are
-    equal. This has the consequence that - after a short period of net negative
-    CO2 emissions after the peak - CO2 emissions will rise again slowly in the
-    second half of the century.
+  - In non-overshoot 1.5° scenarios (`PkBudg500-OAE_off`, `PkBudg500-OAE_off`) allow the
+    carbon price to slowly decrease after the peak again. This was necessary to attain
+    model convergence, while ensuring that cumulative emissions in the year of emissions
+    peaking (typically 2045) and in 2100 are equal. This has the consequence that -
+    after a short period of net negative CO2 emissions after the peak - CO2 emissions
+    will rise again slowly in the second half of the century.
 - Update CEDS reporting
-  - Change in land-use change (LUC) emissions representation. In previous
-    versions LUC CO2 emissions (positive gross emissions
-    `CEDS+|9+ Sectors|Emissions|CO2|Deforestation and other LUC` and negative
-    afforestation CDR `CEDS+|9+ Sectors|Emissions|CO2|CDR Afforestation`) were
-    based on a smoothed MAgPIE output variable, in which spikes in single time
-    steps were dampend via a low-pass filter function. This smoothing, however,
-    led to inconsistencies in the CO2 budget between scenarios with and without
-    overshoot. Therefore, in this release version the raw LUC emissions are
-    used instead.
-  - Rename `CEDS+|9+ Sectors|Emissions|CO2|Aggregate - Agriculture and LUC` to
-    `CEDS+|9+ Sectors|Emissions|CO2|Deforestation and other LUC`. Please note
-    that for other gases the original sector `Aggregate - Agriculture and LUC`
-    was kept, as it comprises the sub-sectors `Agriculture`,
-    `Agricultural Waste Burning`, `Forest Burning` and `Grassland Burning`,
-    which are not resolved for `CO2`.
-  - Remove positive OAE emissions (coming from burning synfuels originating
-    from limestone calcination) from the end-use sectors. Instead the variable
-    `CEDS+|9+ Sectors|Emissions|CO2|OAE Calcination Emissions` is now required
-    to be used by all ESMs to capture these positive emissions fromt the OAE
-    technology.
+  - Change in land-use change (LUC) emissions representation. In previous versions LUC
+    CO2 emissions (positive gross emissions `CEDS+|9+
+    Sectors|Emissions|CO2|Deforestation and other LUC` and negative afforestation CDR
+    `CEDS+|9+ Sectors|Emissions|CO2|CDR Afforestation`) were based on a smoothed MAgPIE
+    output variable, in which spikes in single time steps were dampend via a low-pass
+    filter function. This smoothing, however, led to inconsistencies in the CO2 budget
+    between scenarios with and without overshoot. Therefore, in this release version the
+    raw LUC emissions are used instead.
+  - Rename `CEDS+|9+ Sectors|Emissions|CO2|Aggregate - Agriculture and LUC` to `CEDS+|9+
+    Sectors|Emissions|CO2|Deforestation and other LUC`. Please note
+    that for other gases the original sector `Aggregate - Agriculture and LUC` was kept,
+    as it comprises the sub-sectors `Agriculture`, `Agricultural Waste Burning`, `Forest
+    Burning` and `Grassland Burning`, which are not resolved for `CO2`.
+  - Remove positive OAE emissions (coming from burning synfuels originating from
+    limestone calcination) from the end-use sectors. Instead the variable `CEDS+|9+
+    Sectors|Emissions|CO2|OAE Calcination Emissions` is now required to be used by all
+    ESMs to capture these positive emissions from the OAE technology.
   - Add total alkalinity additions to the ocean as variable
     (`RESCUE|OAE|Alkalinity Addition` in `Tmol TA/yr`).
 
