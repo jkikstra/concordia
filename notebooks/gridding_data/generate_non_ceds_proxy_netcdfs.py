@@ -7,7 +7,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.16.4
 #   kernelspec:
-#     display_name: Python 3 (ipykernel)
+#     display_name: concordia
 #     language: python
 #     name: python3
 # ---
@@ -29,7 +29,12 @@ from concordia.settings import Settings
 
 
 # %%
-settings = Settings.from_config("config.yaml", base_path="..", version=None)
+settings = Settings.from_config(
+    "../config-rescue.yaml",
+    local_config_path="../local-config-rescue.yaml",
+    version=None,
+)
+settings.gridding_path, settings.gridding_path.exists()
 
 # %%
 dim_order = ["gas", "sector", "level", "year", "month", "lat", "lon"]
@@ -129,29 +134,72 @@ mariteam_shipping()
 #
 
 # %% [markdown]
-# Rasterize natural earth ocean shape to proxy grids.
+# Rasterize eez in 200NM proximity to large land masses ($area >= 2\cdot 10^{4} \,\mathrm{km}^2$)
 
 # %%
-rasterize = pt.Rasterize(
-    shape=(ind_co2.sizes["lat"], ind_co2.sizes["lon"]),
-    coords={"lat": ind_co2.coords["lat"], "lon": ind_co2.coords["lon"]},
+natearth = pio.read_dataframe(
+    settings.gridding_path
+    / "non_ceds_input"
+    / "ne_10m_admin_0_countries"
+    / "ne_10m_admin_0_countries.shp"
 )
-rasterize.read_shpf(
-    pio.read_dataframe(
-        settings.gridding_path / "non_ceds_input" / "ne_10m_ocean"
-    ).reset_index(),
-    idxkey="index",
-)
-oae_cdr = (
-    rasterize.rasterize(strategy="weighted", normalize_weights=False)
-    .sel(index=0, drop=True)
-    .where(ind_co2["lat"] <= 67.5, 0)  # restrict to 67.5º like in OceanNET
-    .assign_coords(gas="CO2", sector="OAE_CDR")
-    * ind_co2_dimensions
+eez = pio.read_dataframe(
+    settings.gridding_path / "non_ceds_input" / "eez_v12.gpkg",
+    where="POL_TYPE='200NM'",
 )
 
 # %%
-plot_map(oae_cdr.sel(year=2050, month=1).assign_attrs(long_name="OAE CDR emissions"))
+ref = ind_co2.isel(year=0, month=0, gas=0).rio.write_crs(4326)
+
+# %%
+crs_platecarree = rio.CRS.from_authority("ESRI", 54001)
+bounds = ref.rio.transform_bounds(crs_platecarree)
+transform = rio.transform.from_bounds(
+    *bounds, width=ref.sizes["lon"], height=ref.sizes["lat"]
+)
+
+# %%
+natearth_l = natearth.explode().loc[lambda df: df.to_crs("esri:54034").area > 2e10]
+largeland = (
+    gu.Vector(natearth_l)
+    .rasterize(
+        crs=crs_platecarree,
+        xres=transform.a / 10,
+        yres=transform.e / 10,
+        bounds=bounds,
+        in_value=1,
+    )
+    .proximity()
+)
+
+# %%
+eez_mask = gu.Vector(eez).rasterize(largeland, in_value=1)
+
+# %%
+oae_mask = (
+    gu.Raster(eez_mask & (largeland <= 1_852 * 200))
+    .astype(np.float32)
+    .reproject(
+        crs=rio.CRS.from_epsg(4326),
+        grid_size=ref.rio.shape[::-1],
+        bounds=rio.coords.BoundingBox(*ref.rio.bounds()),
+        resampling=rio.warp.Resampling.average,
+    )
+)
+
+# %%
+oae_cdr = ind_co2_dimensions * gu_to_xarray(oae_mask, ref).where(
+    ind_co2["lat"] <= 67.5, 0
+).assign_coords(  # restrict to 67.5º like in OceanNET
+    gas="CO2", sector="OAE_CDR"
+)
+
+# %%
+plot_map(
+    oae_cdr.sel(year=2050, month=7)
+    .squeeze()
+    .assign_attrs(long_name="OAE CDR emissions")
+)
 
 # %% [markdown]
 # ## DACCS and Industrial CDR
@@ -307,19 +355,56 @@ ds_m = xr.open_dataset(
 ).rename(longitude="lon", latitude="lat")
 ds_m
 
+# %% [markdown]
+# For A/R, we use the newly managed forested area secondary forested area in a deep mitigation scenario.
+
 # %%
 nperiods = 3
 time = range(-1, -1 - nperiods, -1)
 
+
+def get_ar_pot(ds_m, ds_s, time_range):
+    return (
+        (ds_m["manaf"] * ds_s["secdf"])  # Option 1: Managed area of secondary forest
+        # ds_s["secdf"] # Option 2: just secondary forest area
+        # ((1 - ds_m["manaf"]) * ds_s["secdf"]) # Option 3: Non-managed area of secondary forest
+        .isel(time=time_range).mean(dim="time")
+    )
+
+
 ar_potential = (
-    (ds_m["manaf"] * ds_s["secdf"])
+    (get_ar_pot(ds_m, ds_s, time) - get_ar_pot(ds_m, ds_s, [0]))
+    .clip(min=0)
+    .fillna(0.0)
+    .interp_like(ind_co2)
+)
+plot_map(ar_potential, "A/R Potential per Grid Cell")
+
+# %% [markdown]
+# For deforestation emission patterns, we use currently managed secondary forest. **NOTE** This is only appropriate for a mitigation scenario. A high emissions scenario with increased deforestation would need a different spatial pattern.
+
+# %%
+current_forest = (
+    get_ar_pot(ds_m, ds_s, [0]).clip(min=0).fillna(0.0).interp_like(ind_co2)
+)
+plot_map(current_forest, "Current Managed Forest per Grid Cell")
+
+# %% [markdown]
+# We additionally highlight agricultural land area
+
+# %%
+nperiods = 3
+time = range(-1, -1 - nperiods, -1)
+
+ag_potential = (
+    (ds_s["c3ann"] + ds_s["c3nfx"] + ds_s["c3per"] + ds_s["c4ann"] + ds_s["c4per"])
     .isel(time=time)
     .mean(dim="time")
     .clip(min=0)
     .fillna(0.0)
     .interp_like(ind_co2)
 )
-plot_map(ar_potential, "A/R Potential per Grid Cell")
+plot_map(ag_potential, "Agricultural land per Grid Cell")
 
 # %% [markdown]
 # For BECCS, we are using the LIGNO Biomass potential used for all negative emissions in CMIP6
@@ -415,6 +500,8 @@ da = (
             dac_cdr,
             (beccs_potential * ind_co2_dimensions).assign_coords(sector="BECCS"),
             (ar_potential * ind_co2_dimensions).assign_coords(sector="A/R"),
+            (current_forest * ind_co2_dimensions).assign_coords(sector="DEFOREST"),
+            (ag_potential * ind_co2_dimensions).assign_coords(sector="AGLAND"),
             (nonurban * ind_co2_dimensions).assign_coords(
                 sector="NONURB"
             ),  # Sort of a fallback
@@ -432,3 +519,5 @@ da.to_netcdf(
     settings.proxy_path / "CDR_CO2.nc",
     encoding={da.name: settings.encoding},
 )
+
+# %%
