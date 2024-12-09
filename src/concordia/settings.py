@@ -33,7 +33,7 @@ class Settings:
     regionmappings: dict[str, dict[str, str]]
     country_combinations: dict[str, list[str]]
     variable_template: str
-    alkalinity_variable: str
+    # alkalinity_variable: str
 
     encoding: dict
 

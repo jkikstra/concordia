@@ -1,0 +1,54 @@
+# We first read the local configuration which must include:
+# - data_path: the local path to all needed datasets
+# - ftp (optional): the FTP login details for upload at the end of a workflow
+
+local_config_path: 'local-config-cmip7_v0_testing.yaml'
+
+# ---- standard config for CMIP7 ----
+out_path: "../results"
+
+data_path: "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_testing" # this needs to be changed based on where you want to store your own data
+
+variabledefs_path: "$data_path/input/variabledefinitions/variabledefs-region.csv" # updated variabledefs-cmip7.csv and change to that file
+
+
+history_path: "$data_path/input/historical"
+scenario_path: "$data_path/input/scenarios"
+regionmappings_path: "$data_path/input/regionmappings"
+gridding_path: "$data_path/input/gridding"
+proxy_path: "$data_path/input/gridding/proxy_rasters"
+postprocess_path: "$data_path/input/postprocessing" # e.g. used in rescue for adding HFCs from pre-specified pathways 
+
+encoding: # don't change
+  zlib: true
+  complevel: 2
+
+regionmappings: # region mappings for all models
+  MESSAGEix-GLOBIOM 2.1-M-R12:
+    path: "$regionmappings_path/region_definitions_message.csv"
+    country_column: "iso"
+    region_column: "message_r12"
+    sep: ","
+
+country_combinations:
+  sdn_ssd: ["ssd", "sdn"]
+  isr_pse: ["isr", "pse"]
+  srb_ksv: ["srb", "srb (kosovo)"]
+
+variable_template: "CMIP7 Harmonization|Emissions|{gas}|{sector}"
+base_year: 2020
+
+luc_sectors:
+  - "Agricultural Waste Burning"
+  - "Grassland Burning"
+  - "Forest Burning"
+  - "Peat Burning"
+  - "Agriculture"
+  - "Aggregate - Agriculture and LUC"
+  - "CDR Afforestation"
+
+ftp:
+  server: "127.0.0.1"
+  port: 21
+  user: anonymous
+  password: ""
