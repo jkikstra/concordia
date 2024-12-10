@@ -159,3 +159,51 @@ data, downscaling of that data, and gridding of that data. `concordia` tries to
 stay lean in terms of just connecting the pieces together, but all
 implementaiton for these different processes lives in
 [`aneris`](https://github.com/iiasa/aneris).
+
+
+Applications
+==========================
+
+Documentation
+-------------
+
+Input data, files:
+- gridding
+- historical
+- scenario
+- 
+
+Input data, location:
+-  {LOCAL_PATH}/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/{VERSION}/input
+
+Output data, files:
+- ...
+
+Output data, location:
+- ...
+
+Notes-to-self
+-------------
+
+Model read-in cell is not very clear currently, and breaks when formatting is wrong, without a clear error message.
+
+
+To-do list
+-------------
+
+*The list below is ordered.*
+- [ ] update input data: map from ssp_submission downloaded data to concordia input data
+- [ ] update variabledefs-cmip7.csv
+- [ ] update CEDS data (still harmonization in 2020)
+- [ ] use interpolated input files, and move harmonization to 2022
+- [ ] run pipeline on a newly submitted MESSAGE ScenarioMIP scenario (without aviation) 
+- [ ] update gridding files with new CEDS data (from ESGF, or direct download?)
+- [ ] update to BB4CMIP7 national GFED data (from emissions_harmonization_historical?)
+- [ ] new SSP data
+- [ ] is `country_combinations` still needed?
+- [ ] interpolate IAM emissions data
+- [ ] 2022 as `base_year`
+- [ ] create mapping file with regionmapping following ssp_submission scenario explorer mapping style, using common-definitions / nomenclature
+- [ ] register multiple models
+- [ ] try new harmonization algorithm 
+- [ ] remove or keep alkalinity option? 
