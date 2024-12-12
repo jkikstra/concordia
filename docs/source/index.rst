@@ -192,8 +192,16 @@ To-do list
 -------------
 
 *The list below is ordered.*
+- [x] check that sector naming is aligned 
+    - [x] variabledefs-cmip7_*.csv
+    - [x] CEDS (emissions_harmonization_historical)
+    - [x] GFED (emissions_harmonization_historical)
+- [x] write IAM data aggregation and variable processing script
+    - [x] without dask?
+    - [~] with dask. (note: started work on this, but does not look necessary for this workflow, so may be best to keep things simple) 
+- [x] update variabledefs-cmip7_noCDR.csv
+- [ ] align units between IAM and CEDS data
 - [ ] update input data: map from ssp_submission downloaded data to concordia input data
-- [ ] update variabledefs-cmip7.csv
 - [ ] update CEDS data (still harmonization in 2020)
 - [ ] use interpolated input files, and move harmonization to 2022
 - [ ] run pipeline on a newly submitted MESSAGE ScenarioMIP scenario (without aviation) 
@@ -205,5 +213,6 @@ To-do list
 - [ ] 2022 as `base_year`
 - [ ] create mapping file with regionmapping following ssp_submission scenario explorer mapping style, using common-definitions / nomenclature
 - [ ] register multiple models
-- [ ] try new harmonization algorithm 
+- [ ] try new harmonization algorithms
+- [ ] update variabledefs-cmip7_*.csv to have CDR 
 - [ ] remove or keep alkalinity option? 

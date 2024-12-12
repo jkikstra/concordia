@@ -9,7 +9,7 @@ out_path: "../results"
 
 data_path: "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_testing" # this needs to be changed based on where you want to store your own data
 
-variabledefs_path: "$data_path/input/variabledefinitions/variabledefs-region.csv" # updated variabledefs-cmip7.csv and change to that file
+variabledefs_path: "$data_path/input/variabledefinitions/variabledefs-cmip7_noCDR.csv" # updated variabledefs-cmip7.csv and change to that file
 
 
 history_path: "$data_path/input/historical"
@@ -19,9 +19,8 @@ gridding_path: "$data_path/input/gridding"
 proxy_path: "$data_path/input/gridding/proxy_rasters"
 postprocess_path: "$data_path/input/postprocessing" # e.g. used in rescue for adding HFCs from pre-specified pathways 
 
-encoding: # don't change
-  zlib: true
-  complevel: 2
+variable_template: "CMIP7 Harmonization|Emissions|{gas}|{sector}"
+base_year: 2020
 
 regionmappings: # region mappings for all models
   MESSAGEix-GLOBIOM 2.1-M-R12:
@@ -29,14 +28,42 @@ regionmappings: # region mappings for all models
     country_column: "iso"
     region_column: "message_r12"
     sep: ","
+  # AIM 3.0:
+  #   path: "$regionmappings_path/tbd.csv"
+  #   country_column: "iso"
+  #   region_column: "tbd"
+  #   sep: ","
+  # COFFEE 1.5:
+  #   path: "$regionmappings_path/tbd.csv"
+  #   country_column: "iso"
+  #   region_column: "tbd"
+  #   sep: ","
+  # GCAM 7.1 scenarioMIP:
+  #   path: "$regionmappings_path/tbd.csv"
+  #   country_column: "iso"
+  #   region_column: "tbd"
+  #   sep: ","
+  # IMAGE 3.4:
+  #   path: "$regionmappings_path/tbd.csv"
+  #   country_column: "iso"
+  #   region_column: "tbd"
+  #   sep: ","
+  # REMIND-MAgPIE 3.4-4.8:
+  #   path: "$regionmappings_path/tbd.csv"
+  #   country_column: "iso"
+  #   region_column: "tbd"
+  #   sep: ","
+  # WITCH 6.0:
+  #   path: "$regionmappings_path/tbd.csv"
+  #   country_column: "iso"
+  #   region_column: "tbd"
+  #   sep: ","
+
 
 country_combinations:
   sdn_ssd: ["ssd", "sdn"]
   isr_pse: ["isr", "pse"]
   srb_ksv: ["srb", "srb (kosovo)"]
-
-variable_template: "CMIP7 Harmonization|Emissions|{gas}|{sector}"
-base_year: 2020
 
 luc_sectors:
   - "Agricultural Waste Burning"
@@ -44,8 +71,13 @@ luc_sectors:
   - "Forest Burning"
   - "Peat Burning"
   - "Agriculture"
-  - "Aggregate - Agriculture and LUC"
-  - "CDR Afforestation"
+  # - "Aggregate - Agriculture and LUC"
+  # - "CDR Afforestation"
+
+
+encoding: # don't change
+  zlib: true
+  complevel: 2
 
 ftp:
   server: "127.0.0.1"
