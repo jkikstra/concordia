@@ -198,21 +198,31 @@ To-do list
     - [x] GFED (emissions_harmonization_historical)
 - [x] write IAM data aggregation and variable processing script
     - [x] without dask?
-    - [~] with dask. (note: started work on this, but does not look necessary for this workflow, so may be best to keep things simple) 
+    - [~] with dask. (note: started work on this, but does not look necessary for this workflow, so to keep things simple I removed it again) 
 - [x] update variabledefs-cmip7_noCDR.csv
-- [ ] align units between IAM and CEDS data
+- [x] align units between IAM and CEDS data
 - [ ] update input data: map from ssp_submission downloaded data to concordia input data
-- [ ] update CEDS data (still harmonization in 2020)
+    - [x] start from newly downloaded data
+    - [ ] run pipeline on a newly submitted MESSAGE ScenarioMIP scenario (without aviation) 
+    - [ ] use multiple IAMs (with appropriate region mappings)
+        - [ ] add region mapping code, or just the files?
+- [ ] ask Will, Robert, Johannes - about ... ipcc category mapping ...
+- [x] update CEDS data (still harmonization in 2020)
+- [ ] create interpolation methods between 2020 and 2025
+    - [ ] linear interpolation
+    - [ ] interpolation based only on historical (relative) trends
+    - [ ] interpolation based only on historical (absolute) trends
+    - [ ] 2022 as `base_year`
 - [ ] use interpolated input files, and move harmonization to 2022
-- [ ] run pipeline on a newly submitted MESSAGE ScenarioMIP scenario (without aviation) 
 - [ ] update gridding files with new CEDS data (from ESGF, or direct download?)
 - [ ] update to BB4CMIP7 national GFED data (from emissions_harmonization_historical?)
 - [ ] new SSP data
+    - [ ] GDP
+    - [ ] Population
 - [ ] is `country_combinations` still needed?
-- [ ] interpolate IAM emissions data
-- [ ] 2022 as `base_year`
 - [ ] create mapping file with regionmapping following ssp_submission scenario explorer mapping style, using common-definitions / nomenclature
 - [ ] register multiple models
 - [ ] try new harmonization algorithms
 - [ ] update variabledefs-cmip7_*.csv to have CDR 
+- [ ] deal with more minor gases and units
 - [ ] remove or keep alkalinity option? 
