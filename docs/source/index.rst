@@ -203,9 +203,13 @@ To-do list
 - [x] align units between IAM and CEDS data
 - [ ] update input data: map from ssp_submission downloaded data to concordia input data
     - [x] start from newly downloaded data
-    - [ ] run pipeline on a newly submitted MESSAGE ScenarioMIP scenario (without aviation) 
+    - [x] run pipeline on a newly submitted MESSAGE ScenarioMIP scenario (without aviation) 
     - [ ] use multiple IAMs (with appropriate region mappings)
         - [ ] add region mapping code, or just the files?
+- [ ] update harmonization reporting emission files notebook
+    - [ ] make it for multiple models
+    - [ ] update historical data input
+- [ ] test out global-first harmonization: https://github.com/iiasa/aneris/pull/79
 - [ ] ask Will, Robert, Johannes - about ... ipcc category mapping ...
 - [x] update CEDS data (still harmonization in 2020)
 - [ ] create interpolation methods between 2020 and 2025
@@ -213,6 +217,9 @@ To-do list
     - [ ] interpolation based only on historical (relative) trends
     - [ ] interpolation based only on historical (absolute) trends
     - [ ] 2022 as `base_year`
+- [ ] update proxy .nc files, (especially for N2O)
+    - [ ] new CEDS based data
+    - [ ] double check N2O; also in varaiabledefs-cmip7_noCDR.csv concordia input file
 - [ ] use interpolated input files, and move harmonization to 2022
 - [ ] update gridding files with new CEDS data (from ESGF, or direct download?)
 - [ ] update to BB4CMIP7 national GFED data (from emissions_harmonization_historical?)
@@ -224,5 +231,5 @@ To-do list
 - [ ] register multiple models
 - [ ] try new harmonization algorithms
 - [ ] update variabledefs-cmip7_*.csv to have CDR 
-- [ ] deal with more minor gases and units
-- [ ] remove or keep alkalinity option? 
+- [ ] deal properly with units and minor gases
+- [x] remove alkalinity option? 
