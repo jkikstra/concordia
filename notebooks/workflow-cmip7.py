@@ -142,12 +142,12 @@ settings.regionmappings.items()
 # +
 regionmappings = {}
 
-for model, kwargs in settings.regionmappings.items():
+for m, kwargs in settings.regionmappings.items():
     regionmapping = RegionMapping.from_regiondef(**kwargs)
     regionmapping.data = regionmapping.data.pix.aggregate(
         country=settings.country_combinations, agg_func="last"
     )
-    regionmappings[model] = regionmapping
+    regionmappings[m] = regionmapping
 
 regionmappings
 # -
@@ -551,7 +551,7 @@ def reformat_IAMDataframe_with_species_column(df, start_string="Emissions|", end
     # create the sector column
     df['sector'] = df['variable'].str.split('|').str[1].where(df['level'] == 2)
     # Replace sector names with "Total" if the variable only has the information of the species
-    df['sector'] = df['variable'].where(df['variable'] != df['species'], other="Total")
+    df['sector'] = df['sector'].where(df['variable'] != df['species'], other="Total")
     
     # Drop the 'level' column
     df.drop(columns=['level'], inplace=True)
@@ -887,7 +887,7 @@ save_data(df = scens_iam,
 
 # ### Wide format (and `model` variable)
 
-model = (
+scens_iam_wide = (
     scens_iam
     .rename(columns={'species': 'gas', 'variable': 'sector'})
     .pivot_table(index=["model", "scenario", "region", "sector", "gas", "unit"],
@@ -895,8 +895,8 @@ model = (
                  columns="year")
 )
 
-save_data(df = scens_iam,    
-          output_path = str(Path(version_path, "scenarios_processed.csv" )))
+save_data(df = scens_iam_wide,    
+          output_path = str(Path(version_path, "scenarios_processed_wide.csv" )))
 
 # # History: Read and process historical data
 #
@@ -965,6 +965,13 @@ hist_global = (
 # filter out N2O which now comes from CEDS
 hist_global = hist_global[hist_global['species'] != 'N2O']
 
+# #### Unit adjustments
+
+# HFC; Mt CO2eq/yr (Global_trajectories) -> kt HFC134aeq/yr (IAM)
+hist_global.loc[hist_global['variable'] == 'HFC', 'value'] *= (1/1530 * 1000)
+hist_ceds['value'] = hist_ceds['value'].where(hist_ceds['unit'] != 'Mt N2O/yr', other=hist_ceds['value']*1000)
+hist_global['unit'] = hist_global['unit'].where(hist_global['variable']!='HFC', other = 'kt HFC134aeq/yr')
+
 # ### Combine
 
 hist_long = concat([hist_ceds, hist_global, hist_gfed])
@@ -1005,8 +1012,8 @@ save_data(df = hist_long,
 
 hist_wide = (
     hist_long
-    .rename(columns={'species': 'gas'})
-    .pivot_table(index=["model", "scenario", "region", "variable", "sector", "gas", "unit"],
+    .rename(columns={'species': 'gas', 'region': 'country'})
+    .pivot_table(index=["model", "scenario", "country", "variable", "sector", "gas", "unit"],
                  values="value",
                  columns="year")
     .droplevel(["model", "scenario", "variable"])
@@ -1014,6 +1021,8 @@ hist_wide = (
 )
 save_data(df = hist_wide.reset_index(),    
           output_path = str(Path(version_path, "history_processed_wideformat.csv" )))
+
+hist = hist_wide
 
 # # Read Harmonization Overrides
 
@@ -1060,14 +1069,14 @@ gdp = (
     .rename(index=str.lower, level="country")
     .rename(columns=int)
     .pix.project(["ssp", "country"])
-    .pix.aggregate(country=settings.country_combinations)
+    # .pix.aggregate(country=settings.country_combinations)
 )
 
 # Determine likely SSP for each harmonized pathway from scenario string and create proxy data aligned with pathways
 #
 
 SSP_per_pathway = (
-    model.index.pix.project(["model", "scenario"])
+    scens_iam_wide.index.pix.project(["model", "scenario"])
     .unique()
     .to_frame()
     .scenario.str.extract("(SSP[1-5])")[0]
@@ -1079,26 +1088,13 @@ gdp = semijoin(
     how="right",
 ).pix.project(["model", "scenario", "country"])
 
-# Test with one scenario only
-one_scenario = False
-only_direct = True
-if one_scenario:
-    model = model.loc[ismatch(scenario="RESCUE-Tier1-Direct-*-PkBudg500-OAE_on")]
-elif only_direct:
-    model = model.loc[ismatch(scenario="RESCUE-Tier1-Direct-*")]
-logger().info(
-    "Running with %d scenario(s):\n- %s",
-    len(model.pix.unique(["model", "scenario"])),
-    "\n- ".join(model.pix.unique("scenario")),
-)
-
 client = Client()
 # client.register_plugin(DaskSetWorkerLoglevel(logger().getEffectiveLevel()))
 client.forward_logging()
 
 dask.distributed.gc.disable_gc_diagnosis()
 
-(model_name,) = model.pix.unique("model")
+(model_name,) = scens_iam_wide.pix.unique("model")
 regionmapping = regionmappings[model_name]
 
 indexraster = IndexRaster.from_netcdf(
@@ -1109,9 +1105,16 @@ indexraster_region = indexraster.dissolve(
     regionmapping.filter(indexraster.index).data.rename("country")
 ).persist()
 
+# # Define workflow
+
 workflow = WorkflowDriver(
-    model,
-    hist,
+    scens_iam_wide, # model
+    hist.pipe(
+        variabledefs.load_data,
+        extend_missing=True,
+        levels=["country", "gas", "sector", "unit"],
+        settings=settings,
+    ), # extend missing data in historical database using concordia code
     gdp,
     regionmapping.filter(gdp.pix.unique("country")),
     indexraster,
@@ -1121,24 +1124,40 @@ workflow = WorkflowDriver(
     settings,
 )
 
+# +
+# Workflow checklist, inputs are looking the same as `workflow-rescue.ipynb`
+# - [x] model {expected indices: ['model', 'scenario', 'region', 'sector', 'gas', 'unit']}
+# - [x] hist {expected indices: ['country', 'sector', 'gas', 'unit']}
+# - [x] gdp {expected indices: ['model', 'scenario', 'country']}
+# - [x] regionmapping.filter(gdp.pix.unique("country"))
+# - [x] indexraster
+# - [x] indexraster_region
+# - [x] variabledefs {expected columns: ['unit', 'include_in_total', 'griddinglevel', 'proxy_path', 'output_variable', 'proxy_sector']}
+# - [x] harm_overrides
+# - [x] settings
+# -
+
 # # Harmonize, downscale and grid everything
 #
 # Latest test with 2 scenarios was 70 minutes for everything on MacBook
 
 # ## Alternative 1) Run full processing and create netcdf files
 
-res = workflow.grid(
-    template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}_{grid_label}_201501-210012.nc".format(
-        **rescue_utils.DS_ATTRS | {"version": settings.version}
-    ),
-    callback=rescue_utils.DressUp(version=settings.version),
-    directory=version_path,
-    skip_exists=True,
-)
+# +
+# res = workflow.grid(
+#     template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}_{grid_label}_201501-210012.nc".format(
+#         **rescue_utils.DS_ATTRS | {"version": settings.version}
+#     ),
+#     callback=rescue_utils.DressUp(version=settings.version),
+#     directory=version_path,
+#     skip_exists=True,
+# )
+# -
 
 # ## Alternative 2) Harmonize and downscale everything, but do not grid
 #
-# If you also want grids, use the gridding interface directly
+# If you also want grids, use the gridding interface directly.
+# For a handfull of scenarios, this takes less than a minute on a Dell laptop.
 #
 
 downscaled = workflow.harmonize_and_downscale()
@@ -1149,63 +1168,62 @@ downscaled = workflow.harmonize_and_downscale()
 #
 # `workflow.grid_proxy` returns an iterator of the gridded scenarios. We are looking at the first one in depth.
 
-gridded = next(workflow.grid_proxy("CO2_em_anthro"))
+# +
+# gridded = next(workflow.grid_proxy("CO2_em_anthro"))
 
-ds = gridded.prepare_dataset(callback=rescue_utils.DressUp(version=settings.version))
-ds
+# +
+# ds = gridded.prepare_dataset(callback=rescue_utils.DressUp(version=settings.version))
+# ds
 
-gridded.to_netcdf(
-    template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}_{grid_label}_201501-210012.nc".format(
-        **rescue_utils.DS_ATTRS | {"version": settings.version}
-    ),
-    callback=rescue_utils.DressUp(version=settings.version),
-    directory=version_path,
-)
+# +
+# gridded.to_netcdf(
+#     template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}_{grid_label}_201501-210012.nc".format(
+#         **rescue_utils.DS_ATTRS | {"version": settings.version}
+#     ),
+#     callback=rescue_utils.DressUp(version=settings.version),
+#     directory=version_path,
+# )
 
-ds["CO2_em_anthro"].sel(sector="CDR OAE", time="2015-09-16").plot()
+# +
+# ds["CO2_em_anthro"].sel(sector="CDR OAE", time="2015-09-16").plot()
 
-ds.isnull().any(["time", "lat", "lon"])["CO2_em_anthro"].to_pandas()
+# +
+# ds.isnull().any(["time", "lat", "lon"])["CO2_em_anthro"].to_pandas()
 
-reldiff, _ = dask.compute(
-    gridded.verify(compute=False),
-    gridded.to_netcdf(
-        template_fn=(
-            "{{name}}_{activity_id}_emissions_{target_mip}_{institution}-"
-            "{{model}}-{{scenario}}-{version}_{grid_label}_201501-210012.nc"
-        ).format(**rescue_utils.DS_ATTRS | {"version": settings.version}),
-        callback=rescue_utils.DressUp(version=settings.version),
-        encoding_kwargs=dict(_FillValue=1e20),
-        compute=False,
-        directory=version_path,
-    ),
-)
-reldiff
+# +
+# reldiff, _ = dask.compute(
+#     gridded.verify(compute=False),
+#     gridded.to_netcdf(
+#         template_fn=(
+#             "{{name}}_{activity_id}_emissions_{target_mip}_{institution}-"
+#             "{{model}}-{{scenario}}-{version}_{grid_label}_201501-210012.nc"
+#         ).format(**rescue_utils.DS_ATTRS | {"version": settings.version}),
+#         callback=rescue_utils.DressUp(version=settings.version),
+#         encoding_kwargs=dict(_FillValue=1e20),
+#         compute=False,
+#         directory=version_path,
+#     ),
+# )
+# reldiff
+# -
 
 # ### Regional proxy weights
 
-gridded.proxy.weight.regional.sel(
-    sector="Transportation Sector", year=2050, gas="CO2"
-).compute().to_pandas().plot.hist(bins=100, logx=True, logy=True)
+# +
+# gridded.proxy.weight.regional.sel(
+#     sector="Transportation Sector", year=2050, gas="CO2"
+# ).compute().to_pandas().plot.hist(bins=100, logx=True, logy=True)
+# -
 
 
 # ## Export harmonized scenarios
 #
 
 
-def rename_alkalinity_addition(df):
-    return df.rename(
-        lambda v: v.replace(
-            settings.variable_template.format(gas="TA", sector="Alkalinity Addition"),
-            settings.alkalinity_variable,
-        ),
-        level="variable",
-    )
-
-
 data = (
     workflow.harmonized_data.add_totals()
-    .to_iamc(settings.variable_template, hist_scenario="Synthetic (GFED/CEDS/Global)")
-    .pipe(rename_alkalinity_addition)
+    .to_iamc(settings.variable_template, hist_scenario="Synthetic (CEDS/GFED/Global)")
+    # .pipe(rename_alkalinity_addition)
     .rename_axis(index=str.capitalize)
 )
 data.to_csv(version_path / f"harmonization-{settings.version}.csv")
@@ -1214,26 +1232,26 @@ data.to_csv(version_path / f"harmonization-{settings.version}.csv")
 #
 
 # +
-hfc_distribution = (
-    pd.read_excel(
-        settings.postprocess_path / "rescue_hfc_scenario.xlsx",
-        index_col=0,
-        sheet_name="velders_2015",
-    )
-    .rename_axis("hfc")
-    .rename(columns=int)
-)
+# hfc_distribution = (
+#     pd.read_excel(
+#         settings.postprocess_path / "rescue_hfc_scenario.xlsx",
+#         index_col=0,
+#         sheet_name="velders_2015",
+#     )
+#     .rename_axis("hfc")
+#     .rename(columns=int)
+# )
 
-data = (
-    workflow.harmonized_data.drop_method()
-    .add_totals()
-    .aggregate_subsectors()
-    .split_hfc(hfc_distribution)
-    .to_iamc(settings.variable_template, hist_scenario="Synthetic (GFED/CEDS/Global)")
-    .pipe(rename_alkalinity_addition)
-    .rename_axis(index=str.capitalize)
-)
-data.to_csv(version_path / f"harmonization-{settings.version}-splithfc.csv")
+# data = (
+#     workflow.harmonized_data.drop_method()
+#     .add_totals()
+#     .aggregate_subsectors()
+#     .split_hfc(hfc_distribution)
+#     .to_iamc(settings.variable_template, hist_scenario="Synthetic (GFED/CEDS/Global)")
+#     # .pipe(rename_alkalinity_addition)
+#     .rename_axis(index=str.capitalize)
+# )
+# data.to_csv(version_path / f"harmonization-{settings.version}-splithfc.csv")
 # -
 
 # # Export downscaled results

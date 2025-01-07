@@ -192,6 +192,7 @@ To-do list
 -------------
 
 *The list below is ordered.*
+v0
 - [x] check that sector naming is aligned 
     - [x] variabledefs-cmip7_*.csv
     - [x] CEDS (emissions_harmonization_historical)
@@ -209,17 +210,25 @@ To-do list
 - [ ] update harmonization reporting emission files notebook
     - [ ] make it for multiple models
     - [ ] update historical data input
+- [x] update CEDS data to July-2024 version (still harmonization in 2020)
+- [ ] create overview by model
+    - [ ] of missing sector-species information
+    - [ ] HTML files to browse
+- [ ] update proxy .nc files, (especially for N2O)
+    - [ ] new CEDS based data
+    - [ ] double check N2O; also in varaiabledefs-cmip7_noCDR.csv concordia input file
+
+v1
+- [ ] update CEDS data to 2025 version
+    - [ ] national data
+    - [ ] grids
 - [ ] test out global-first harmonization: https://github.com/iiasa/aneris/pull/79
-- [ ] ask Will, Robert, Johannes - about ... ipcc category mapping ...
-- [x] update CEDS data (still harmonization in 2020)
+- [ ] test out 10 vs 30 yr grids for biomass burning
 - [ ] create interpolation methods between 2020 and 2025
     - [ ] linear interpolation
     - [ ] interpolation based only on historical (relative) trends
     - [ ] interpolation based only on historical (absolute) trends
     - [ ] 2022 as `base_year`
-- [ ] update proxy .nc files, (especially for N2O)
-    - [ ] new CEDS based data
-    - [ ] double check N2O; also in varaiabledefs-cmip7_noCDR.csv concordia input file
 - [ ] use interpolated input files, and move harmonization to 2022
 - [ ] update gridding files with new CEDS data (from ESGF, or direct download?)
 - [ ] update to BB4CMIP7 national GFED data (from emissions_harmonization_historical?)
@@ -231,5 +240,8 @@ To-do list
 - [ ] register multiple models
 - [ ] try new harmonization algorithms
 - [ ] update variabledefs-cmip7_*.csv to have CDR 
-- [ ] deal properly with units and minor gases
+- [ ] deal properly with units and minor gases (NO)
 - [x] remove alkalinity option? 
+
+other
+- [ ] ask Will, Robert, Johannes - about ... ipcc category mapping for common-definitions ...; this may be more of an emissions_harmonization_historical thing.
