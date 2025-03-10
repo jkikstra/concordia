@@ -15,13 +15,41 @@
 # %load_ext autoreload
 # %autoreload 2
 
+# ### TODOs in progress:
+# - [ ] fix harmonization workflow (jarmo); why does it give a skipnone 'self.harmdown_countrylevel(variabledefs)' error? --> A: ... {probably an issue with country data in regionmapping or gdp} ...
+#
+#     - [ ] update GDP (jarmo)
+#     - [ ] switch to REMIND scenario from the March 1 resubmission (jarmo/annika)
+#         - [ ] ...includes: use region-mapping file from emissions_historical_harmonization  
+#
+#
+# ### Current TODOs:
+# - [ ] switch harmonization year to 2022 & do the necessary interpolation (annika)
+# ' error?
+# - [ ] make sure we can create netcdf files by running downscaling workflow (jarmo)
+# - [ ] clean up historical data processing (annika/jarmo); switch to direct output of emissions_historical_harmonization
+# - [ ] check other TODO list in PR #77: https://github.com/IAMconsortium/concordia/pull/77 
+# - [ ] think about moving stuff directly into emissions_historical_harmonization
+# - [ ] check/update `ssp_comb_indexraster.nc`
+# - [ ] check/update CEDS grid files
+# - [ ] produce netCDF files for REMIND
+# - [ ] look at global-first harmonization from Matt
+#
+# ### Recently done TODOs:
+# - [x] remove data after 2100 (jarmo)
+# - [x] fix harmonization workflow (jarmo); why does it give a skipnone 'self.harmdown_globallevel(variabledefs)  --> A: there was a '2110' column with NAs in the data
+#
+
 # # Workflow for CMIP7 ScenarioMIP emissions harmonization 
 
 # ## Specify input scenario data and project settings
 
 # Specify which scenario file to read in
 
-SCENARIO_FILE = "scenarios_scenariomipMESSAGE_20241127.csv" # TODO: update later for all models. Location for this file is specified in the yaml file read into the `settings` object later on
+SCENARIO_FILE = "scenarios_scenariomip_allmodels_2025-03-05-messagegains.csv" # TODO: update later for all models. Location for this file is specified in the yaml file read into the `settings` object later on
+# scenarios_scenariomipMESSAGE_20241127.csv
+# c:\Users\kikstra\Documents\GitHub\scenariomip\data\scenarios_scenariomip_allmodels_2025-01-07-message.csv
+# c:\Users\kikstra\Documents\GitHub\scenariomip\data\scenarios_scenariomip_allmodels_2025-01-07.csv
 
 # Specify settings
 
@@ -157,137 +185,6 @@ regionmappings
 # ### Define some useful functions
 
 # +
-# import pandas as pd
-
-# # IAMC data to lower case
-# def iamc_to_lowercase(df):
-#     for col in ["Model", "Scenario", "Region", "Variable", "Unit"]:
-#         if col in df.columns:
-#             df.rename(columns={col: col.lower()}, inplace=True)
-#     return df
-
-# # Load IAMC data
-# def load_data(file_path):
-#     file_path_str = str(file_path)
-#     if file_path_str.endswith('.csv'):
-#         df = pd.read_csv(file_path)
-#     elif file_path_str.endswith('.xlsx'):
-#         df = pd.read_excel(file_path)
-#     else:
-#         raise ValueError("Unsupported file format. Use .csv or .xlsx.")
-
-#     df = iamc_to_lowercase(df)
-#     return df
-
-# def iamc_wide_to_long(df, iamc_cols=["model", "scenario", "variable", "region", "unit"]):
-#     year_columns = [col for col in df.columns[len(iamc_cols):] if col.isdigit()]
-#     if not year_columns:
-#         raise KeyError("Year columns could not be identified. Ensure the dataframe has year columns after the basic IAMC columns.")
-
-#     long_df = df.melt(
-#         id_vars=iamc_cols,
-#         value_vars=year_columns,
-#         var_name="year",
-#         value_name="value",
-#     )
-
-#     long_df["year"] = pd.to_numeric(long_df["year"], errors="coerce")
-#     long_df["value"] = pd.to_numeric(long_df["value"], errors="coerce")
-#     long_df.dropna(subset=["year", "value"], inplace=True)
-#     long_df["year"] = long_df["year"].astype(int)
-
-#     return long_df
-
-# def filter_scenario(df, scenarios):
-#     if isinstance(scenarios, list):
-#         return df[df['scenario'].isin(scenarios)]
-#     return df[df['scenario'] == scenarios]
-
-# def filter_region(df, regions):
-#     if isinstance(regions, list):
-#         return df[df['region'].isin(regions)]
-#     return df[df['region'] == regions]
-
-# def filter_variable(df, variables):
-#     if isinstance(variables, list):
-#         return df[df['variable'].isin(variables)]
-#     return df[df['variable'] == variables]
-
-# def filter_region_contains(df, substrings):
-#     if isinstance(substrings, list):
-#         return df[df['region'].str.contains('|'.join(substrings), case=False, na=False)]
-#     return df[df['region'].str.contains(substrings, case=False, na=False)]
-
-# def filter_emissions_data(df):
-#     return df[df['variable'].str.startswith("Emissions")]
-
-# def rename_one_variable(df, old_string, new_string):
-#     df['variable'] = df['variable'].replace({old_string: new_string})
-#     return df
-
-# def rename_variable(df, rename_dict):
-#     """
-#     Renames variables in a dataframe's 'variable' column based on a dictionary mapping.
-
-#     Parameters:
-#         df (pd.DataFrame): The dataframe to modify.
-#         rename_dict (dict): A dictionary where keys are old strings and values are new strings.
-
-#     Returns:
-#         pd.DataFrame: The modified dataframe with updated variable names.
-#     """
-#     df['variable'] = df['variable'].replace(rename_dict)
-#     return df
-
-# def filter_regions_only_world_and_model_native(df, cmip7_iam_list=None):
-#     if cmip7_iam_list is None:
-#         cmip7_iam_list = ["MESSAGE", "AIM", "COFFEE", "GCAM", "IMAGE", "REMIND", "WITCH"]
-
-#     world_df = filter_region(df, regions="World")
-#     model_native_df = filter_region_contains(df, substrings=cmip7_iam_list)
-
-#     return pd.concat([world_df, model_native_df], axis=0)
-
-# def reformat_IAMDataframe_with_species_column(df):
-#     df['species'] = df['variable'].str.lstrip("Emissions|").str.split('|').str[0]
-#     df['level'] = df['variable'].str.count(r'\|') + 1
-#     df = df[df['level'] >= 2]
-#     df['variable'] = df['variable'].where(df['level'] != 2, other="Total")
-#     df['variable'] = df['variable'].str.replace(r"^[^|]*\|[^|]*\|", "", regex=True)
-#     df.drop(columns=['level'], inplace=True)
-#     return df
-
-# def sum_selected_variables(df, selected_variables, new_variable_name, group_cols=["model", "scenario", "region", "unit", "year"]):
-#     if not isinstance(selected_variables, list):
-#         raise ValueError("selected_variables must be a list.")
-#     if not isinstance(new_variable_name, str):
-#         raise ValueError("new_variable_name must be a string.")
-
-#     selected_df = df[df['variable'].isin(selected_variables)]
-#     summed = (
-#         selected_df
-#         .groupby(group_cols, as_index=False)
-#         .agg({"value": "sum"})
-#     )
-#     summed["variable"] = new_variable_name
-#     df = pd.concat([df, summed], axis=0)
-#     return df
-
-# def process_data(df, group_cols=["model", "scenario", "region", "unit", "year", "species"]):
-#     df = process_transportation_variables(df, group_cols=group_cols)
-#     df = process_industrial_sector_variables(df, group_cols=group_cols)
-#     return df
-
-# def save_data(df, output_path):
-#     if output_path.endswith('.csv'):
-#         df.to_csv(output_path, index=False)
-#     elif output_path.endswith('.xlsx'):
-#         df.to_excel(output_path, index=False)
-#     else:
-#         raise ValueError("Unsupported file format. Use .csv or .xlsx.")
-
-
-# +
 import pandas as pd
 
 # IAMC data to lower case
@@ -350,6 +247,8 @@ def sort_iamc_dataframe(df, format="long"):
 
     if (format == "long"):
         return sort_long_iamc_dataframe(df)
+    else:
+        raise Exception("Formats other than 'long' not yet implemented.") 
 
 
 def iamc_wide_to_long(df, iamc_cols=["model", "scenario", "variable", "region", "unit"]):
@@ -470,6 +369,10 @@ def filter_emissions_data(df):
     """
     return df[df['variable'].str.startswith("Emissions")]
 
+# remove data with year > 2100; assumes a dataframe in long format 
+def remove_data_after(df, yr = 2100):
+    return df[df['year'] <= yr]
+
 # Rename one variable explicitly
 def rename_one_variable(df, old_string, new_string):
     df['variable'] = df['variable'].replace({old_string: new_string})
@@ -504,24 +407,7 @@ def filter_regions_only_world_and_model_native(df, cmip7_iam_list=None):
 
     return pd.concat([world_df, model_native_df], axis=0)
 
-# Advanced processing
-# def reformat_IAMDataframe_with_species_column(df, start_string = "Emissions|", end_string = ""):
-#     """
-#     Extracts species from e.g. "Emissions|" variable names and reformats the dataframe.
-
-#     Parameters:
-#         df (pd.DataFrame): The dataframe to process.
-
-#     Returns:
-#         pd.DataFrame: The reformatted dataframe.
-#     """
-#     df['species'] = df['variable'].str.lstrip(start_string).str.split('|').str[0]
-#     df['level'] = df['variable'].str.count(r'\|') + 1
-#     df = df[df['level'] >= 2]
-#     df['variable'] = df['variable'].where(df['level'] != 2, other="Total")
-#     df['variable'] = df['variable'].str.replace(r"^[^|]*\|[^|]*\|", "", regex=True)
-#     df.drop(columns=['level'], inplace=True)
-#     return df
+# Reformatting; identify species in a separate column
 def reformat_IAMDataframe_with_species_column(df, start_string="Emissions|", end_string=None):
     """
     Extracts species from e.g. "Emissions|" variable names, strips an optional `end_string` from the end,
@@ -545,19 +431,13 @@ def reformat_IAMDataframe_with_species_column(df, start_string="Emissions|", end
     # Extract species from the variable column (assuming it is the first element after the start string has been removed)
     df['species'] = df['variable'].str.split('|').str[0]
 
-    # Count levels based on the number of '|' characters
-    df['level'] = df['variable'].str.count(r'\|') + 1
-
-    # create the sector column
-    df['sector'] = df['variable'].str.split('|').str[1].where(df['level'] == 2)
-    # Replace sector names with "Total" if the variable only has the information of the species
-    df['sector'] = df['sector'].where(df['variable'] != df['species'], other="Total")
     
-    # Drop the 'level' column
-    df.drop(columns=['level'], inplace=True)
+    # create a sector column
+    df['sector'] = df['variable'].apply(lambda x: x.split('|', 1)[1] if '|' in x else 'Total')
+    
     return df
 
-
+# Sum values of selected variables
 def sum_selected_variables(df, selected_variables, new_variable_name, group_cols=["model", "scenario", "region", "unit", "year"]):
     """
     Sums selected variables into a new variable.
@@ -649,6 +529,7 @@ def process_data(df, group_cols=["model", "scenario", "region", "unit", "year"])
     Returns:
         pd.DataFrame: The processed dataframe.
     """
+    df['variable'] = df['variable'].str.replace(r'^.*?\|', '', regex=True) # delete the species; i.e. everything before the first | character
     df = process_transportation_variables(df, group_cols=group_cols)
     df = process_industrial_sector_variables(df, group_cols=group_cols)
     return df
@@ -740,20 +621,21 @@ iam_df = load_data(
 
 # ### Filter
 
-iam_df = filter_emissions_data(iam_df)
-iam_df = filter_scenario(iam_df, scenarios="SSP1 - Low Emissions") # TODO: remove after test code is done
-iam_df = filter_regions_only_world_and_model_native(iam_df)
+iam_df = filter_emissions_data(iam_df) # only keep variable=="Emissions*"
+# iam_df = filter_scenario(iam_df, scenarios="SSP1 - Low Emissions") # TODO: remove after test code is done
+iam_df = filter_regions_only_world_and_model_native(iam_df) 
 
 # ### Process
 
 # prepare
 iam_df = iamc_wide_to_long(iam_df)
-iam_df = reformat_IAMDataframe_with_species_column(iam_df)
-
-iam_df
+iam_df = remove_data_after(iam_df, yr = 2100)
+iam_df = reformat_IAMDataframe_with_species_column(iam_df, start_string="Emissions|")
 
 # process data
 iam_df = process_data(iam_df,  group_cols=["model", "scenario", "region", "unit", "year", "species"]) # do calculations for aviation, transportation, and industrial sector
+
+iam_df['sector'].unique()
 
 # +
 # rename variable to harmonization sectors
@@ -798,6 +680,9 @@ scens_iam = filter_variable(iam_df,
 # # TODO: add CDR and gross emissions variables
 # -
 
+# Drop the 'sector' column
+scens_iam = scens_iam.drop(columns=['sector'])
+
 # ## Units
 
 # ### Check units and report on missing IAM data
@@ -827,6 +712,8 @@ for m in scens_iam["model"].unique():
 
 save_data(df = different_units_IAM,    
           output_path = str(Path(version_path, "scenarios_missingdata.csv" )))
+
+different_units_IAM
 
 variabledefs.data
 
@@ -880,6 +767,8 @@ def check_na_in_columns(df):
 check_na_in_columns(scens_iam)
 # -
 
+scens_iam
+
 # ### Long format
 
 save_data(df = scens_iam,    
@@ -887,6 +776,7 @@ save_data(df = scens_iam,
 
 # ### Wide format (and `model` variable)
 
+scens_iam['variable']
 scens_iam_wide = (
     scens_iam
     .rename(columns={'species': 'gas', 'variable': 'sector'})
@@ -904,6 +794,10 @@ save_data(df = scens_iam_wide,
 #
 
 # ## Read in
+
+# +
+# TODO: update to 'combined_cmip7_history.csv' for combined CEDS+GFED
+# -
 
 # ### CEDS
 
@@ -1043,7 +937,7 @@ harm_overrides = extend_overrides(
     ],
     variables=variabledefs.data.index,
     regionmappings=regionmappings,
-    model_baseyear=model[settings.base_year],
+    model_baseyear=scens_iam_wide[settings.base_year],
 )
 
 # # Prepare GDP proxy
@@ -1071,11 +965,12 @@ gdp = (
     .pix.project(["ssp", "country"])
     # .pix.aggregate(country=settings.country_combinations)
 )
+gdp
 
 # Determine likely SSP for each harmonized pathway from scenario string and create proxy data aligned with pathways
 #
 
-SSP_per_pathway = (
+SSP_per_pathway = ( # N.B. make this into a function; tricky but OK for ScenarioMIP
     scens_iam_wide.index.pix.project(["model", "scenario"])
     .unique()
     .to_frame()
@@ -1087,6 +982,7 @@ gdp = semijoin(
     SSP_per_pathway.index.pix.assign(ssp=SSP_per_pathway + "_v9_130325"),
     how="right",
 ).pix.project(["model", "scenario", "country"])
+gdp
 
 client = Client()
 # client.register_plugin(DaskSetWorkerLoglevel(logger().getEffectiveLevel()))
@@ -1094,8 +990,15 @@ client.forward_logging()
 
 dask.distributed.gc.disable_gc_diagnosis()
 
+# +
+# TODO: 
+# - [ ] make this into a dataframe, and loop over models? --> right now the below section only works for 1 model at a time.
+
 (model_name,) = scens_iam_wide.pix.unique("model")
 regionmapping = regionmappings[model_name]
+
+# scens_iam_wide.pix.unique("model")
+# -
 
 indexraster = IndexRaster.from_netcdf(
     settings.gridding_path / "ssp_comb_indexraster.nc",
@@ -1106,6 +1009,9 @@ indexraster_region = indexraster.dissolve(
 ).persist()
 
 # # Define workflow
+
+scens_iam_wide
+regionmapping.filter(gdp.pix.unique("country"))
 
 workflow = WorkflowDriver(
     scens_iam_wide, # model
