@@ -16,24 +16,33 @@
 # %autoreload 2
 
 # ### TODOs in progress:
-# - [ ] fix harmonization workflow (jarmo); why does it give a skipnone 'self.harmdown_countrylevel(variabledefs)' error? --> A: ... {probably an issue with country data in regionmapping or gdp} ...
 #
-#     - [ ] update GDP (jarmo)
+# - [x] send historical & IAM data to Annika (Jarmo)
+#
+# - [ ] clean up historical data processing (annika); simplify by switching to combined direct output of emissions_historical_harmonization
+#
+# - [x] fix harmonization workflow (jarmo); why does it give a skipnone 'self.harmdown_countrylevel(variabledefs)' error? --> A: likely was to do with the name of the MESSAGE model having changed. {could have been an issue with country data in (A) regionmapping, (B) gdp, (C) historical emissions data} ...
+#     --> harmonization ("Alternative 2") now works.
+#     - [x] update GDP (jarmo)
+#     - [ ] make full workflow ("Alternative 1") work too
 #     - [ ] switch to REMIND scenario from the March 1 resubmission (jarmo/annika)
 #         - [ ] ...includes: use region-mapping file from emissions_historical_harmonization  
 #
 #
+#
 # ### Current TODOs:
+# - [ ] remake rasters .nc using data (https://iiasahub.sharepoint.com/:f:/r/teams/RESCUE/Shared%20Documents/WP%201/data_2024_09_16/gridding_process_files/ceds_input/input/gridding?csf=1&web=1&e=1OHegg) and script (notebooks\gridding_data\generate_non_ceds_proxy_netcdfs.py)
 # - [ ] switch harmonization year to 2022 & do the necessary interpolation (annika)
 # ' error?
 # - [ ] make sure we can create netcdf files by running downscaling workflow (jarmo)
-# - [ ] clean up historical data processing (annika/jarmo); switch to direct output of emissions_historical_harmonization
 # - [ ] check other TODO list in PR #77: https://github.com/IAMconsortium/concordia/pull/77 
 # - [ ] think about moving stuff directly into emissions_historical_harmonization
 # - [ ] check/update `ssp_comb_indexraster.nc`
 # - [ ] check/update CEDS grid files
 # - [ ] produce netCDF files for REMIND
+# - [ ] deal with small countries having no GDP data
 # - [ ] look at global-first harmonization from Matt
+# - [ ] historical data: check e.g. AWB and Forest Burning (World) data. 2015 and 2020 emissions, but suspiciously zero in the years between and after?
 #
 # ### Recently done TODOs:
 # - [x] remove data after 2100 (jarmo)
@@ -816,6 +825,9 @@ hist_ceds = (
 
 # #### Unit adjustments
 
+# +
+# Can be deleted with new historical data
+
 # NMVOC (CEDS) -> VOC (IAM)
 hist_ceds['variable'] = hist_ceds['variable'].replace(r'^NMVOC\|', 'VOC|', regex=True)
 hist_ceds['unit'] = hist_ceds['unit'].replace('Mt NMVOC/yr', 'Mt VOC/yr', regex=False)
@@ -823,6 +835,7 @@ hist_ceds['species'] = hist_ceds['species'].replace('NMVOC', 'VOC', regex=False)
 # Mt N2O (CEDS) -> kt N2O (IAM)
 hist_ceds.loc[hist_ceds['unit'] == 'Mt N2O/yr', 'value'] *= 1000 # hist_ceds['value'] = hist_ceds['value'].where(hist_ceds['unit'] != 'Mt N2O/yr', other=hist_ceds['value']*1000)
 hist_ceds['unit'] = hist_ceds['unit'].replace('Mt N2O/yr', 'kt N2O/yr', regex=False)
+# -
 
 hist_ceds['variable'].unique()
 
@@ -911,7 +924,7 @@ hist_wide = (
                  values="value",
                  columns="year")
     .droplevel(["model", "scenario", "variable"])
-    # .pix.aggregate(country=settings.country_combinations)
+    .pix.aggregate(country=settings.country_combinations) # todo: remove when not necessary anymore
 )
 save_data(df = hist_wide.reset_index(),    
           output_path = str(Path(version_path, "history_processed_wideformat.csv" )))
@@ -945,16 +958,24 @@ harm_overrides = extend_overrides(
 # Read in different GDP scenarios for SSP1 to SSP5 from SSP DB.
 #
 
+# +
+# New; updated SSP data from CMIP7 era
 gdp = (
     pd.read_csv(
-        settings.scenario_path / "SspDb_country_data_2013-06-12.csv",
-        index_col=list(range(5)),
+        settings.scenario_path / "gdp_sspv31_withallextradata_temporaryuse.csv", # only use until GDP data is finalised
+        # index_col=list(range(5)),
     )
+    .filter(["model", "scenario", "iso", "variable", "unit", "year", "value"]) # select only columns  "model", "scenario", "iso", "variable", "unit", "year"
+    .query("year >= 2020") # keep only projections
+    .rename(columns={'iso': 'region'})
+    .pivot_table(index=["scenario", "region", "variable", "unit"],
+                 values="value",
+                 columns="year")
     .rename_axis(index=str.lower)
     .loc[
         isin(
-            model="OECD Env-Growth",
-            scenario=[f"SSP{n+1}_v9_130325" for n in range(5)],
+            # model="OECD Env-Growth",
+            scenario=[f"SSP{n+1}" for n in range(5)],
             variable="GDP|PPP",
         )
     ]
@@ -963,32 +984,125 @@ gdp = (
     .rename(index=str.lower, level="country")
     .rename(columns=int)
     .pix.project(["ssp", "country"])
-    # .pix.aggregate(country=settings.country_combinations)
+    .pix.aggregate(country=settings.country_combinations)
 )
 gdp
+
+# # Old; original SSP data from CMIP6 era
+# gdp = (
+#     pd.read_csv(
+#         settings.scenario_path / "SspDb_country_data_2013-06-12.csv",
+#         index_col=list(range(5)),
+#     )
+#     .rename_axis(index=str.lower)
+#     .loc[
+#         isin(
+#             model="OECD Env-Growth",
+#             scenario=[f"SSP{n+1}_v9_130325" for n in range(5)],
+#             variable="GDP|PPP",
+#         )
+#     ]
+#     .dropna(how="all", axis=1)
+#     .rename_axis(index={"scenario": "ssp", "region": "country"})
+#     .rename(index=str.lower, level="country")
+#     .rename(columns=int)
+#     .pix.project(["ssp", "country"])
+#     # .pix.aggregate(country=settings.country_combinations)
+# )
+# gdp
+# -
 
 # Determine likely SSP for each harmonized pathway from scenario string and create proxy data aligned with pathways
 #
 
-SSP_per_pathway = ( # N.B. make this into a function; tricky but OK for ScenarioMIP
-    scens_iam_wide.index.pix.project(["model", "scenario"])
+def guess_ssp(df):
+    ssp_guesses = (
+    df.index.pix.project(["model", "scenario"])
     .unique()
     .to_frame()
     .scenario.str.extract("(SSP[1-5])")[0]
     .fillna("SSP2")
+    )
+    return ssp_guesses
+def join_gdp_based_on_ssp(scenarios_with_ssp_mapping, gdp_per_ssp):
+    gdp_for_each_scenario = semijoin(
+            gdp_per_ssp,
+            # SSP_per_pathway.index.pix.assign(ssp=SSP_per_pathway + "_v9_130325"), # CMIP6 era SSP data
+            scenarios_with_ssp_mapping.index.pix.assign(ssp=scenarios_with_ssp_mapping), # CMIP7 era SSP data
+            how="right",
+        ).pix.project(["model", "scenario", "country"])
+    return gdp_for_each_scenario
+
+
+SSP_per_pathway = guess_ssp(scens_iam_wide)
+GDP_per_pathway = join_gdp_based_on_ssp(
+    scenarios_with_ssp_mapping=SSP_per_pathway,
+    gdp_per_ssp=gdp
 )
-gdp = semijoin(
-    gdp,
-    SSP_per_pathway.index.pix.assign(ssp=SSP_per_pathway + "_v9_130325"),
-    how="right",
-).pix.project(["model", "scenario", "country"])
-gdp
+
+# # Country coverage
+
+# +
+# what countries do we have in each data set?
+countries_with_gdp_data = gdp.pix.unique("country") # as Index
+countries_with_hist_data = hist.pix.unique("country") # as Index
+countries_with_regionmapping = pd.Index(sorted(
+    regionmapping.filter(countries_with_gdp_data).data.reset_index().country.unique() # as array
+)) # as Index
+countries_with_hist_and_gdp_and_regionmapping_data = pd.Index(sorted(( 
+    set(countries_with_gdp_data) & set(countries_with_hist_data) & set(countries_with_regionmapping) # as set
+))) # as Index
+
+# show what we have
+print(len(countries_with_gdp_data))
+print(len(countries_with_hist_data))
+print(len(countries_with_regionmapping))
+print(countries_with_hist_and_gdp_and_regionmapping_data)
+
+def select_only_countries_with_all_info(df,
+                                        countries=countries_with_hist_and_gdp_and_regionmapping_data):
+    df = (
+        df
+        .loc[
+            isin(
+                country=countries
+            )
+        ]
+    )
+    
+    return df
+
+
+# +
+# # Get unique countries from each dataframe
+# hist_countries = set(hist.pix.unique("country"))
+# gdp_countries = set(GDP_per_pathway.pix.unique("country"))
+
+# # Countries in hist but not in GDP_per_pathway
+# in_hist_not_gdp = hist_countries - gdp_countries
+# print("Countries in hist but not in GDP_per_pathway:")
+# print(sorted(in_hist_not_gdp))
+
+# # Countries in GDP_per_pathway but not in hist
+# in_gdp_not_hist = gdp_countries - hist_countries
+# print("Countries in GDP_per_pathway but not in hist:")
+# print(sorted(in_gdp_not_hist))
+
+# # Display counts for reference
+# print(f"\nTotal countries in hist: {len(hist_countries)}")
+# print(f"Total countries in GDP_per_pathway: {len(gdp_countries)}")
+# print(f"Countries in common: {len(hist_countries & gdp_countries)}")
+# -
+
+# # Set up technical bits for the workflow
 
 client = Client()
 # client.register_plugin(DaskSetWorkerLoglevel(logger().getEffectiveLevel()))
 client.forward_logging()
 
 dask.distributed.gc.disable_gc_diagnosis()
+
+# # Define workflow
 
 # +
 # TODO: 
@@ -1000,35 +1114,52 @@ regionmapping = regionmappings[model_name]
 # scens_iam_wide.pix.unique("model")
 # -
 
+# indexes for countries on a grid
 indexraster = IndexRaster.from_netcdf(
-    settings.gridding_path / "ssp_comb_indexraster.nc",
+    settings.gridding_path / "ssp_comb_indexraster.nc", # redo: notebooks\gridding_data\generate_ceds_proxy_netcdfs.py
     chunks={},
 ).persist()
 indexraster_region = indexraster.dissolve(
     regionmapping.filter(indexraster.index).data.rename("country")
 ).persist()
 
-# # Define workflow
+indexraster
 
-scens_iam_wide
-regionmapping.filter(gdp.pix.unique("country"))
+indexraster_region
 
-workflow = WorkflowDriver(
+workflow = WorkflowDriver( 
+    # model
     scens_iam_wide, # model
-    hist.pipe(
-        variabledefs.load_data,
-        extend_missing=True,
-        levels=["country", "gas", "sector", "unit"],
-        settings=settings,
-    ), # extend missing data in historical database using concordia code
-    gdp,
-    regionmapping.filter(gdp.pix.unique("country")),
+    # hist.pipe(
+    #     variabledefs.load_data,
+    #     extend_missing=True, # extend missing data in historical database using concordia code
+    #     levels=["country", "gas", "sector", "unit"],
+    #     settings=settings,
+    # ),
+    # hist
+    hist, # select_only_countries_with_all_info(hist),
+    # gdp
+    GDP_per_pathway, #select_only_countries_with_all_info(GDP_per_pathway),
+    # regionmapping
+    regionmapping.filter(countries_with_hist_and_gdp_and_regionmapping_data),
+    # regionmapping.filter(GDP_per_pathway.pix.unique("country")), # regionmapping.filter(countries_with_hist_and_gdp_and_regionmapping_data),
+    # indexraster_country
     indexraster,
+    # indexraster_region
     indexraster_region,
+    # variabledefs
     variabledefs,
+    # harm_overrides
     harm_overrides,
-    settings,
+    # settings
+    settings
+
+    # history_aggregated=...
+    # harmonized=...
+    # downscaled=... 
 )
+
+
 
 # +
 # Workflow checklist, inputs are looking the same as `workflow-rescue.ipynb`
@@ -1049,16 +1180,14 @@ workflow = WorkflowDriver(
 
 # ## Alternative 1) Run full processing and create netcdf files
 
-# +
-# res = workflow.grid(
-#     template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}_{grid_label}_201501-210012.nc".format(
-#         **rescue_utils.DS_ATTRS | {"version": settings.version}
-#     ),
-#     callback=rescue_utils.DressUp(version=settings.version),
-#     directory=version_path,
-#     skip_exists=True,
-# )
-# -
+res = workflow.grid(
+    template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}_{grid_label}_201501-210012.nc".format(
+        **rescue_utils.DS_ATTRS | {"version": settings.version}
+    ),
+    callback=rescue_utils.DressUp(version=settings.version),
+    directory=version_path,
+    skip_exists=True,
+)
 
 # ## Alternative 2) Harmonize and downscale everything, but do not grid
 #
