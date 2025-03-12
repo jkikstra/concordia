@@ -3,23 +3,25 @@
 #   jupytext:
 #     text_representation:
 #       extension: .py
-#       format_name: light
-#       format_version: '1.5'
-#       jupytext_version: 1.16.4
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.16.7
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
 
+# %%
 # %load_ext autoreload
 # %autoreload 2
 
+# %% [markdown] jp-MarkdownHeadingCollapsed=true
 # ### TODOs in progress:
 #
 # - [x] send historical & IAM data to Annika (Jarmo)
 #
-# - [ ] clean up historical data processing (annika); simplify by switching to combined direct output of emissions_historical_harmonization
+# - [x] clean up historical data processing (annika); simplify by switching to combined direct output of emissions_historical_harmonization
 #
 # - [x] fix harmonization workflow (jarmo); why does it give a skipnone 'self.harmdown_countrylevel(variabledefs)' error? --> A: likely was to do with the name of the MESSAGE model having changed. {could have been an issue with country data in (A) regionmapping, (B) gdp, (C) historical emissions data} ...
 #     --> harmonization ("Alternative 2") now works.
@@ -49,42 +51,47 @@
 # - [x] fix harmonization workflow (jarmo); why does it give a skipnone 'self.harmdown_globallevel(variabledefs)  --> A: there was a '2110' column with NAs in the data
 #
 
+# %% [markdown]
 # # Workflow for CMIP7 ScenarioMIP emissions harmonization 
 
+# %% [markdown]
 # ## Specify input scenario data and project settings
 
+# %% [markdown]
 # Specify which scenario file to read in
 
+# %%
 SCENARIO_FILE = "scenarios_scenariomip_allmodels_2025-03-05-messagegains.csv" # TODO: update later for all models. Location for this file is specified in the yaml file read into the `settings` object later on
 # scenarios_scenariomipMESSAGE_20241127.csv
 # c:\Users\kikstra\Documents\GitHub\scenariomip\data\scenarios_scenariomip_allmodels_2025-01-07-message.csv
 # c:\Users\kikstra\Documents\GitHub\scenariomip\data\scenarios_scenariomip_allmodels_2025-01-07.csv
 
+# %% [markdown]
 # Specify settings
 
-# +
+# %%
 # Settings
 SETTINGS_FILE = "config_cmip7_v0_testing.yaml" 
 
 # versioning
 HARMONIZATION_VERSION = "config_cmip7_v0_testing"
-# -
 
+# %% [markdown]
 # ## Importing packages
 
-# +
+# %%
 import aneris
 
 
 aneris.__file__
 
-# +
+# %%
 import concordia
 
 
 concordia.__file__
 
-# +
+# %%
 import logging
 from pathlib import Path
 
@@ -105,13 +112,15 @@ from concordia.rescue import utils as rescue_utils
 from concordia.settings import Settings
 from concordia.utils import MultiLineFormatter, extend_overrides
 from concordia.workflow import WorkflowDriver
-# -
 
 
+# %% [markdown]
 # Load unit registry from openSCM for translating units (e.g., to and from CO2eq)
 
+# %%
 ur = set_openscm_registry_as_default()
 
+# %% [markdown]
 # # Read Settings
 #
 # The key settings for this harmonization run are detailed in the file "config_cmip7_{VERSION}.yaml", which is located in this same folder.
@@ -126,13 +135,15 @@ ur = set_openscm_registry_as_default()
 # - postprocessing: files for potential post-processing (current not used)
 # - scenarios: input IAM trajectories
 
+# %%
 settings = Settings.from_config(version=HARMONIZATION_VERSION,
                                 local_config_path=Path(Path.cwd(),
                                                        SETTINGS_FILE))
 
+# %% [markdown]
 # Set logger (uses setting)
 
-# +
+# %%
 fh = logging.FileHandler(settings.out_path / f"debug_{settings.version}.log", mode="w")
 fh.setLevel(logging.DEBUG)
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -150,15 +161,18 @@ streamhandler.setFormatter(
 
 logger().handlers = [streamhandler, fh]
 logging.getLogger("flox").setLevel("WARNING")
-# -
 
+# %% [markdown]
 # Create output path for this version
 
+# %%
 version_path = settings.out_path / settings.version
 version_path.mkdir(parents=True, exist_ok=True)
 
+# %% [markdown]
 # # Read definitions
 
+# %% [markdown]
 # ## Read variable definitions
 #
 # The variable definition file is a CSV or yaml file that needs to contain the `variable`-name, its `sector`, `gas` components and whether it is expected `global` (or regional instead).
@@ -166,17 +180,21 @@ version_path.mkdir(parents=True, exist_ok=True)
 # Here we use a file based on the RESCUE variable definitions, but adapted to fit CMIP7 purposes.
 #
 
+# %%
 variabledefs = VariableDefinitions.from_csv(settings.variabledefs_path)
 variabledefs.data.head()
 
+# %% [markdown]
 # ## Read region definitions (using RegionMapping class)
 #
 
+# %%
 settings.data_path
 
+# %%
 settings.regionmappings.items()
 
-# +
+# %%
 regionmappings = {}
 
 for m, kwargs in settings.regionmappings.items():
@@ -187,13 +205,14 @@ for m, kwargs in settings.regionmappings.items():
     regionmappings[m] = regionmapping
 
 regionmappings
-# -
 
+# %% [markdown]
 # # IAM: Read and process IAM data
 
+# %% [markdown]
 # ### Define some useful functions
 
-# +
+# %%
 import pandas as pd
 
 # IAMC data to lower case
@@ -618,35 +637,42 @@ def compare_units(name_df1, df1, name_df2, df2, quiet = True):
 
     
 
-# -
 
+# %% [markdown]
 # ### Read in
 
+# %%
 # read in
 iam_df = load_data(
     Path(settings.scenario_path, SCENARIO_FILE) 
 )
 
 
+# %% [markdown]
 # ### Filter
 
+# %%
 iam_df = filter_emissions_data(iam_df) # only keep variable=="Emissions*"
 # iam_df = filter_scenario(iam_df, scenarios="SSP1 - Low Emissions") # TODO: remove after test code is done
 iam_df = filter_regions_only_world_and_model_native(iam_df) 
 
+# %% [markdown]
 # ### Process
 
+# %%
 # prepare
 iam_df = iamc_wide_to_long(iam_df)
 iam_df = remove_data_after(iam_df, yr = 2100)
 iam_df = reformat_IAMDataframe_with_species_column(iam_df, start_string="Emissions|")
 
+# %%
 # process data
 iam_df = process_data(iam_df,  group_cols=["model", "scenario", "region", "unit", "year", "species"]) # do calculations for aviation, transportation, and industrial sector
 
+# %%
 iam_df['sector'].unique()
 
-# +
+# %%
 # rename variable to harmonization sectors
 # Dictionary for renaming variables
 rename_dict = {
@@ -687,25 +713,27 @@ scens_iam = filter_variable(iam_df,
 
 
 # # TODO: add CDR and gross emissions variables
-# -
 
+# %%
 # Drop the 'sector' column
 scens_iam = scens_iam.drop(columns=['sector'])
 
+# %% [markdown]
 # ## Units
 
+# %% [markdown]
 # ### Check units and report on missing IAM data
 
-# +
+# %%
 ## NOTE: for now, let's try to stay with common-definitions units, as submitted, and change the variable defs config in line with that.
 
 ## TODO: automatically download common-definitions template, as the ultimate reference / source of truth for the variable template.
 ## - for now; since the IAM download is straight from the Scenario Explorer, this is pretty much the same.
 
-# +
+# %%
 # units_IAM_variable = select_and_distinct(scens_iam, ["variable", "unit"])
-# -
 
+# %%
 different_units_IAM = pd.DataFrame([]) # create dataframe
 for m in scens_iam["model"].unique():
     # same dataframe structure
@@ -717,47 +745,54 @@ for m in scens_iam["model"].unique():
     different_units_onemodel["model"] = m
     # append to dataframe
     different_units_IAM = pd.concat([different_units_IAM, different_units_onemodel], ignore_index=True)
-    
 
+
+# %%
 save_data(df = different_units_IAM,    
           output_path = str(Path(version_path, "scenarios_missingdata.csv" )))
 
+# %%
 different_units_IAM
 
+# %%
 variabledefs.data
 
+# %% [markdown]
 # ### Rename units
 
-# +
+# %%
 # none for now.
-# -
 
+# %% [markdown]
 # ### Transform units to equivalents
 
+# %% [markdown]
 # none for now.
 # ...for an example, see here: https://github.com/IAMconsortium/concordia/blob/22bf33b0158839dd870eae019894e78d03fcf27d/notebooks/workflow-rescue.py#L219-L245 
 
 
+# %% [markdown]
 # ### Dealing with NAs
 
-# +
+# %%
 # none for now.
 # ...one possible way: `model = model.fillna(0)`
-# -
 
+# %% [markdown]
 # ## Interpolate IAM data where necessary
 
-# +
+# %%
 # none for now.
 # ...likely will have to do (linear) interpolation for the 2020-2025 period for intermediary products
 # ...and an option where changes follow historical data between 2020 and the latest year of historical data (noting this could create a larger underlying difference to the 2025 model year, compared to linear interpolation)
-# -
 
+# %% [markdown]
 # ## Save the processed IAM data
 
+# %% [markdown]
 # ### Basic checks
 
-# +
+# %%
 def check_na_in_columns(df):
     """
     Check all columns in the DataFrame for NA values.
@@ -774,17 +809,21 @@ def check_na_in_columns(df):
         print("No NA values found in any column.")
 
 check_na_in_columns(scens_iam)
-# -
 
+# %%
 scens_iam
 
+# %% [markdown]
 # ### Long format
 
+# %%
 save_data(df = scens_iam,    
           output_path = str(Path(version_path, "scenarios_processed.csv" )))
 
+# %% [markdown]
 # ### Wide format (and `model` variable)
 
+# %%
 scens_iam['variable']
 scens_iam_wide = (
     scens_iam
@@ -794,27 +833,25 @@ scens_iam_wide = (
                  columns="year")
 )
 
+# %%
 save_data(df = scens_iam_wide,    
           output_path = str(Path(version_path, "scenarios_processed_wide.csv" )))
 
+# %% [markdown]
 # # History: Read and process historical data
 #
 # Can be read in and prepared using `read_iamc` or the `variabledefs`
 #
 
+# %% [markdown]
 # ## Read in
 
-# +
-# TODO: update to 'combined_cmip7_history.csv' for combined CEDS+GFED
-# -
-
-# ### CEDS
-
-hist_ceds = (
+# %%
+hist_combined = (
     reformat_IAMDataframe_with_species_column(
         iamc_wide_to_long(
             pd.read_csv(
-                settings.history_path / "ceds_cmip7_national_alpha.csv"
+                settings.history_path / "cmip7_history_0012.csv"
             )
         ),
         start_string="CMIP7 History|Emissions|"
@@ -823,42 +860,16 @@ hist_ceds = (
 # Previous, faster example, using MultiIndex & pandas-indexing, is available here: https://github.com/jkikstra/concordia/blob/41880f678d082699738c515a9610f26a84768641/notebooks/workflow-cmip7.py#L909-L919
 # ... this also has code for GFED, Other, and combining 
 
+# %% [markdown]
 # #### Unit adjustments
 
-# +
-# Can be deleted with new historical data
+# %%
+hist_combined['variable'].unique()
 
-# NMVOC (CEDS) -> VOC (IAM)
-hist_ceds['variable'] = hist_ceds['variable'].replace(r'^NMVOC\|', 'VOC|', regex=True)
-hist_ceds['unit'] = hist_ceds['unit'].replace('Mt NMVOC/yr', 'Mt VOC/yr', regex=False)
-hist_ceds['species'] = hist_ceds['species'].replace('NMVOC', 'VOC', regex=False)
-# Mt N2O (CEDS) -> kt N2O (IAM)
-hist_ceds.loc[hist_ceds['unit'] == 'Mt N2O/yr', 'value'] *= 1000 # hist_ceds['value'] = hist_ceds['value'].where(hist_ceds['unit'] != 'Mt N2O/yr', other=hist_ceds['value']*1000)
-hist_ceds['unit'] = hist_ceds['unit'].replace('Mt N2O/yr', 'kt N2O/yr', regex=False)
-# -
-
-hist_ceds['variable'].unique()
-
-# ### GFED
-
-hist_gfed = (
-    reformat_IAMDataframe_with_species_column(
-        iamc_wide_to_long(
-            pd.read_csv(
-                settings.history_path / "GFED2015_extended.csv"
-            ).rename(columns={'country': 'region'})
-        ),
-        start_string="CEDS+|9+ Sectors|Emissions|"
-    )
-)
-
-# #### Unit adjustments
-
-# Unit of NOx is NO2; Mt NOx (GFED) -> Mt NO2 (IAM)
-hist_gfed['unit'] = hist_gfed['unit'].replace('Mt NOx/yr', 'Mt NO2/yr', regex=False)
-
+# %% [markdown]
 # ### Other (global only)
 
+# %%
 hist_global = (
     reformat_IAMDataframe_with_species_column(
         iamc_wide_to_long(
@@ -872,21 +883,27 @@ hist_global = (
 # filter out N2O which now comes from CEDS
 hist_global = hist_global[hist_global['species'] != 'N2O']
 
+# %% [markdown]
 # #### Unit adjustments
 
+# %%
 # HFC; Mt CO2eq/yr (Global_trajectories) -> kt HFC134aeq/yr (IAM)
 hist_global.loc[hist_global['variable'] == 'HFC', 'value'] *= (1/1530 * 1000)
-hist_ceds['value'] = hist_ceds['value'].where(hist_ceds['unit'] != 'Mt N2O/yr', other=hist_ceds['value']*1000)
 hist_global['unit'] = hist_global['unit'].where(hist_global['variable']!='HFC', other = 'kt HFC134aeq/yr')
 
+# %% [markdown]
 # ### Combine
 
-hist_long = concat([hist_ceds, hist_global, hist_gfed])
+# %%
+hist_long = concat([hist_combined, hist_global])
 
+# %% [markdown]
 # ## Units
 
+# %% [markdown]
 # ### Check units and report on missing historical data
 
+# %%
 different_units_history = pd.DataFrame([]) # create dataframe
 for m in hist_long["model"].unique():
     # same dataframe structure
@@ -899,24 +916,30 @@ for m in hist_long["model"].unique():
     # append to dataframe
     different_units_history = pd.concat([different_units_history, different_units_onemodel], ignore_index=True)
 
+# %%
 save_data(df = different_units_history,    
           output_path = str(Path(version_path, "history_missingdata.csv" )))
 
+# %% [markdown]
 # ### Rename units and variables
 
-# +
+# %%
 # none here; all done at the reading in of each data set.
-# -
 
+# %% [markdown]
 # ## Save
 
+# %% [markdown]
 # ### Long format
 
+# %%
 save_data(df = hist_long,    
           output_path = str(Path(version_path, "history_processed_longformat.csv" )))
 
+# %% [markdown]
 # ### Wide format (and `hist` variable)
 
+# %%
 hist_wide = (
     hist_long
     .rename(columns={'species': 'gas', 'region': 'country'})
@@ -929,18 +952,26 @@ hist_wide = (
 save_data(df = hist_wide.reset_index(),    
           output_path = str(Path(version_path, "history_processed_wideformat.csv" )))
 
+# %%
 hist = hist_wide
 
+# %%
+version_path
+
+# %% [markdown]
 # # Read Harmonization Overrides
 
+# %%
 settings.scenario_path
 
+# %%
 harm_overrides = pd.read_excel(
     settings.scenario_path / "harmonization_overrides.xlsx",
     index_col=list(range(3)),
 ).method
 harm_overrides
 
+# %%
 harm_overrides = extend_overrides(
     harm_overrides,
     "constant_ratio",
@@ -953,12 +984,13 @@ harm_overrides = extend_overrides(
     model_baseyear=scens_iam_wide[settings.base_year],
 )
 
+# %% [markdown]
 # # Prepare GDP proxy
 #
 # Read in different GDP scenarios for SSP1 to SSP5 from SSP DB.
 #
 
-# +
+# %%
 # New; updated SSP data from CMIP7 era
 gdp = (
     pd.read_csv(
@@ -1010,11 +1042,12 @@ gdp
 #     # .pix.aggregate(country=settings.country_combinations)
 # )
 # gdp
-# -
 
+# %% [markdown]
 # Determine likely SSP for each harmonized pathway from scenario string and create proxy data aligned with pathways
 #
 
+# %%
 def guess_ssp(df):
     ssp_guesses = (
     df.index.pix.project(["model", "scenario"])
@@ -1034,15 +1067,17 @@ def join_gdp_based_on_ssp(scenarios_with_ssp_mapping, gdp_per_ssp):
     return gdp_for_each_scenario
 
 
+# %%
 SSP_per_pathway = guess_ssp(scens_iam_wide)
 GDP_per_pathway = join_gdp_based_on_ssp(
     scenarios_with_ssp_mapping=SSP_per_pathway,
     gdp_per_ssp=gdp
 )
 
+# %% [markdown]
 # # Country coverage
 
-# +
+# %%
 # what countries do we have in each data set?
 countries_with_gdp_data = gdp.pix.unique("country") # as Index
 countries_with_hist_data = hist.pix.unique("country") # as Index
@@ -1073,7 +1108,7 @@ def select_only_countries_with_all_info(df,
     return df
 
 
-# +
+# %%
 # # Get unique countries from each dataframe
 # hist_countries = set(hist.pix.unique("country"))
 # gdp_countries = set(GDP_per_pathway.pix.unique("country"))
@@ -1092,19 +1127,22 @@ def select_only_countries_with_all_info(df,
 # print(f"\nTotal countries in hist: {len(hist_countries)}")
 # print(f"Total countries in GDP_per_pathway: {len(gdp_countries)}")
 # print(f"Countries in common: {len(hist_countries & gdp_countries)}")
-# -
 
+# %% [markdown]
 # # Set up technical bits for the workflow
 
+# %%
 client = Client()
 # client.register_plugin(DaskSetWorkerLoglevel(logger().getEffectiveLevel()))
 client.forward_logging()
 
+# %%
 dask.distributed.gc.disable_gc_diagnosis()
 
+# %% [markdown]
 # # Define workflow
 
-# +
+# %%
 # TODO: 
 # - [ ] make this into a dataframe, and loop over models? --> right now the below section only works for 1 model at a time.
 
@@ -1112,8 +1150,8 @@ dask.distributed.gc.disable_gc_diagnosis()
 regionmapping = regionmappings[model_name]
 
 # scens_iam_wide.pix.unique("model")
-# -
 
+# %%
 # indexes for countries on a grid
 indexraster = IndexRaster.from_netcdf(
     settings.gridding_path / "ssp_comb_indexraster.nc", # redo: notebooks\gridding_data\generate_ceds_proxy_netcdfs.py
@@ -1123,10 +1161,13 @@ indexraster_region = indexraster.dissolve(
     regionmapping.filter(indexraster.index).data.rename("country")
 ).persist()
 
+# %%
 indexraster
 
+# %%
 indexraster_region
 
+# %%
 workflow = WorkflowDriver( 
     # model
     scens_iam_wide, # model
@@ -1159,9 +1200,9 @@ workflow = WorkflowDriver(
     # downscaled=... 
 )
 
+# %%
 
-
-# +
+# %%
 # Workflow checklist, inputs are looking the same as `workflow-rescue.ipynb`
 # - [x] model {expected indices: ['model', 'scenario', 'region', 'sector', 'gas', 'unit']}
 # - [x] hist {expected indices: ['country', 'sector', 'gas', 'unit']}
@@ -1172,14 +1213,16 @@ workflow = WorkflowDriver(
 # - [x] variabledefs {expected columns: ['unit', 'include_in_total', 'griddinglevel', 'proxy_path', 'output_variable', 'proxy_sector']}
 # - [x] harm_overrides
 # - [x] settings
-# -
 
+# %% [markdown]
 # # Harmonize, downscale and grid everything
 #
 # Latest test with 2 scenarios was 70 minutes for everything on MacBook
 
+# %% [markdown]
 # ## Alternative 1) Run full processing and create netcdf files
 
+# %%
 res = workflow.grid(
     template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}_{grid_label}_201501-210012.nc".format(
         **rescue_utils.DS_ATTRS | {"version": settings.version}
@@ -1189,28 +1232,32 @@ res = workflow.grid(
     skip_exists=True,
 )
 
+# %% [markdown]
 # ## Alternative 2) Harmonize and downscale everything, but do not grid
 #
 # If you also want grids, use the gridding interface directly.
 # For a handfull of scenarios, this takes less than a minute on a Dell laptop.
 #
 
+# %%
 downscaled = workflow.harmonize_and_downscale()
 
+# %% [markdown]
 # ## Alternative 3) Investigations
 
+# %% [markdown]
 # ### Process single proxy
 #
 # `workflow.grid_proxy` returns an iterator of the gridded scenarios. We are looking at the first one in depth.
 
-# +
+# %%
 # gridded = next(workflow.grid_proxy("CO2_em_anthro"))
 
-# +
+# %%
 # ds = gridded.prepare_dataset(callback=rescue_utils.DressUp(version=settings.version))
 # ds
 
-# +
+# %%
 # gridded.to_netcdf(
 #     template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}_{grid_label}_201501-210012.nc".format(
 #         **rescue_utils.DS_ATTRS | {"version": settings.version}
@@ -1219,13 +1266,13 @@ downscaled = workflow.harmonize_and_downscale()
 #     directory=version_path,
 # )
 
-# +
+# %%
 # ds["CO2_em_anthro"].sel(sector="CDR OAE", time="2015-09-16").plot()
 
-# +
+# %%
 # ds.isnull().any(["time", "lat", "lon"])["CO2_em_anthro"].to_pandas()
 
-# +
+# %%
 # reldiff, _ = dask.compute(
 #     gridded.verify(compute=False),
 #     gridded.to_netcdf(
@@ -1240,21 +1287,22 @@ downscaled = workflow.harmonize_and_downscale()
 #     ),
 # )
 # reldiff
-# -
 
+# %% [markdown]
 # ### Regional proxy weights
 
-# +
+# %%
 # gridded.proxy.weight.regional.sel(
 #     sector="Transportation Sector", year=2050, gas="CO2"
 # ).compute().to_pandas().plot.hist(bins=100, logx=True, logy=True)
-# -
 
 
+# %% [markdown]
 # ## Export harmonized scenarios
 #
 
 
+# %%
 data = (
     workflow.harmonized_data.add_totals()
     .to_iamc(settings.variable_template, hist_scenario="Synthetic (CEDS/GFED/Global)")
@@ -1263,10 +1311,11 @@ data = (
 )
 data.to_csv(version_path / f"harmonization-{settings.version}.csv")
 
+# %% [markdown]
 # ### Split HFC distributions
 #
 
-# +
+# %%
 # hfc_distribution = (
 #     pd.read_excel(
 #         settings.postprocess_path / "rescue_hfc_scenario.xlsx",
@@ -1287,13 +1336,14 @@ data.to_csv(version_path / f"harmonization-{settings.version}.csv")
 #     .rename_axis(index=str.capitalize)
 # )
 # data.to_csv(version_path / f"harmonization-{settings.version}-splithfc.csv")
-# -
 
+# %% [markdown]
 # # Export downscaled results
 #
 # TODO: create a similar exporter to the Harmonized class for Downscaled which combines historic and downscaled data (maybe also harmonized?) and translates to iamc
 #
 
+# %%
 # Do we also want to render this as IAMC?
 workflow.downscaled.data.to_csv(
     version_path / f"downscaled-only-{settings.version}.csv"

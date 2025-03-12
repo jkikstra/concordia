@@ -89,7 +89,7 @@ class Settings:
     @classmethod
     def from_config(
         cls,
-        config_path: Pathy = "config.yaml",
+        config_path: Pathy = "config_cmip7_v0_testing.yaml",
         local_config_path: Pathy | None = None,
         base_path: Pathy | None = None,
         **overwrites,
