@@ -864,7 +864,7 @@ hist_combined = (
 # #### Unit adjustments
 
 # %%
-hist_combined['variable'].unique()
+hist_combined['sector'].unique()
 
 # %% [markdown]
 # ### Other (global only)
@@ -873,29 +873,24 @@ hist_combined['variable'].unique()
 hist_global = (
     reformat_IAMDataframe_with_species_column(
         iamc_wide_to_long(
-            pd.read_excel(
-                settings.history_path / "global_trajectories.xlsx"
+            pd.read_csv(
+                settings.history_path / "cmip7_history_0012.csv"
             )
         ),
+        # I think these strings could be updated to the same as above, the result seems to be the same though
         start_string="CEDS+|9+ Sectors|Emissions|", end_string="|Unharmonized"
     )
 )
-# filter out N2O which now comes from CEDS
-hist_global = hist_global[hist_global['species'] != 'N2O']
-
-# %% [markdown]
-# #### Unit adjustments
 
 # %%
-# HFC; Mt CO2eq/yr (Global_trajectories) -> kt HFC134aeq/yr (IAM)
-hist_global.loc[hist_global['variable'] == 'HFC', 'value'] *= (1/1530 * 1000)
-hist_global['unit'] = hist_global['unit'].where(hist_global['variable']!='HFC', other = 'kt HFC134aeq/yr')
+hist_global['sector'].unique()
 
 # %% [markdown]
 # ### Combine
 
 # %%
 hist_long = concat([hist_combined, hist_global])
+hist_long["sector"].unique()
 
 # %% [markdown]
 # ## Units
@@ -915,6 +910,12 @@ for m in hist_long["model"].unique():
     different_units_onemodel["model"] = m
     # append to dataframe
     different_units_history = pd.concat([different_units_history, different_units_onemodel], ignore_index=True)
+
+# %%
+different_units_history
+
+# %%
+different_units_history
 
 # %%
 save_data(df = different_units_history,    
