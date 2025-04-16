@@ -1073,8 +1073,20 @@ workflow = WorkflowDriver(
     settings
 )
 
+# ## Add some checks on workflow
+
 # save workflow info in easy-to-vet packets 
 workflow.save_info(path = Path("..", "data", "compare_wfd_inputs"), prefix="cmip7")
+
+# +
+# check regionmapping and scenarios
+reg_model = scens_iam_wide.loc[~isin(region="World")].reset_index().region.unique() # all region names of the scenario
+reg_mapped = regionmapping.data.reset_index().region.unique() # all region names of the scenario
+
+def assert_strings_covered(array1, array2):
+    assert all(s in array2 for s in array1), "Not all regions are covered in the regionmapping"
+assert_strings_covered(reg_model, reg_mapped)
+# -
 
 # # Harmonize, downscale and grid everything
 #
@@ -1108,13 +1120,17 @@ data.to_csv(version_path / f"harmonization-{settings.version}.csv")
 workflow.downscaled.data.to_csv(
     version_path / f"downscaled-only-{settings.version}.csv"
 )
+print(
+    "Countries covered (" + str(len(workflow.downscaled.data.loc[~isin(region="World")].reset_index().country.unique())) + "):"
+)
+print(workflow.downscaled.data.loc[~isin(region="World")].reset_index().country.unique())
 
 # ## Alternative 1) Run full processing and create netcdf files
 #
 # Latest test with 1 scenario was 25 minutes on Jarmo's DELL laptop.
 # Output files are nearly 6GB for one scenario.
 
-rescue_utils.DS_ATTRS
+rescue_utils.DS_ATTRS # TODO: update to CMIP7
 
 res = workflow.grid(
     template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}_{grid_label}_201501-210012.nc".format(
