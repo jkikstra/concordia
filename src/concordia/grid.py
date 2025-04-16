@@ -43,11 +43,52 @@ class ConcordiaProxy(Proxy):
         Concordia workflow. It maps variables to their corresponding gridding
         levels, sectors, and proxies.
     """
-    
+
     @classmethod
     def from_variables(
         cls, df, context: GriddingContext, proxy_dir: Path | None = None
     ):
+        """
+        Creates a `ConcordiaProxy` instance from variable definitions.
+
+        Parameters:
+            df (pd.DataFrame or VariableDefinitions):
+                The variable definitions or a DataFrame containing variable metadata.
+                Must include columns such as `output_variable`, `proxy_path`,
+                `griddinglevel`, and `proxy_sector`.
+
+            context (GriddingContext):
+                The gridding context used for creating the proxy.
+
+            proxy_dir (Path, optional):
+                The directory containing proxy files. Defaults to the current working
+                directory if not provided.
+
+        Returns:
+            ConcordiaProxy:
+                An instance of the `ConcordiaProxy` class.
+
+        Notes:
+            - If `df` is an instance of `VariableDefinitions`, its `data` attribute
+              is used.
+            - The `output_variable` column is used to determine the name of the proxy.
+            - The `proxy_path` column specifies the paths to proxy files.
+            - The `proxy_sector` column is used to map sectors to their proxies.
+            - If the `gas` column contains only "TA", it is mapped to "CO2".
+
+        Example:
+            ```python
+            from concordia.grid import ConcordiaProxy, GriddingContext
+            from pathlib import Path
+
+            # Example variable definitions
+            variable_defs = VariableDefinitions.from_csv("variable_definitions.csv")
+            context = GriddingContext()
+
+            # Create a ConcordiaProxy instance
+            proxy = ConcordiaProxy.from_variables(variable_defs, context, proxy_dir=Path("/path/to/proxies"))
+            ```
+        """
         if isinstance(df, VariableDefinitions):
             df = df.data
         if proxy_dir is None:
