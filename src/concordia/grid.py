@@ -25,6 +25,25 @@ def sector_map(variables):
 
 @define(slots=False)  # cached_property's need __dict__
 class ConcordiaProxy(Proxy):
+    """
+    A subclass of the `Proxy` class, representing a proxy for gridding operations
+    in the Concordia workflow. This class provides methods for creating proxies
+    from variable definitions and associated metadata.
+
+    Attributes:
+        None (inherits attributes from the `Proxy` base class).
+
+    Methods:
+        from_variables(cls, df, context, proxy_dir=None):
+            Creates a `ConcordiaProxy` instance from variable definitions and
+            gridding context.
+
+    Usage:
+        This class is used to handle gridding proxies for emissions data in the
+        Concordia workflow. It maps variables to their corresponding gridding
+        levels, sectors, and proxies.
+    """
+    
     @classmethod
     def from_variables(
         cls, df, context: GriddingContext, proxy_dir: Path | None = None
