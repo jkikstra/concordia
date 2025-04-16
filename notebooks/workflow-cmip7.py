@@ -1295,6 +1295,26 @@ regionmapping.data # why only a few regions & countries!! --> all in this mappin
 
 # ## Alternative 3) Investigations: Gridded
 
+# ### Look at a processed emissions file
+
+import xarray as xr
+
+result_grid = xr.open_dataset(Path("..", "results", "config_cmip7_v0_testing", "CH4-em-anthro_input4MIPs_emissions_RESCUE_IIASA-PIK-MESSAGEix-GLOBIOM-GAINS-2.1-M-R12-SSP2---Low-Overshoot_gn_201501-210012.nc"))
+
+# +
+# inspect data set
+
+# View variable names
+print(result_grid.data_vars)
+# View coordinates
+print(result_grid.coords)
+# Pick the variable (one per nc file)
+print(result_grid['CH4_em_anthro'])
+# -
+
+result_grid['CH4_em_anthro'].sel(time = '2100-12-16 00:00:00', 
+                                 sector = 'Energy').plot()
+
 # ### Process single proxy
 #
 # `workflow.grid_proxy` returns an iterator of the gridded scenarios. We are looking at the first one in depth.
