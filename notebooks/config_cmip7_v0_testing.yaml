@@ -7,7 +7,9 @@ local_config_path: 'local-config-cmip7_v0_testing.yaml'
 # ---- standard config for CMIP7 ----
 out_path: "../results"
 
-data_path: "/home/hoegner/Projects/CMIP7/" # this needs to be changed based on where you want to store your own data
+# this needs to be changed based on where you want to store your own data
+# data_path: "/home/hoegner/Projects/CMIP7/" # Annika
+data_path: "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_testing" # Jarmo
 
 variabledefs_path: "$data_path/input/variabledefinitions/variabledefs-cmip7_noCDR.csv" # updated variabledefs-cmip7.csv and change to that file
 
