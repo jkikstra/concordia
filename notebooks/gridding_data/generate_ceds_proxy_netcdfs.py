@@ -36,9 +36,12 @@ import pyreadr
 import xarray as xr
 
 from concordia.settings import Settings
+from pathlib import Path
 
-
-settings = Settings.from_config("config.yaml", base_path="..", version=None)
+settings = Settings.from_config(
+    "config_cmip7_v0_testing.yaml", 
+    base_path=Path(Path(__file__).parent, "..").resolve(), 
+    version=None)
 
 dim_order = ["gas", "sector", "level", "year", "month", "lat", "lon"]
 
