@@ -21,7 +21,10 @@
 
 # Specify which scenario file to read in
 
-SCENARIO_FILE = "scenarios_scenariomip_MESSAGEix-GLOBIOM-GAINS 2.1-M-R12_SSP2 - Low Overshoot.csv" # example MESSAGE scenario
+SCENARIO_FILE = "scenarios_scenariomip_COFFEE 1.6_SSP2 - Low Overshoot.csv" # example COFFEE scenario
+# SCENARIO_FILE = "scenarios_scenariomip_AIM 3.0_SSP2 - Low Emissions.csv" # example AIM scenario
+# SCENARIO_FILE = "scenarios_scenariomip_REMIND-MAgPIE 3.5-4.10_SSP2 - Low Emissions.csv" # example REMIND scenario
+# SCENARIO_FILE = "scenarios_scenariomip_MESSAGEix-GLOBIOM-GAINS 2.1-M-R12_SSP2 - Low Overshoot.csv" # example MESSAGE scenario
 # SCENARIO_FILE = "scenarios_scenariomip_allmodels_2025-03-05-messagegains.csv" # TODO: update later for all models. Location for this file is specified in the yaml file read into the `settings` object later on
 
 # Specify settings
@@ -31,7 +34,9 @@ SCENARIO_FILE = "scenarios_scenariomip_MESSAGEix-GLOBIOM-GAINS 2.1-M-R12_SSP2 - 
 SETTINGS_FILE = "config_cmip7_v0_testing.yaml" 
 
 # versioning
-HARMONIZATION_VERSION = "config_cmip7_v0_testing"
+# HARMONIZATION_VERSION = "config_cmip7_v0_testing_remind"
+# HARMONIZATION_VERSION = "config_cmip7_v0_testing_aim"
+HARMONIZATION_VERSION = "config_cmip7_v0_testing_coffee"
 # -
 
 # ## Importing packages
@@ -65,7 +70,7 @@ from concordia import (
     RegionMapping,
     VariableDefinitions,
 )
-from concordia.rescue import utils as rescue_utils
+from concordia.rescue import utils as rescue_utils # update to cmip7 utils (e.g. for dressing up netcdf)
 from concordia.settings import Settings
 from concordia.utils import MultiLineFormatter, extend_overrides
 from concordia.workflow import WorkflowDriver
@@ -129,6 +134,8 @@ version_path.mkdir(parents=True, exist_ok=True)
 #
 # Here we use a file based on the RESCUE variable definitions, but adapted to fit CMIP7 purposes.
 #
+
+settings.variabledefs_path
 
 variabledefs = VariableDefinitions.from_csv(settings.variabledefs_path)
 variabledefs.data.head()
@@ -600,7 +607,7 @@ iam_df = load_data(
 
 iam_df = filter_emissions_data(iam_df) # only keep variable=="Emissions*"
 # iam_df = filter_scenario(iam_df, scenarios="SSP1 - Low Emissions") # TODO: remove after test code is done
-iam_df = filter_regions_only_world_and_model_native(iam_df) 
+iam_df = filter_regions_only_world_and_model_native(iam_df) # delete R10/R5
 
 # ### Process
 
@@ -972,6 +979,8 @@ GDP_per_pathway = join_gdp_based_on_ssp(
 # # Country coverage
 
 # +
+# try to align with CEDS; but where necessary, aggregate to SSP coverage.
+
 # what countries do we have in each data set?
 countries_with_gdp_data = gdp.pix.unique("country") # as Index
 countries_with_hist_data = hist.pix.unique("country") # as Index
@@ -1054,7 +1063,8 @@ indexraster_region = indexraster.dissolve(
 
 workflow = WorkflowDriver( 
     # model
-    scens_iam_wide, # model
+    # scens_iam_wide, # model
+    scens_iam_wide.loc[:, scens_iam_wide.columns.intersection(GDP_per_pathway.columns.tolist())], # model ; until GDP is interpolated, do only for years in GDP_per_pathway.columns.tolist()
     # hist
     hist, # select_only_countries_with_all_info(hist),
     # gdp
@@ -1076,7 +1086,7 @@ workflow = WorkflowDriver(
 # ## Add some checks on workflow
 
 # save workflow info in easy-to-vet packets 
-workflow.save_info(path = Path("..", "data", "compare_wfd_inputs"), prefix="cmip7")
+workflow.save_info(path = Path("..", "data", "compare_wfd_inputs"), prefix=settings.version)
 
 # +
 # check regionmapping and scenarios
@@ -1130,7 +1140,7 @@ print(workflow.downscaled.data.loc[~isin(region="World")].reset_index().country.
 # Latest test with 1 scenario was 25 minutes on Jarmo's DELL laptop.
 # Output files are nearly 6GB for one scenario.
 
-rescue_utils.DS_ATTRS # TODO: update to CMIP7
+rescue_utils.DS_ATTRS # TODO: update to CMIP7; check with Zeb for input4MIPs later
 
 res = workflow.grid(
     template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}_{grid_label}_201501-210012.nc".format(
@@ -1326,10 +1336,52 @@ print(result_grid.data_vars)
 print(result_grid.coords)
 # Pick the variable (one per nc file)
 print(result_grid['CH4_em_anthro'])
+# What years?
+import numpy as np
+print(np.unique(result_grid.coords['time'].values))
 # -
 
 result_grid['CH4_em_anthro'].sel(time = '2100-12-16 00:00:00', 
                                  sector = 'Energy').plot()
+
+import numpy as np
+# nicer color range
+data = result_grid['CH4_em_anthro'].sel(time='2015-11-16 00:00:00', sector='Energy')
+# Extract the data you're plotting
+data = result_grid['CH4_em_anthro'].sel(time='2100-11-16 00:00:00', sector='Energy')
+# Compute the 2.5th and 97.5th percentiles
+vmin, vmax = np.nanpercentile(data, [0, 99.0])
+# Plot using these as the color range
+data.plot(vmin=vmin, vmax=vmax)
+
+data.sel(time="2100-11-16 00:00:00")
+
+# +
+# nicer color range and nicer projection
+import matplotlib.pyplot as plt
+import cartopy.crs as ccrs
+
+# Set up plot with Robinson projection
+fig = plt.figure(figsize=(12, 6))
+ax = plt.axes(projection=ccrs.Robinson())
+ax.set_global()
+ax.coastlines()
+
+# Plot using pcolormesh with PlateCarree source projection
+data.squeeze().plot.pcolormesh( # squeeze to remove size-1 dimensions
+    ax=ax,
+    transform=ccrs.PlateCarree(),  # Assumes data is in lat/lon (PlateCarree)
+    vmin=vmin,
+    vmax=vmax,
+    cmap='viridis',  # You can change this to any color map
+    add_colorbar=True,
+    cbar_kwargs={'label': 'CH₄ Emissions (anthropogenic)'}
+)
+
+plt.title('CH₄ Emissions (Anthropogenic) - Energy Sector (2100-11-16)', fontsize=12)
+plt.tight_layout()
+plt.show()
+# -
 
 # ### Process single proxy
 #
