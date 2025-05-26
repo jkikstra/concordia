@@ -297,6 +297,27 @@ WorkflowDriver [concordia.workflow.WorkflowDriver] inputs:
 N.B. saving the files of a WorkflowDriver object can be done like ``workflow.save_info(path = your_path)``
 
 
+WorkflowDriver.grid [concordia.workflow.WorkflowDriver.grid] steps (RESCUE):
+
+-  harmonize_and_downscale()
+    - ...
+
+    - ...
+
+- grid_proxy(output_variable, downscaled)
+    - ...
+
+    - ...
+
+
+- verify_and_save()
+    - ...
+
+    - ...
+
+
+
+
 CMIP7 Documentation
 -------------------
 
