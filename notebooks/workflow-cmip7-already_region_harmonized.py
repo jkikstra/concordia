@@ -30,13 +30,17 @@
 HISTORY_FILE = "cmip7_history_0022.csv"
 
 # %%
-SCENARIO_FILE = "check_harmonisation_regions_REMIND.csv" # example (ALREADY HARMONIZED) COFFEE scenario
+# SCENARIO_FILE = "check_harmonisation_regions_REMIND.csv" # example (ALREADY HARMONIZED) REMIND scenario (used in v0 UKESM testing)
+SCENARIO_FILE = "harmonised-gridding_REMIND-MAgPIE 3.5-4.10.csv" # example (ALREADY HARMONIZED) REMIND scenario (used from 16.06.2026 towards v0_1 UKESM testing)
 
 # SCENARIO_FILE = "scenarios_scenariomip_COFFEE 1.6_SSP2 - Low Overshoot.csv" # example COFFEE scenario
 # SCENARIO_FILE = "scenarios_scenariomip_AIM 3.0_SSP2 - Low Emissions.csv" # example AIM scenario
 # SCENARIO_FILE = "scenarios_scenariomip_REMIND-MAgPIE 3.5-4.10_SSP2 - Low Emissions.csv" # example REMIND scenario
 # SCENARIO_FILE = "scenarios_scenariomip_MESSAGEix-GLOBIOM-GAINS 2.1-M-R12_SSP2 - Low Overshoot.csv" # example MESSAGE scenario
 # SCENARIO_FILE = "scenarios_scenariomip_allmodels_2025-03-05-messagegains.csv" # TODO: update later for all models. Location for this file is specified in the yaml file read into the `settings` object later on
+
+
+SCENARIO_SELECTION = "SSP1 - Very Low Emissions"
 
 # %% [markdown]
 # Specify settings
@@ -118,6 +122,10 @@ settings = Settings.from_config(version=HARMONIZATION_VERSION,
                                                        SETTINGS_FILE))
 
 settings.base_year
+
+# TODO: 
+# - from_config still reads the old 'config.yaml', which we can either commit or delete the dependency
+
 
 # %% [markdown]
 # Set logger (uses setting)
@@ -625,36 +633,46 @@ def compare_units(name_df1, df1, name_df2, df2, quiet = True):
 
 
 # %%
-SCENARIO_FILE
+Path(settings.scenario_path, SCENARIO_FILE)
 
 # %% [markdown]
-# ### Read in
+# ### Read in (currently just 1 scenario)
 
 # %%
+# # v0 (first UKESM round)
+# # Read in already-harmonized data
+# iam_df = load_data(
+#     # Path(settings.scenario_path, SCENARIO_FILE) 
+#     Path(settings.scenario_path, "check_harmonisation_regions_REMIND.csv")
+# )
+# iam_df = iam_df[iam_df['stage']=="harmonised"]
+# iam_df = iam_df.drop_duplicates() # aircraft and international shipping have duplicates right now
+
+# v0_1 (second UKESM round)
 # Read in already-harmonized data
 iam_df = load_data(
-    Path(settings.scenario_path, SCENARIO_FILE) 
+    Path(settings.scenario_path, SCENARIO_FILE)
+    # Path(settings.scenario_path, "harmonised-gridding_REMIND-MAgPIE 3.5-4.10.csv")
 )
-iam_df = iam_df[iam_df['stage']=="harmonised"]
-iam_df = iam_df.drop_duplicates() # aircraft and international shipping have duplicates right now
 
 # filter only one scenario  # TODO: remove after test code is done
 # iam_df = iam_df[iam_df['scenario']=="SSP1 - Very Low Emissions"]
-iam_df = filter_scenario(iam_df, scenarios="SSP1 - Very Low Emissions")
+iam_df = filter_scenario(iam_df, scenarios=SCENARIO_SELECTION)
 
-iam_df[iam_df['variable']=="Emissions|BC|International Shipping"]
-
-# # Filter data (should not do anything, as already taken care of in emissions_harmonization_historical workflow)
-# iam_df = filter_emissions_data(iam_df) # only keep variable=="Emissions*" 
-# iam_df = filter_regions_only_world_and_model_native(iam_df) # delete R10/R5
+iam_df[iam_df['variable']=="Emissions|CH4|Energy Sector"]
 
 # %%
 IAMC_COLS = ["model", "scenario", "region", "variable", "unit"]
 HARMONIZED_YEAR_COLS = [col for col in iam_df.columns if col.isdigit() and 2023 <= int(col) <= 2100]
 
 # %%
+# # v0 (first UKESM round)
+# # keep only relevant columns
+# iam_df = iam_df.drop(columns=["stage"])[(IAMC_COLS + HARMONIZED_YEAR_COLS)]
+
+# v0_1 (second UKESM round)
 # keep only relevant columns
-iam_df = iam_df.drop(columns=["stage"])[(IAMC_COLS + HARMONIZED_YEAR_COLS)]
+iam_df = iam_df[(IAMC_COLS + HARMONIZED_YEAR_COLS)]
 
 # %%
 iam_df
@@ -1267,7 +1285,9 @@ regionmapping.data # why only a few regions & countries!! --> all in this mappin
 import xarray as xr
 
 # %%
-result_grid = xr.open_dataset(Path("..", "results", "config_cmip7_v0_testing", "CH4-em-anthro_input4MIPs_emissions_RESCUE_IIASA-PIK-MESSAGEix-GLOBIOM-GAINS-2.1-M-R12-SSP2---Low-Overshoot_gn_201501-210012.nc"))
+result_grid = xr.open_dataset(Path("..", "results", 
+"config_cmip7_v0_1_testing_ukesm_remind", 
+"NOx-em-anthro_input4MIPs_emissions_CMIP7_IIASA-REMIND-MAgPIE-3.5-4.10-SSP1---Very-Low-Emissions_gn_202301-210012.nc"))
 
 # %%
 # inspect data set
@@ -1277,14 +1297,33 @@ print(result_grid.data_vars)
 # View coordinates
 print(result_grid.coords)
 # Pick the variable (one per nc file)
-print(result_grid['CH4_em_anthro'])
+print(result_grid['NOx_em_anthro'])
 # What years?
 import numpy as np
 print(np.unique(result_grid.coords['time'].values))
 
 # %%
-result_grid['CH4_em_anthro'].sel(time = '2100-11-16 00:00:00', 
-                                 sector = 'Energy').plot()
+import matplotlib.pyplot as plt
+import matplotlib.colors as colors
+
+# Extract data
+data = result_grid['NOx_em_anthro'].sel(time='2020-01-16 00:00:00', sector='Transportation')
+
+# Compute 99th percentile
+vmax = np.percentile(data.values, 99.5)
+
+# Plot with normalization: cap all higher values at the 99th percentile
+norm = colors.Normalize(vmin=data.min(), vmax=vmax)
+
+# Plot
+plt.figure(figsize=(10, 5))
+data.plot(norm=norm, cmap='viridis')  # Or use any perceptual map: 'plasma', 'inferno', etc.
+plt.title("NOx Emissions (Transportation)")
+plt.show()
+
+# %%
+result_grid['NOx_em_anthro'].sel(time = '2100-11-16 00:00:00', 
+                                 sector = 'Transportation').plot()
 
 # %%
 import numpy as np
