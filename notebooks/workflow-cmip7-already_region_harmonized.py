@@ -48,7 +48,8 @@ SETTINGS_FILE = "config_cmip7_v0_testing_ukesm_remind.yaml"
 # versioning
 # HARMONIZATION_VERSION = "config_cmip7_v0_testing_remind"
 # HARMONIZATION_VERSION = "config_cmip7_v0_testing_aim"
-HARMONIZATION_VERSION = "config_cmip7_v0_testing_ukesm_remind"
+# HARMONIZATION_VERSION = "config_cmip7_v0_testing_ukesm_remind"
+HARMONIZATION_VERSION = "config_cmip7_v0_1_testing_ukesm_remind"
 
 # %% [markdown]
 # ## Importing packages
@@ -72,6 +73,7 @@ from pathlib import Path
 import dask
 import dask.dataframe as dd
 import pandas as pd
+import pycountry
 from dask.distributed import Client
 from pandas_indexing import concat, isin, ismatch, semijoin
 from pandas_indexing.units import set_openscm_registry_as_default
@@ -621,14 +623,9 @@ def compare_units(name_df1, df1, name_df2, df2, quiet = True):
 
     return matching_data
 
-    
-
 
 # %%
 SCENARIO_FILE
-
-# %%
-iam_df.drop_duplicates()
 
 # %% [markdown]
 # ### Read in
@@ -738,6 +735,9 @@ hist
 # %% [markdown]
 # # Read Harmonization Overrides
 
+# %% [markdown]
+# ## NOTE: should be handled already before, as the emissions trajectories have already been harmonised
+
 # %%
 settings.scenario_path
 
@@ -758,7 +758,7 @@ harm_overrides = extend_overrides(
     ],
     variables=variabledefs.data.index,
     regionmappings=regionmappings,
-    model_baseyear=iam_df[str(settings.base_year)],
+    model_baseyear=iam_df[settings.base_year],
 )
 
 # %% [markdown]
@@ -768,28 +768,36 @@ harm_overrides = extend_overrides(
 #
 
 # %%
-# New; updated SSP data from CMIP7 era
-gdp = (
-    pd.read_csv(
-        settings.scenario_path / "gdp_sspv31_withallextradata_temporaryuse.csv", # only use until GDP data is finalised
-        # index_col=list(range(5)),
+settings.scenario_path
+
+# %%
+# New; updated SSP data from CMIP7 era (downloaded from: http://files.ece.iiasa.ac.at/ssp/downloads/ssp_basic_drivers_release_3.2.beta_full.xlsx, and then selected only the GDP|PPP variable)
+gdp_new = pd.read_csv(
+        settings.scenario_path / "ssp_basic_drivers_release_3.2.beta_full_gdp.csv",
+        index_col=list(range(5)),
     )
-    .filter(["model", "scenario", "iso", "variable", "unit", "year", "value"]) # select only columns  "model", "scenario", "iso", "variable", "unit", "year"
-    .query("year >= 2020") # keep only projections
-    .rename(columns={'iso': 'region'})
-    .pivot_table(index=["scenario", "region", "variable", "unit"],
-                 values="value",
-                 columns="year")
+# get iso3c instead of country names
+country_name_to_iso = {country.name: country.alpha_3 for country in pycountry.countries}
+index_df = gdp_new.index.to_frame()
+index_df['Region'] = index_df['Region'].apply(lambda x: country_name_to_iso.get(x, x).lower())
+gdp_new.index = pd.MultiIndex.from_frame(index_df)
+
+gdp = (
+    gdp_new
     .rename_axis(index=str.lower)
     .loc[
         isin(
             # model="OECD Env-Growth",
             scenario=[f"SSP{n+1}" for n in range(5)],
             variable="GDP|PPP",
+            unit="billion USD_2017/yr"
         )
     ]
-    .dropna(how="all", axis=1)
+    # .dropna(how="all", axis=1)
     .rename_axis(index={"scenario": "ssp", "region": "country"})
+    .loc[
+        ~ismatch(country = "**(r**" ) # filter out region names like 'africa (r10)'
+    ]
     .rename(index=str.lower, level="country")
     .rename(columns=int)
     .pix.project(["ssp", "country"])
