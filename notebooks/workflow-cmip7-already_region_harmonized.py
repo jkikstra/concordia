@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # ---
 # jupyter:
 #   jupytext:
@@ -8,7 +7,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.11.2
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: concordia
 #     language: python
 #     name: python3
 # ---
@@ -88,7 +87,6 @@ from concordia import (
     RegionMapping,
     VariableDefinitions,
 )
-from concordia.rescue import utils as rescue_utils # update to cmip7 utils (e.g. for dressing up netcdf)
 from concordia.cmip7 import utils as cmip7_utils # update to cmip7 utils (e.g. for dressing up netcdf)
 from concordia.settings import Settings
 from concordia.utils import MultiLineFormatter, extend_overrides
@@ -172,12 +170,12 @@ settings.variabledefs_path
 
 # %%
 variabledefs = VariableDefinitions.from_csv(settings.variabledefs_path)
-variabledefs.data.head()
+# variabledefs.data.head()
 
 # %%
-variabledefs.data.loc[
-    isin(sector="Energy Sector")
-]
+# variabledefs.data.loc[
+#     isin(sector="Energy Sector")
+# ]
 
 # %% [markdown]
 # ## Read region definitions (using RegionMapping class)
@@ -199,438 +197,10 @@ for m, kwargs in settings.regionmappings.items():
     )
     regionmappings[m] = regionmapping
 
-regionmappings
+# regionmappings
 
 # %% [markdown]
 # # IAM: Read and process IAM data
-
-# %% [markdown]
-# ### Define some useful functions
-
-# %%
-import pandas as pd
-
-# Load IAMC data
-def load_data(file_path):
-    """
-    Loads IAMC data from a CSV or Excel file and converts specific columns to lowercase.
-
-    Parameters:
-        file_path (str): The path to the input file (.csv or .xlsx).
-
-    Returns:
-        pd.DataFrame: The loaded and formatted dataframe.
-
-    Raises:
-        ValueError: If the file format is unsupported.
-    """
-    file_path_str = str(file_path)
-    if file_path_str.endswith('.csv'):
-        df = pd.read_csv(file_path)
-    elif file_path_str.endswith('.xlsx'):
-        df = pd.read_excel(file_path)
-    else:
-        raise ValueError("Unsupported file format. Use .csv or .xlsx.")
-
-    return iamc_to_lowercase(df)
-
-# IAMC data to lower case
-def iamc_to_lowercase(df):
-    """
-    Converts specific IAMC columns to lowercase.
-
-    Parameters:
-        df (pd.DataFrame): The dataframe to modify.
-
-    Returns:
-        pd.DataFrame: The modified dataframe with lowercased column names.
-    """
-    for col in ["Model", "Scenario", "Region", "Variable", "Unit"]:
-        if col in df.columns:
-            df.rename(columns={col: col.lower()}, inplace=True)
-    return df
-
-
-def sort_long_iamc_dataframe(df):
-    """
-    Sorts a long IAMC dataframe by model, scenario, region, variable, and year.
-
-    Parameters:
-        df (pd.DataFrame): The dataframe to sort.
-
-    Returns:
-        pd.DataFrame: The sorted dataframe.
-    """
-    sort_order = ["model", "scenario", "region", "variable", "year"]
-    missing_cols = [col for col in sort_order if col not in df.columns]
-    if missing_cols:
-        raise ValueError(f"Missing required columns for sorting: {missing_cols}")
-    return df.sort_values(by=sort_order).reset_index(drop=True)
-
-def sort_iamc_dataframe(df, format="long"):
-
-    if (format == "long"):
-        return sort_long_iamc_dataframe(df)
-    else:
-        raise Exception("Formats other than 'long' not yet implemented.") 
-
-
-def iamc_wide_to_long(df, iamc_cols=["model", "scenario", "variable", "region", "unit"]):
-    """
-    Converts IAMC data from wide to long format.
-
-    Parameters:
-        df (pd.DataFrame): The dataframe to transform.
-        iamc_cols (list): List of IAMC-specific columns.
-
-    Returns:
-        pd.DataFrame: The transformed dataframe in long format.
-
-    Raises:
-        KeyError: If year columns cannot be identified.
-    """
-
-    # Convert all column names to string (sometimes, years may be integer)
-    df.columns = df.columns.astype(str)
-    # Convert all column names to lowercase
-    df.columns = df.columns.str.strip().str.lower()
-
-    # Identify year columns (assuming years are strings)
-    year_columns = [str(col) for col in df.columns[len(iamc_cols):] if str(col).isdigit()]
-    if not year_columns:
-        raise KeyError("Year columns could not be identified. Ensure the dataframe has year columns after the basic IAMC columns.")
-
-
-
-    # Melt the dataframe to long format
-    long_df = df.melt(
-        id_vars=iamc_cols,
-        value_vars=year_columns,
-        var_name="year",
-        value_name="value",
-    )
-
-    # Convert year and value columns to numeric types
-    long_df["year"] = pd.to_numeric(long_df["year"], errors="coerce")
-    long_df["value"] = pd.to_numeric(long_df["value"], errors="coerce")
-    long_df.dropna(subset=["year", "value"], inplace=True)
-    long_df["year"] = long_df["year"].astype(int)
-
-    long_df = sort_iamc_dataframe(long_df)
-
-    return long_df
-
-# Filter functions
-def filter_scenario(df, scenarios):
-    """
-    Filters dataframe by scenarios.
-
-    Parameters:
-        df (pd.DataFrame): The dataframe to filter.
-        scenarios (str or list): Scenario(s) to filter by.
-
-    Returns:
-        pd.DataFrame: The filtered dataframe.
-    """
-    if isinstance(scenarios, list):
-        return df[df['scenario'].isin(scenarios)]
-    return df[df['scenario'] == scenarios]
-
-def filter_region(df, regions):
-    """
-    Filters dataframe by regions.
-
-    Parameters:
-        df (pd.DataFrame): The dataframe to filter.
-        regions (str or list): Region(s) to filter by.
-
-    Returns:
-        pd.DataFrame: The filtered dataframe.
-    """
-    if isinstance(regions, list):
-        return df[df['region'].isin(regions)]
-    return df[df['region'] == regions]
-
-def filter_variable(df, variables):
-    """
-    Filters dataframe by variables.
-
-    Parameters:
-        df (pd.DataFrame): The dataframe to filter.
-        variables (str or list): Variable(s) to filter by.
-
-    Returns:
-        pd.DataFrame: The filtered dataframe.
-    """
-    if isinstance(variables, list):
-        return df[df['variable'].isin(variables)]
-    return df[df['variable'] == variables]
-
-def filter_region_contains(df, substrings):
-    """
-    Filters dataframe by regions containing specific substrings.
-
-    Parameters:
-        df (pd.DataFrame): The dataframe to filter.
-        substrings (str or list): Substring(s) to search for in region names.
-
-    Returns:
-        pd.DataFrame: The filtered dataframe.
-    """
-    if isinstance(substrings, list):
-        return df[df['region'].str.contains('|'.join(substrings), case=False, na=False)]
-    return df[df['region'].str.contains(substrings, case=False, na=False)]
-
-def filter_emissions_data(df):
-    """
-    Filters dataframe for variables starting with "Emissions".
-
-    Parameters:
-        df (pd.DataFrame): The dataframe to filter.
-
-    Returns:
-        pd.DataFrame: The filtered dataframe.
-    """
-    return df[df['variable'].str.startswith("Emissions")]
-
-# remove data with year > 2100; assumes a dataframe in long format 
-def remove_data_after(df, yr = 2100):
-    return df[df['year'] <= yr]
-
-# Rename one variable explicitly
-def rename_one_variable(df, old_string, new_string):
-    df['variable'] = df['variable'].replace({old_string: new_string})
-    return df
-
-# Renaming variables
-def rename_variable(df, rename_dict):
-    """
-    Renames variables in the dataframe using a dictionary mapping.
-
-    Parameters:
-        df (pd.DataFrame): The dataframe to modify.
-        rename_dict (dict): A dictionary with old variable names as keys and new names as values.
-
-    Returns:
-        pd.DataFrame: The modified dataframe with updated variable names.
-    """
-    df['variable'] = df['variable'].replace(rename_dict)
-    return df
-
-# Custom function to select columns and drop duplicates
-def select_and_distinct(dataframe, columns):
-    return dataframe.loc[:, columns].drop_duplicates()
-
-# Filter regions for CMIP7 data
-def filter_regions_only_world_and_model_native(df, cmip7_iam_list=None):
-    if cmip7_iam_list is None:
-        cmip7_iam_list = ["MESSAGE", "AIM", "COFFEE", "GCAM", "IMAGE", "REMIND", "WITCH"]
-
-    world_df = filter_region(df, regions="World")
-    model_native_df = filter_region_contains(df, substrings=cmip7_iam_list)
-
-    return pd.concat([world_df, model_native_df], axis=0)
-
-# Reformatting; identify species in a separate column
-def reformat_IAMDataframe_with_species_column(df, start_string="Emissions|", end_string=None):
-    """
-    Extracts species from e.g. "Emissions|" variable names, strips an optional `end_string` from the end,
-    and reformats the dataframe.
-
-    Parameters:
-        df (pd.DataFrame): The dataframe to process.
-        start_string (str): The string to strip from the start of the variable names.
-        end_string (str): The string to strip from the end of the variable names (if provided).
-
-    Returns:
-        pd.DataFrame: The reformatted dataframe.
-    """
-    if end_string:
-        df['variable'] = df['variable'].str.removesuffix(end_string)
-
-    # Strip the start string
-    if start_string:
-        df['variable'] = df['variable'].str.removeprefix(start_string)
-
-    # Extract species from the variable column (assuming it is the first element after the start string has been removed)
-    df['species'] = df['variable'].str.split('|').str[0]
-
-    
-    # create a sector column
-    df['sector'] = df['variable'].apply(lambda x: x.split('|', 1)[1] if '|' in x else 'Total')
-    
-    return df
-
-# Sum values of selected variables
-def sum_selected_variables(df, selected_variables, new_variable_name, group_cols=["model", "scenario", "region", "unit", "year"]):
-    """
-    Sums selected variables into a new variable.
-
-    Parameters:
-        df (pd.DataFrame): The dataframe to process.
-        selected_variables (list): List of variables to sum.
-        new_variable_name (str): Name of the new aggregated variable.
-        group_cols (list): Columns to group by.
-
-    Returns:
-        pd.DataFrame: The modified dataframe with the new aggregated variable.
-
-    Raises:
-        ValueError: If inputs are of invalid types.
-    """
-    if not isinstance(selected_variables, list):
-        raise ValueError("selected_variables must be a list.")
-    if not isinstance(new_variable_name, str):
-        raise ValueError("new_variable_name must be a string.")
-
-    selected_df = df[df['variable'].isin(selected_variables)]
-    summed = (
-        selected_df
-        .groupby(group_cols, as_index=False)
-        .agg({"value": "sum"})
-    )
-    summed["variable"] = new_variable_name
-    return pd.concat([df, summed], axis=0)
-
-# Sectoral adjustments
-def process_transportation_variables(
-    df,
-    group_cols=["model", "scenario", "region", "unit", "year"],
-    new_aviation_variable="Aircraft",
-    new_transportation_variable="Transportation Sector",
-):
-    av_dom_var = "Energy|Demand|Transportation|Domestic Aviation"
-    av_int_var = "Energy|Demand|Bunkers|International Aviation"
-    trp_var = "Energy|Demand|Transportation"
-
-    aviation_df = df[df["variable"].isin([av_dom_var, av_int_var])]
-    aggregated_aviation = (
-        aviation_df.groupby(group_cols, as_index=False)
-        .agg({"value": "sum"})
-    )
-    aggregated_aviation["variable"] = new_aviation_variable
-    df = pd.concat([df, aggregated_aviation], axis=0)
-
-    domestic_aviation = df[df["variable"] == av_dom_var][group_cols + ["value"]]
-    domestic_aviation.rename(columns={"value": "value_dom"}, inplace=True)
-    transportation = df[df["variable"] == trp_var]
-
-    transportation = transportation.merge(domestic_aviation, on=group_cols, how="left")
-    transportation["value"] -= transportation["value_dom"].fillna(0)
-    transportation.drop(columns=["value_dom"], inplace=True)
-    transportation["variable"] = new_transportation_variable
-
-    df = pd.concat([df[df["variable"] != trp_var], transportation], axis=0)
-    return df
-
-def process_industrial_sector_variables(df, industry_variable_list=None, group_cols=["model", "scenario", "region", "unit", "year"]):
-    if industry_variable_list is None:
-        industry_variable_list = [
-            "Energy|Supply",
-            "Energy|Demand|Industry",
-            "Energy|Demand|Other Sector",
-            "Industrial Processes",
-            "Other"
-        ]
-
-    df = sum_selected_variables(
-        df,
-        selected_variables=industry_variable_list,
-        new_variable_name="Industrial Sector",
-        group_cols=group_cols
-    )
-    return df
-
-# Pipeline
-def process_data(df, group_cols=["model", "scenario", "region", "unit", "year"]):
-    """
-    Main processing function for transportation and industrial sectors.
-
-    Parameters:
-        df (pd.DataFrame): The dataframe to process.
-        group_cols (list): Columns to group by.
-
-    Returns:
-        pd.DataFrame: The processed dataframe.
-    """
-    df['variable'] = df['variable'].str.replace(r'^.*?\|', '', regex=True) # delete the species; i.e. everything before the first | character
-    df = process_transportation_variables(df, group_cols=group_cols)
-    df = process_industrial_sector_variables(df, group_cols=group_cols)
-    return df
-
-# Save processed data
-def save_data(df, output_path):
-    """
-    Saves the dataframe to a CSV or Excel file.
-
-    Parameters:
-        df (pd.DataFrame): The dataframe to save.
-        output_path (str): Path to the output file (.csv or .xlsx).
-
-    Raises:
-        ValueError: If the file format is unsupported.
-    """
-    if output_path.endswith('.csv'):
-        df.to_csv(output_path, index=False)
-    elif output_path.endswith('.xlsx'):
-        df.to_excel(output_path, index=False)
-    else:
-        raise ValueError("Unsupported file format. Use .csv or .xlsx.")
-    
-# create a comparison
-# Approach:
-#     Canonical Form for Comparison:
-#         Normalize the DataFrames by sorting their rows and resetting the index.
-#         This allows you to compare rows in a consistent order.
-#     Check for Matching Rows:
-#         Use set operations to find exact matches and mismatches.
-#         Convert the rows of each DataFrame into sets of tuples for comparison.
-#     Identify Important Mismatches:
-#         Rows in df1 but not in df2.
-#         Rows in df2 but not in df1.
-def compare_units(name_df1, df1, name_df2, df2, quiet = True):
-    # to be applied to:
-    # * historical
-    # * iam data
-
-    # Step 1: Convert rows to sets of tuples
-    set_df1 = set([tuple(row) for row in df1.sort_values(by=df1.columns.tolist()).itertuples(index=False, name=None)])
-    set_df2 = set([tuple(row) for row in df2.sort_values(by=df2.columns.tolist()).itertuples(index=False, name=None)])
-
-    # Step 2: Find matches and mismatches
-    matches = set_df1 & set_df2
-    only_in_df1 = set_df1 - set_df2
-    only_in_df2 = set_df2 - set_df1
-
-    if not quiet:
-        # Step 3: Display results
-        print("Exact Matches:")
-        print(matches)
-
-        print("\nRows only in " + name_df1 + ":")
-        print(only_in_df1)
-
-        print("\nRows only in " + name_df2 + ":")
-        print(only_in_df2)
-
-
-    # Step 3: convert to dataframe
-    all_tuples = list(matches) + list(only_in_df1) + list(only_in_df2)
-    all_sources = (
-        ['Exact Matches'] * len(matches) +
-        [f'Only in {name_df1}'] * len(only_in_df1) +
-        [f'Only in {name_df2}'] * len(only_in_df2)
-    )
-
-
-    matching_data = pd.DataFrame({
-        'Sector': [x[0] for x in all_tuples],
-        'Unit': [x[1] for x in all_tuples],
-        'Source': all_sources
-    })
-
-    return matching_data
-
 
 # %%
 Path(settings.scenario_path, SCENARIO_FILE)
@@ -639,31 +209,21 @@ Path(settings.scenario_path, SCENARIO_FILE)
 # ### Read in (currently just 1 scenario)
 
 # %%
-# # v0 (first UKESM round)
-# # Read in already-harmonized data
-# iam_df = load_data(
-#     # Path(settings.scenario_path, SCENARIO_FILE) 
-#     Path(settings.scenario_path, "check_harmonisation_regions_REMIND.csv")
-# )
-# iam_df = iam_df[iam_df['stage']=="harmonised"]
-# iam_df = iam_df.drop_duplicates() # aircraft and international shipping have duplicates right now
-
 # v0_1 (second UKESM round)
 # Read in already-harmonized data
-iam_df = load_data(
+iam_df = cmip7_utils.load_data(
     Path(settings.scenario_path, SCENARIO_FILE)
     # Path(settings.scenario_path, "harmonised-gridding_REMIND-MAgPIE 3.5-4.10.csv")
 )
 
-# filter only one scenario  # TODO: remove after test code is done
-# iam_df = iam_df[iam_df['scenario']=="SSP1 - Very Low Emissions"]
-iam_df = filter_scenario(iam_df, scenarios=SCENARIO_SELECTION)
+# filter only one scenario  
+iam_df = cmip7_utils.filter_scenario(iam_df, scenarios=SCENARIO_SELECTION) # TODO: remove this after test code is done
 
-iam_df[iam_df['variable']=="Emissions|CH4|Energy Sector"]
+# iam_df[iam_df['variable']=="Emissions|CH4|Energy Sector"]
 
 # %%
 IAMC_COLS = ["model", "scenario", "region", "variable", "unit"]
-HARMONIZED_YEAR_COLS = [col for col in iam_df.columns if col.isdigit() and 2023 <= int(col) <= 2100]
+HARMONIZED_YEAR_COLS = [col for col in iam_df.columns if col.isdigit() and settings.base_year <= int(col) <= 2100]
 
 # %%
 # # v0 (first UKESM round)
@@ -673,9 +233,7 @@ HARMONIZED_YEAR_COLS = [col for col in iam_df.columns if col.isdigit() and 2023 
 # v0_1 (second UKESM round)
 # keep only relevant columns
 iam_df = iam_df[(IAMC_COLS + HARMONIZED_YEAR_COLS)]
-
-# %%
-iam_df
+# iam_df
 
 # %% [markdown]
 # ### Process (using pix - formatting)
@@ -692,7 +250,7 @@ iam_df = iam_df.sort_index()
 # Update column type and name
 iam_df.columns = iam_df.columns.astype(int)
 iam_df.columns.name = 'year'
-iam_df
+# iam_df
 
 
 # %% [markdown]
@@ -702,34 +260,16 @@ iam_df
 # ### Basic checks
 
 # %%
-def check_na_in_columns(df):
-    """
-    Check all columns in the DataFrame for NA values.
-    Raise a KeyError with the column names that contain one or more NA values.
-
-    :param df: pandas DataFrame to check
-    """
-    # Find columns with NA values
-    columns_with_na = df.columns[df.isna().any()].tolist()
-    
-    if columns_with_na:
-        raise KeyError(f"The following column(s) contain NA values: {', '.join(columns_with_na)}")
-    else:
-        print("No NA values found in any column.")
-
-check_na_in_columns(iam_df)
+cmip7_utils.check_na_in_columns(iam_df)
 
 # %% [markdown]
 # ### Save in wide format
 
 # %%
-save_data(df = iam_df.reset_index(),    
-          output_path = str(Path(version_path, "scenarios_processed.csv" )))
+cmip7_utils.save_data(df = iam_df.reset_index(), output_path = str(Path(version_path, "scenarios_processed.csv" )))
 
 # %% [markdown]
 # # History: Read and process historical data
-#
-# Can be read in and prepared using `read_iamc` or the `variabledefs`
 #
 
 # %%
@@ -748,23 +288,23 @@ hist = hist.sort_index()
 # Update column type and name
 hist.columns = hist.columns.astype(int)
 hist.columns.name = 'year'
-hist
+# hist
 
 # %% [markdown]
 # # Read Harmonization Overrides
 
 # %% [markdown]
-# ## NOTE: should be handled already before, as the emissions trajectories have already been harmonised
+# NOTE: should be handled already before, as the emissions trajectories have already been harmonised
 
 # %%
 settings.scenario_path
 
 # %%
 harm_overrides = pd.read_excel(
-    settings.scenario_path / "harmonization_overrides.xlsx",
+    settings.scenario_path / "harmonization_overrides.xlsx", # placeholder for now, should be empty as already harmonized.
     index_col=list(range(3)),
 ).method
-harm_overrides
+# harm_overrides
 
 # %%
 harm_overrides = extend_overrides(
@@ -789,6 +329,10 @@ harm_overrides = extend_overrides(
 settings.scenario_path
 
 # %%
+
+# %%
+# TODO: (bug) resolve 0 values in model scenario data for historical
+
 # New; updated SSP data from CMIP7 era (downloaded from: http://files.ece.iiasa.ac.at/ssp/downloads/ssp_basic_drivers_release_3.2.beta_full.xlsx, and then selected only the GDP|PPP variable)
 gdp_new = pd.read_csv(
         settings.scenario_path / "ssp_basic_drivers_release_3.2.beta_full_gdp.csv",
@@ -822,20 +366,70 @@ gdp = (
     .pix.aggregate(country=settings.country_combinations)
 )
 
+# SELECT ONLY FUTURE YEARS
+# Get all years in the range (min to max)
+# all_years = range(min(gdp.columns), max(gdp.columns) + 1) # is possible, but would need to deal with "Scenario=='Historical Reference'"
+all_years = range(2021, 2100 + 1)
+
+# Reindex to include all years, then interpolate
+gdp = gdp.reindex(columns=all_years)
+
+
+
+# ADD HISTORICAL VALUE FOR EACH SCENARIO (to get 2023 and 2024 GDP)
+## get 2020 historical value for interpolation to 2023 and 2024
+gdp_new = gdp_new.rename_axis(index=str.lower)
+hist_mask = (
+    # gdp_new.index.get_level_values("model") == "OECD Env-Growth" &
+    (gdp_new.index.get_level_values("scenario") == "Historical Reference") &
+    (gdp_new.index.get_level_values("variable") == "GDP|PPP") &
+    (gdp_new.index.get_level_values("unit") == "billion USD_2017/yr")
+)
+gdp_hist = (
+    gdp_new.loc[hist_mask,"2020"]
+    # gdp_new.loc[hist_mask,"2020"].reset_index().loc[:, ["region", "variable", "unit", "2020"]]
+    .rename_axis(index={"region": "country"})
+    .loc[
+        ~ismatch(country = "**(r**" ) # filter out region names like 'africa (r10)'
+    ]
+    .rename(index=str.lower, level="country")
+    # .rename(columns=int)
+    .pix.project(["country"])
+    .pix.aggregate(country=settings.country_combinations)
+)
+gdp_hist
+
+## Merge
+### Step 1: Reset index on gdp_hist to prepare for merge
+gdp_hist_reset = gdp_hist.reset_index()  # 'country' becomes a column
+gdp_hist_reset
+
+### Step 2: Merge on 'country', keeping all rows in gdp
+# We assume gdp has a MultiIndex ('ssp', 'country')
+gdp_reset = gdp.reset_index()  # so we can merge on 'country'
+merged = gdp_reset.merge(gdp_hist_reset[['country', '2020']], on='country', how='left')
+
+### Step 3: Set index back to ('ssp', 'country') if needed
+merged = merged.set_index(['ssp', 'country'])
+
+### Step 4: Reorder columns by year
+# First, get all columns that are years (int or str), sort them
+year_cols = sorted([col for col in merged.columns if str(col).isdigit()], key=int)
+merged = merged[year_cols]  # reordering only the year columns
+# merged
+
+
+
 # INTERPOLATE:
 # Interpolate GDP DataFrame to annual data (fill all years in the column range)
 # Assumes 'gdp' is a DataFrame with years as columns (integers) and a MultiIndex
 
-# Get all years in the range (min to max)
-all_years = range(min(gdp.columns), max(gdp.columns) + 1)
-
 # Reindex to include all years, then interpolate
-gdp = (
-    gdp.reindex(columns=all_years)
-       .interpolate(axis=1, method='linear', limit_direction='both')
-)
+gdp = gdp.interpolate(axis=1, method='linear', limit_direction='both')
 
 gdp
+# merged
+
 
 # # Old; original SSP data from CMIP6 era
 # gdp = (
@@ -865,28 +459,8 @@ gdp
 #
 
 # %%
-def guess_ssp(df):
-    ssp_guesses = (
-    df.index.pix.project(["model", "scenario"])
-    .unique()
-    .to_frame()
-    .scenario.str.extract("(SSP[1-5])")[0]
-    .fillna("SSP2")
-    )
-    return ssp_guesses
-def join_gdp_based_on_ssp(scenarios_with_ssp_mapping, gdp_per_ssp):
-    gdp_for_each_scenario = semijoin(
-            gdp_per_ssp,
-            # SSP_per_pathway.index.pix.assign(ssp=SSP_per_pathway + "_v9_130325"), # CMIP6 era SSP data
-            scenarios_with_ssp_mapping.index.pix.assign(ssp=scenarios_with_ssp_mapping), # CMIP7 era SSP data
-            how="right",
-        ).pix.project(["model", "scenario", "country"])
-    return gdp_for_each_scenario
-
-
-# %%
-SSP_per_pathway = guess_ssp(iam_df)
-GDP_per_pathway = join_gdp_based_on_ssp(
+SSP_per_pathway = cmip7_utils.guess_ssp(iam_df)
+GDP_per_pathway = cmip7_utils.join_gdp_based_on_ssp(
     scenarios_with_ssp_mapping=SSP_per_pathway,
     gdp_per_ssp=gdp
 )
@@ -1028,19 +602,26 @@ assert_strings_covered(reg_model, reg_mapped)
 #
 
 # %% [markdown]
-# ## Alternative 2) Harmonize and downscale everything, but do not grid
+# ## Harmonize and downscale everything, but do not grid
 #
-# If you also want grids, use the gridding interface directly.
-# For a 1 scenario, this takes about 50 seconds on Jarmo's DELL laptop.
+# If you also want grids, use the gridding interface directly - see below.
 #
 
 # %%
-# error: why?
-# - maybe: column names are string/object, instead of int32 {other workflow} with name=year {SOLVED: COLUMNS TYPE CHANGED AND NAMES CHANGED}
-# - probably: model is empty {SOLVED: GDP NOW INTERPOLATER}
-# -> model has two times 'aircraft' and 'international shipping' for region=="World" {SOLVED: DUPLICATES IN MODEL DATA, i.e. Intl Shipping and Aicraft were duplicates}
+# manual steps:
+# ...
+# skipnone(
+#                 self.harmdown_globallevel(variabledefs),
+#                 self.harmdown_regionlevel(variabledefs),
+#                 self.harmdown_countrylevel(variabledefs),
+#             )
 
-downscaled = workflow.harmonize_and_downscale()
+# workflow.harmdown_globallevel(workflow.variabledefs) # first step, works fine
+# workflow.harmdown_regionlevel(workflow.variabledefs) # second step, looks to work fine and quick, too
+# workflow.harmdown_countrylevel(workflow.variabledefs) # third step, requires gdp to be available from the HARMONIZATION_YEAR onward
+
+# %%
+downscaled = workflow.harmonize_and_downscale() # For a 1 scenario, this takes about 50 seconds on Jarmo's DELL laptop.
 
 # %% [markdown]
 # ### Export harmonized scenarios
@@ -1058,12 +639,10 @@ data.to_csv(version_path / f"harmonization-{settings.version}.csv")
 
 # %% [markdown]
 # ### Export downscaled scenarios
-#
-# TODO: create a similar exporter to the Harmonized class for Downscaled which combines historic and downscaled data (maybe also harmonized?) and translates to iamc
-#
 
 # %%
-# Do we also want to render this as IAMC?
+# TODO: (feature) create a similar exporter to the Harmonized class for Downscaled which combines historic and downscaled data (maybe also harmonized?) and translates to iamc
+
 workflow.downscaled.data.to_csv(
     version_path / f"downscaled-only-{settings.version}.csv"
 )
@@ -1098,185 +677,7 @@ res = workflow.grid(
 # # ------------------------------------
 
 # %% [markdown]
-# # START OF SOME NOT-NECESSARY CODE SNIPPETS
-
-# %% [markdown]
-# ## Alternative 2) INPUT DIAGNOSTICS FOR Harmonize and downscale everything, but do not grid
-#
-# If you also want grids, use the gridding interface directly.
-# For a handfull of scenarios, this takes less than a minute on a Dell laptop.
-#
-
-# %% [markdown]
-# ### Looking around: Global
-
-# %%
-variables = workflow.variabledefs.globallevel.index
-model = workflow.model.pix.semijoin(variables, how="right").loc[
-            isin(region="World")
-        ]
-hist = (
-            workflow.hist.pix.semijoin(variables, how="right")
-            .loc[isin(country="World")]
-            .rename_axis(index={"country": "region"})
-        )
-
-# %%
-harmonized = concordia.harmonize.harmonize(
-            model,
-            hist,
-            overrides=workflow.harm_overrides.pix.semijoin(variables, how="inner"),
-            settings=workflow.settings,
-        )
-harmonized = concordia.utils.aggregate_subsectors(harmonized)
-hist = concordia.utils.aggregate_subsectors(hist)
-
-
-# %%
-# workflow.history_aggregated.globallevel = hist
-# self.harmonized.globallevel = harmonized
-# self.downscaled.globallevel = harmonized.pix.format(
-#     method="single", country="{region}"
-# )
-# harmonized.pix.format(
-#     method="single", country="{region}"
-# )
-harmonized.pix.format(
-    nlanal="{region}"
-)
-
-# %%
-workflow.downscaled.globallevel
-
-# %% [markdown]
-# ### Looking around: Country
-
-# %%
-hist.loc[isin(country='nld')] # hist
-
-# %%
-# check for NLD, CO2, Energy Sector (for the 1 scenario that is loaded)
-workflow.regionmapping.data.loc['nld'] # regionmapping
-
-hist.loc[isin(country='nld', gas='CO2', sector='Energy Sector')] # hist
-GDP_per_pathway.loc[isin(country='nld')] # gdp proxy
-'nld' in countries_with_hist_and_gdp_and_regionmapping_data # regionmapping selection passed onto workflowdriver
-indexraster.boundary.sel(country=indexraster.index.get_loc('nld')) # locate in indexraster
-indexraster_region.boundary.sel(country=indexraster_region.index.get_loc(workflow.regionmapping.data.loc['nld'])) # locate in indexraster_region
-
-variabledefs.data.loc[isin(gas='CO2', sector='Energy Sector')] # check variable definition for an important sector
-settings
-
-# %%
-settings
-
-# %%
-nld_code = indexraster.index.get_loc('nld') + 1  # Assuming 1-based encoding in the raster
-mas = indexraster.indicator == nld_code
-mas
-nld_code
-
-# %%
-for key, value in workflow.proxies.items():
-    # print(f"Key: {key}, Value: {value}")
-    # print(f"Attributes of Value: {dir(value)}")
-    print(f"Key: {key}, Proxy Weight: {value.weight.sel(country='nld')}")
-
-# %%
-print(key)
-print(type(value))
-print(type(value.weight))
-print(value.weight['country'].sel(country='ind',year=2030, sector='Peat Burning', gas='BC'))
-print(value.weight['country'].sel(country='ind',year=2030, sector='Peat Burning', gas='BC').data)
-
-# %%
-workflow.proxies['BC_em_openburning'].data # example openburning proxy
-workflow.proxies['CO2_em_anthro'].data # example anthropogenic emissions
-
-# %%
-workflow.proxies.items()
-workflow.proxies.keys()
-
-# %%
-i = 1
-for gr in workflow.country_groups(variabledefs):
-    print(i)
-    print(workflow.regionmapping.filter(gr.countries))
-
-# %%
-import concordia.downscale
-
-
-print("Harmonizing and downscaling " + str(len(workflow.variabledefs.countrylevel.index)) + " variables to country level")
-
-history_aggregated = []
-harmonized = []
-downscaled = []
-
-history_aggregated = []
-harmonized = []
-downscaled = []
-i = 1
-while i < 2:
-    for group in workflow.country_groups(variabledefs):
-        regionmapping = workflow.regionmapping.filter(group.countries)
-        missing_regions = set(workflow.regionmapping.data.unique()).difference(
-            regionmapping.data.unique()
-        )
-        missing_countries = workflow.regionmapping.data.index.difference(
-            group.countries
-        )
-
-        model = workflow.model.pix.semijoin(group.variables, how="right")
-        hist = workflow.hist.pix.semijoin(group.variables, how="right")
-        hist_agg = regionmapping.aggregate(hist, dropna=True)
-
-        # log_uncovered_history(hist, hist_agg, base_year=self.settings.base_year)
-        history_aggregated.append(
-            concordia.utils.add_zeros_like(hist_agg, hist, region=missing_regions)
-        )
-
-        harm = concordia.harmonize.harmonize(
-            model.loc[isin(region=regionmapping.data.unique())],
-            hist_agg,
-            overrides=workflow.harm_overrides.pix.semijoin(
-                group.variables, how="inner"
-            ),
-            settings=workflow.settings,
-        )
-        harmonized.append(
-            concordia.utils.add_zeros_like(harm, model, region=missing_regions, method=["all_zero"])
-        )
-
-        harm = concordia.utils.aggregate_subsectors(harm.droplevel("method"))
-        hist = concordia.utils.aggregate_subsectors(hist)
-
-        down = concordia.downscale.downscale(
-            harm,
-            hist,
-            workflow.gdp,
-            regionmapping,
-            settings=workflow.settings,
-        )
-        downscaled.append(
-            concordia.utils.add_zeros_like(
-                down,
-                harm,
-                country=missing_countries,
-                method=["all_zero"],
-                derive=dict(region=workflow.regionmapping.index),
-            )
-        )
-        i = i + 1 
-
-# %%
-'nld' in missing_countries # nld not in countries
-'chn' in missing_countries # chn is in the countries
-
-regionmapping.data # why only a few regions & countries!! --> all in this mapping don't feature in the harmonization output. All that 
-
-# %% [markdown]
-# ## Alternative 3) Investigations: Gridded
+# # Investigate GRIDS
 
 # %% [markdown]
 # ### Look at a processed emissions file
@@ -1290,8 +691,6 @@ result_grid = xr.open_dataset(Path("..", "results",
 "NOx-em-anthro_input4MIPs_emissions_CMIP7_IIASA-REMIND-MAgPIE-3.5-4.10-SSP1---Very-Low-Emissions_gn_202301-210012.nc"))
 
 # %%
-# inspect data set
-
 # View variable names
 print(result_grid.data_vars)
 # View coordinates
@@ -1320,145 +719,3 @@ plt.figure(figsize=(10, 5))
 data.plot(norm=norm, cmap='viridis')  # Or use any perceptual map: 'plasma', 'inferno', etc.
 plt.title("NOx Emissions (Transportation)")
 plt.show()
-
-# %%
-result_grid['NOx_em_anthro'].sel(time = '2100-11-16 00:00:00', 
-                                 sector = 'Transportation').plot()
-
-# %%
-import numpy as np
-# nicer color range
-data = result_grid['CH4_em_anthro'].sel(time='2015-11-16 00:00:00', sector='Energy')
-# Extract the data you're plotting
-data = result_grid['CH4_em_anthro'].sel(time='2100-11-16 00:00:00', sector='Energy')
-# Compute the 2.5th and 97.5th percentiles
-vmin, vmax = np.nanpercentile(data, [0, 99.0])
-# Plot using these as the color range
-data.plot(vmin=vmin, vmax=vmax)
-
-# %%
-data.sel(time="2100-11-16 00:00:00")
-
-# %%
-# nicer color range and nicer projection
-import matplotlib.pyplot as plt
-import cartopy.crs as ccrs
-
-# Set up plot with Robinson projection
-fig = plt.figure(figsize=(12, 6))
-ax = plt.axes(projection=ccrs.Robinson())
-ax.set_global()
-ax.coastlines()
-
-# Plot using pcolormesh with PlateCarree source projection
-data.squeeze().plot.pcolormesh( # squeeze to remove size-1 dimensions
-    ax=ax,
-    transform=ccrs.PlateCarree(),  # Assumes data is in lat/lon (PlateCarree)
-    vmin=vmin,
-    vmax=vmax,
-    cmap='viridis',  # You can change this to any color map
-    add_colorbar=True,
-    cbar_kwargs={'label': 'CH₄ Emissions (anthropogenic)'}
-)
-
-plt.title('CH₄ Emissions (Anthropogenic) - Energy Sector (2100-11-16)', fontsize=12)
-plt.tight_layout()
-plt.show()
-
-# %% [markdown]
-# ### Process single proxy
-#
-# `workflow.grid_proxy` returns an iterator of the gridded scenarios. We are looking at the first one in depth.
-
-# %%
-gridded = next(workflow.grid_proxy("CO2_em_anthro"))
-
-# %%
-ds = gridded.prepare_dataset(callback=rescue_utils.DressUp(version=settings.version))
-ds
-
-# %%
-gridded.to_netcdf(
-    template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}_{grid_label}_201501-210012.nc".format(
-        **rescue_utils.DS_ATTRS | {"version": settings.version}
-    ),
-    callback=rescue_utils.DressUp(version=settings.version),
-    directory=version_path,
-)
-
-# %%
-ds["CO2_em_anthro"].sel(sector="CDR OAE", time="2015-09-16").plot()
-
-# %%
-# ds.isnull().any(["time", "lat", "lon"])["CO2_em_anthro"].to_pandas()
-
-# %%
-# reldiff, _ = dask.compute(
-#     gridded.verify(compute=False),
-#     gridded.to_netcdf(
-#         template_fn=(
-#             "{{name}}_{activity_id}_emissions_{target_mip}_{institution}-"
-#             "{{model}}-{{scenario}}-{version}_{grid_label}_201501-210012.nc"
-#         ).format(**rescue_utils.DS_ATTRS | {"version": settings.version}),
-#         callback=rescue_utils.DressUp(version=settings.version),
-#         encoding_kwargs=dict(_FillValue=1e20),
-#         compute=False,
-#         directory=version_path,
-#     ),
-# )
-# reldiff
-
-# %% [markdown]
-# ### Regional proxy weights
-
-# %%
-# gridded.proxy.weight.regional.sel(
-#     sector="Transportation Sector", year=2050, gas="CO2"
-# ).compute().to_pandas().plot.hist(bins=100, logx=True, logy=True)
-
-
-# %% [markdown]
-# ## Alternative 4) Investigations: national Downscaled
-
-# %%
-# tbd
-
-# %% [markdown]
-# ## Export harmonized scenarios
-#
-
-
-# %%
-data = (
-    workflow.harmonized_data.add_totals()
-    .to_iamc(settings.variable_template, hist_scenario="Synthetic (CEDS/GFED/Global)")
-    # .pipe(rename_alkalinity_addition)
-    .rename_axis(index=str.capitalize)
-)
-data.to_csv(version_path / f"harmonization-{settings.version}.csv")
-
-# %% [markdown]
-# ### Split HFC distributions
-#
-
-# %%
-# hfc_distribution = (
-#     pd.read_excel(
-#         settings.postprocess_path / "rescue_hfc_scenario.xlsx",
-#         index_col=0,
-#         sheet_name="velders_2015",
-#     )
-#     .rename_axis("hfc")
-#     .rename(columns=int)
-# )
-
-# data = (
-#     workflow.harmonized_data.drop_method()
-#     .add_totals()
-#     .aggregate_subsectors()
-#     .split_hfc(hfc_distribution)
-#     .to_iamc(settings.variable_template, hist_scenario="Synthetic (GFED/CEDS/Global)")
-#     # .pipe(rename_alkalinity_addition)
-#     .rename_axis(index=str.capitalize)
-# )
-# data.to_csv(version_path / f"harmonization-{settings.version}-splithfc.csv")

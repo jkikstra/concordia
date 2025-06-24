@@ -19,6 +19,7 @@ notebooks/**/*.ipynb
 data/out
 data/rescue
 data/rescue_old
+data/compare_wfd_inputs
 
 # Distribution / packaging
 .Python
