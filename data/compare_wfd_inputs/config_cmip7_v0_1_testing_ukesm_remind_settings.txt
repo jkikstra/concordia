@@ -1,0 +1,21 @@
+Settings Information
+=====================
+
+version: config_cmip7_v0_1_testing_ukesm_remind
+base_year: 2023
+luc_sectors: ['Agricultural Waste Burning', 'Grassland Burning', 'Forest Burning', 'Peat Burning', 'Agriculture']
+regionmappings: {'MESSAGEix-GLOBIOM-GAINS 2.1-M-R12': {'path': '/home/hoegner/Projects/CMIP7/input/regionmappings/region_definitions_message.csv', 'country_column': 'iso', 'region_column': 'message_r12', 'sep': ','}, 'REMIND-MAgPIE 3.5-4.10': {'path': '/home/hoegner/Projects/CMIP7/input/regionmappings/region_definitions_remind_quick.csv', 'country_column': 'iso3', 'region_column': 'name', 'sep': ','}, 'AIM 3.0': {'path': '/home/hoegner/Projects/CMIP7/input/regionmappings/region_definitions_aim_quick.csv', 'country_column': 'iso3', 'region_column': 'name', 'sep': ','}, 'COFFEE 1.6': {'path': '/home/hoegner/Projects/CMIP7/input/regionmappings/region_definitions_coffee_quick.csv', 'country_column': 'iso3', 'region_column': 'name', 'sep': ','}}
+country_combinations: {'sdn_ssd': ['ssd', 'sdn'], 'isr_pse': ['isr', 'pse'], 'srb_ksv': ['srb', 'srb (kosovo)']}
+variable_template: CMIP7 Harmonization|Emissions|{gas}|{sector}
+encoding: {'zlib': True, 'complevel': 2}
+ftp: FtpSettings(server='127.0.0.1', port=21, user='anonymous', password='')
+local_config_path: local-config-cmip7_v0_testing.yaml
+out_path: ../results
+data_path: /home/hoegner/Projects/CMIP7
+variabledefs_path: /home/hoegner/Projects/CMIP7/input/variabledefinitions/variabledefs-cmip7_noCDR.csv
+history_path: /home/hoegner/Projects/CMIP7/input/historical
+scenario_path: /home/hoegner/Projects/CMIP7/input/scenarios
+proxy_path: /home/hoegner/Projects/CMIP7/input/gridding/proxy_rasters
+gridding_path: /home/hoegner/Projects/CMIP7/input/gridding
+postprocess_path: /home/hoegner/Projects/CMIP7/input/postprocessing
+__weakref__: None

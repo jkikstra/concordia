@@ -26,9 +26,9 @@ base_year: 2023
 
 regionmappings: # region mappings for all models
   MESSAGEix-GLOBIOM-GAINS 2.1-M-R12:
-    path: "$regionmappings_path/region_definitions_message.csv"
-    country_column: "iso"
-    region_column: "message_r12"
+    path: "$regionmappings_path/region_definitions_MESSAGEix-GLOBIOM-GAINS 2.1-R12.csv"
+    country_column: "iso3"
+    region_column: "name"
     sep: ","
   REMIND-MAgPIE 3.5-4.10:
     path: "$regionmappings_path/region_definitions_REMIND-MAgPIE 3.5-4.10.csv"
