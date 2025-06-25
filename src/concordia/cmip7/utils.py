@@ -13,7 +13,7 @@ import pandas as pd
 import xarray as xr
 from attrs import define
 from cattrs import structure, transform_error
-from pandas_indexing import concat, isin
+from pandas_indexing import concat, isin, semijoin
 from tqdm.auto import tqdm
 
 from ..settings import FtpSettings
@@ -411,3 +411,463 @@ class Variants:
 
     def rename_to_subsector(self, data, on="sector"):
         return self.rename_suffix(data, f" ({self.suffix})", f"|{self.suffix}", on=on)
+
+
+### Define some useful functions
+
+# Load IAMC data
+def load_data(file_path):
+    """
+    Loads IAMC data from a CSV or Excel file and converts specific columns to lowercase.
+
+    Parameters:
+        file_path (str): The path to the input file (.csv or .xlsx).
+
+    Returns:
+        pd.DataFrame: The loaded and formatted dataframe.
+
+    Raises:
+        ValueError: If the file format is unsupported.
+    """
+    file_path_str = str(file_path)
+    if file_path_str.endswith('.csv'):
+        df = pd.read_csv(file_path)
+    elif file_path_str.endswith('.xlsx'):
+        df = pd.read_excel(file_path)
+    else:
+        raise ValueError("Unsupported file format. Use .csv or .xlsx.")
+
+    return iamc_to_lowercase(df)
+
+# IAMC data to lower case
+def iamc_to_lowercase(df):
+    """
+    Converts specific IAMC columns to lowercase.
+
+    Parameters:
+        df (pd.DataFrame): The dataframe to modify.
+
+    Returns:
+        pd.DataFrame: The modified dataframe with lowercased column names.
+    """
+    for col in ["Model", "Scenario", "Region", "Variable", "Unit"]:
+        if col in df.columns:
+            df.rename(columns={col: col.lower()}, inplace=True)
+    return df
+
+
+def sort_long_iamc_dataframe(df):
+    """
+    Sorts a long IAMC dataframe by model, scenario, region, variable, and year.
+
+    Parameters:
+        df (pd.DataFrame): The dataframe to sort.
+
+    Returns:
+        pd.DataFrame: The sorted dataframe.
+    """
+    sort_order = ["model", "scenario", "region", "variable", "year"]
+    missing_cols = [col for col in sort_order if col not in df.columns]
+    if missing_cols:
+        raise ValueError(f"Missing required columns for sorting: {missing_cols}")
+    return df.sort_values(by=sort_order).reset_index(drop=True)
+
+def sort_iamc_dataframe(df, format="long"):
+
+    if (format == "long"):
+        return sort_long_iamc_dataframe(df)
+    else:
+        raise Exception("Formats other than 'long' not yet implemented.") 
+
+
+def iamc_wide_to_long(df, iamc_cols=["model", "scenario", "variable", "region", "unit"]):
+    """
+    Converts IAMC data from wide to long format.
+
+    Parameters:
+        df (pd.DataFrame): The dataframe to transform.
+        iamc_cols (list): List of IAMC-specific columns.
+
+    Returns:
+        pd.DataFrame: The transformed dataframe in long format.
+
+    Raises:
+        KeyError: If year columns cannot be identified.
+    """
+
+    # Convert all column names to string (sometimes, years may be integer)
+    df.columns = df.columns.astype(str)
+    # Convert all column names to lowercase
+    df.columns = df.columns.str.strip().str.lower()
+
+    # Identify year columns (assuming years are strings)
+    year_columns = [str(col) for col in df.columns[len(iamc_cols):] if str(col).isdigit()]
+    if not year_columns:
+        raise KeyError("Year columns could not be identified. Ensure the dataframe has year columns after the basic IAMC columns.")
+
+
+
+    # Melt the dataframe to long format
+    long_df = df.melt(
+        id_vars=iamc_cols,
+        value_vars=year_columns,
+        var_name="year",
+        value_name="value",
+    )
+
+    # Convert year and value columns to numeric types
+    long_df["year"] = pd.to_numeric(long_df["year"], errors="coerce")
+    long_df["value"] = pd.to_numeric(long_df["value"], errors="coerce")
+    long_df.dropna(subset=["year", "value"], inplace=True)
+    long_df["year"] = long_df["year"].astype(int)
+
+    long_df = sort_iamc_dataframe(long_df)
+
+    return long_df
+
+# Filter functions
+def filter_scenario(df, scenarios):
+    """
+    Filters dataframe by scenarios.
+
+    Parameters:
+        df (pd.DataFrame): The dataframe to filter.
+        scenarios (str or list): Scenario(s) to filter by.
+
+    Returns:
+        pd.DataFrame: The filtered dataframe.
+    """
+    if isinstance(scenarios, list):
+        return df[df['scenario'].isin(scenarios)]
+    return df[df['scenario'] == scenarios]
+
+def filter_region(df, regions):
+    """
+    Filters dataframe by regions.
+
+    Parameters:
+        df (pd.DataFrame): The dataframe to filter.
+        regions (str or list): Region(s) to filter by.
+
+    Returns:
+        pd.DataFrame: The filtered dataframe.
+    """
+    if isinstance(regions, list):
+        return df[df['region'].isin(regions)]
+    return df[df['region'] == regions]
+
+def filter_variable(df, variables):
+    """
+    Filters dataframe by variables.
+
+    Parameters:
+        df (pd.DataFrame): The dataframe to filter.
+        variables (str or list): Variable(s) to filter by.
+
+    Returns:
+        pd.DataFrame: The filtered dataframe.
+    """
+    if isinstance(variables, list):
+        return df[df['variable'].isin(variables)]
+    return df[df['variable'] == variables]
+
+def filter_region_contains(df, substrings):
+    """
+    Filters dataframe by regions containing specific substrings.
+
+    Parameters:
+        df (pd.DataFrame): The dataframe to filter.
+        substrings (str or list): Substring(s) to search for in region names.
+
+    Returns:
+        pd.DataFrame: The filtered dataframe.
+    """
+    if isinstance(substrings, list):
+        return df[df['region'].str.contains('|'.join(substrings), case=False, na=False)]
+    return df[df['region'].str.contains(substrings, case=False, na=False)]
+
+def filter_emissions_data(df):
+    """
+    Filters dataframe for variables starting with "Emissions".
+
+    Parameters:
+        df (pd.DataFrame): The dataframe to filter.
+
+    Returns:
+        pd.DataFrame: The filtered dataframe.
+    """
+    return df[df['variable'].str.startswith("Emissions")]
+
+# remove data with year > 2100; assumes a dataframe in long format 
+def remove_data_after(df, yr = 2100):
+    return df[df['year'] <= yr]
+
+# Rename one variable explicitly
+def rename_one_variable(df, old_string, new_string):
+    df['variable'] = df['variable'].replace({old_string: new_string})
+    return df
+
+# Renaming variables
+def rename_variable(df, rename_dict):
+    """
+    Renames variables in the dataframe using a dictionary mapping.
+
+    Parameters:
+        df (pd.DataFrame): The dataframe to modify.
+        rename_dict (dict): A dictionary with old variable names as keys and new names as values.
+
+    Returns:
+        pd.DataFrame: The modified dataframe with updated variable names.
+    """
+    df['variable'] = df['variable'].replace(rename_dict)
+    return df
+
+# Custom function to select columns and drop duplicates
+def select_and_distinct(dataframe, columns):
+    return dataframe.loc[:, columns].drop_duplicates()
+
+# Filter regions for CMIP7 data
+def filter_regions_only_world_and_model_native(df, cmip7_iam_list=None):
+    if cmip7_iam_list is None:
+        cmip7_iam_list = ["MESSAGE", "AIM", "COFFEE", "GCAM", "IMAGE", "REMIND", "WITCH"]
+
+    world_df = filter_region(df, regions="World")
+    model_native_df = filter_region_contains(df, substrings=cmip7_iam_list)
+
+    return pd.concat([world_df, model_native_df], axis=0)
+
+# Reformatting; identify species in a separate column
+def reformat_IAMDataframe_with_species_column(df, start_string="Emissions|", end_string=None):
+    """
+    Extracts species from e.g. "Emissions|" variable names, strips an optional `end_string` from the end,
+    and reformats the dataframe.
+
+    Parameters:
+        df (pd.DataFrame): The dataframe to process.
+        start_string (str): The string to strip from the start of the variable names.
+        end_string (str): The string to strip from the end of the variable names (if provided).
+
+    Returns:
+        pd.DataFrame: The reformatted dataframe.
+    """
+    if end_string:
+        df['variable'] = df['variable'].str.removesuffix(end_string)
+
+    # Strip the start string
+    if start_string:
+        df['variable'] = df['variable'].str.removeprefix(start_string)
+
+    # Extract species from the variable column (assuming it is the first element after the start string has been removed)
+    df['species'] = df['variable'].str.split('|').str[0]
+
+    
+    # create a sector column
+    df['sector'] = df['variable'].apply(lambda x: x.split('|', 1)[1] if '|' in x else 'Total')
+    
+    return df
+
+# Sum values of selected variables
+def sum_selected_variables(df, selected_variables, new_variable_name, group_cols=["model", "scenario", "region", "unit", "year"]):
+    """
+    Sums selected variables into a new variable.
+
+    Parameters:
+        df (pd.DataFrame): The dataframe to process.
+        selected_variables (list): List of variables to sum.
+        new_variable_name (str): Name of the new aggregated variable.
+        group_cols (list): Columns to group by.
+
+    Returns:
+        pd.DataFrame: The modified dataframe with the new aggregated variable.
+
+    Raises:
+        ValueError: If inputs are of invalid types.
+    """
+    if not isinstance(selected_variables, list):
+        raise ValueError("selected_variables must be a list.")
+    if not isinstance(new_variable_name, str):
+        raise ValueError("new_variable_name must be a string.")
+
+    selected_df = df[df['variable'].isin(selected_variables)]
+    summed = (
+        selected_df
+        .groupby(group_cols, as_index=False)
+        .agg({"value": "sum"})
+    )
+    summed["variable"] = new_variable_name
+    return pd.concat([df, summed], axis=0)
+
+# Sectoral adjustments
+def process_transportation_variables(
+    df,
+    group_cols=["model", "scenario", "region", "unit", "year"],
+    new_aviation_variable="Aircraft",
+    new_transportation_variable="Transportation Sector",
+):
+    av_dom_var = "Energy|Demand|Transportation|Domestic Aviation"
+    av_int_var = "Energy|Demand|Bunkers|International Aviation"
+    trp_var = "Energy|Demand|Transportation"
+
+    aviation_df = df[df["variable"].isin([av_dom_var, av_int_var])]
+    aggregated_aviation = (
+        aviation_df.groupby(group_cols, as_index=False)
+        .agg({"value": "sum"})
+    )
+    aggregated_aviation["variable"] = new_aviation_variable
+    df = pd.concat([df, aggregated_aviation], axis=0)
+
+    domestic_aviation = df[df["variable"] == av_dom_var][group_cols + ["value"]]
+    domestic_aviation.rename(columns={"value": "value_dom"}, inplace=True)
+    transportation = df[df["variable"] == trp_var]
+
+    transportation = transportation.merge(domestic_aviation, on=group_cols, how="left")
+    transportation["value"] -= transportation["value_dom"].fillna(0)
+    transportation.drop(columns=["value_dom"], inplace=True)
+    transportation["variable"] = new_transportation_variable
+
+    df = pd.concat([df[df["variable"] != trp_var], transportation], axis=0)
+    return df
+
+def process_industrial_sector_variables(df, industry_variable_list=None, group_cols=["model", "scenario", "region", "unit", "year"]):
+    if industry_variable_list is None:
+        industry_variable_list = [
+            "Energy|Supply",
+            "Energy|Demand|Industry",
+            "Energy|Demand|Other Sector",
+            "Industrial Processes",
+            "Other"
+        ]
+
+    df = sum_selected_variables(
+        df,
+        selected_variables=industry_variable_list,
+        new_variable_name="Industrial Sector",
+        group_cols=group_cols
+    )
+    return df
+
+# Pipeline
+def process_data(df, group_cols=["model", "scenario", "region", "unit", "year"]):
+    """
+    Main processing function for transportation and industrial sectors.
+
+    Parameters:
+        df (pd.DataFrame): The dataframe to process.
+        group_cols (list): Columns to group by.
+
+    Returns:
+        pd.DataFrame: The processed dataframe.
+    """
+    df['variable'] = df['variable'].str.replace(r'^.*?\|', '', regex=True) # delete the species; i.e. everything before the first | character
+    df = process_transportation_variables(df, group_cols=group_cols)
+    df = process_industrial_sector_variables(df, group_cols=group_cols)
+    return df
+
+# Save processed data
+def save_data(df, output_path):
+    """
+    Saves the dataframe to a CSV or Excel file.
+
+    Parameters:
+        df (pd.DataFrame): The dataframe to save.
+        output_path (str): Path to the output file (.csv or .xlsx).
+
+    Raises:
+        ValueError: If the file format is unsupported.
+    """
+    if output_path.endswith('.csv'):
+        df.to_csv(output_path, index=False)
+    elif output_path.endswith('.xlsx'):
+        df.to_excel(output_path, index=False)
+    else:
+        raise ValueError("Unsupported file format. Use .csv or .xlsx.")
+    
+# create a comparison
+# Approach:
+#     Canonical Form for Comparison:
+#         Normalize the DataFrames by sorting their rows and resetting the index.
+#         This allows you to compare rows in a consistent order.
+#     Check for Matching Rows:
+#         Use set operations to find exact matches and mismatches.
+#         Convert the rows of each DataFrame into sets of tuples for comparison.
+#     Identify Important Mismatches:
+#         Rows in df1 but not in df2.
+#         Rows in df2 but not in df1.
+def compare_units(name_df1, df1, name_df2, df2, quiet = True):
+    # to be applied to:
+    # * historical
+    # * iam data
+
+    # Step 1: Convert rows to sets of tuples
+    set_df1 = set([tuple(row) for row in df1.sort_values(by=df1.columns.tolist()).itertuples(index=False, name=None)])
+    set_df2 = set([tuple(row) for row in df2.sort_values(by=df2.columns.tolist()).itertuples(index=False, name=None)])
+
+    # Step 2: Find matches and mismatches
+    matches = set_df1 & set_df2
+    only_in_df1 = set_df1 - set_df2
+    only_in_df2 = set_df2 - set_df1
+
+    if not quiet:
+        # Step 3: Display results
+        print("Exact Matches:")
+        print(matches)
+
+        print("\nRows only in " + name_df1 + ":")
+        print(only_in_df1)
+
+        print("\nRows only in " + name_df2 + ":")
+        print(only_in_df2)
+
+
+    # Step 3: convert to dataframe
+    all_tuples = list(matches) + list(only_in_df1) + list(only_in_df2)
+    all_sources = (
+        ['Exact Matches'] * len(matches) +
+        [f'Only in {name_df1}'] * len(only_in_df1) +
+        [f'Only in {name_df2}'] * len(only_in_df2)
+    )
+
+
+    matching_data = pd.DataFrame({
+        'Sector': [x[0] for x in all_tuples],
+        'Unit': [x[1] for x in all_tuples],
+        'Source': all_sources
+    })
+
+    return matching_data
+
+def check_na_in_columns(df):
+    """
+    Check all columns in the DataFrame for NA values.
+    Raise a KeyError with the column names that contain one or more NA values.
+
+    :param df: pandas DataFrame to check
+    """
+    # Find columns with NA values
+    columns_with_na = df.columns[df.isna().any()].tolist()
+    
+    if columns_with_na:
+        raise KeyError(f"The following column(s) contain NA values: {', '.join(columns_with_na)}")
+    else:
+        print("No NA values found in any column.")
+
+
+def guess_ssp(df):
+    ssp_guesses = (
+    df.index.pix.project(["model", "scenario"])
+    .unique()
+    .to_frame()
+    .scenario.str.extract("(SSP[1-5])")[0]
+    .fillna("SSP2")
+    )
+    return ssp_guesses
+
+
+def join_gdp_based_on_ssp(scenarios_with_ssp_mapping, gdp_per_ssp):
+    gdp_for_each_scenario = semijoin(
+            gdp_per_ssp,
+            # SSP_per_pathway.index.pix.assign(ssp=SSP_per_pathway + "_v9_130325"), # CMIP6 era SSP data
+            scenarios_with_ssp_mapping.index.pix.assign(ssp=scenarios_with_ssp_mapping), # CMIP7 era SSP data
+            how="right",
+        ).pix.project(["model", "scenario", "country"])
+    return gdp_for_each_scenario
