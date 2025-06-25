@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # ---
 # jupyter:
 #   jupytext:
@@ -5,9 +6,9 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.11.2
+#       jupytext_version: 1.16.7
 #   kernelspec:
-#     display_name: concordia
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
@@ -52,7 +53,8 @@ SETTINGS_FILE = "config_cmip7_v0_testing_ukesm_remind.yaml"
 # HARMONIZATION_VERSION = "config_cmip7_v0_testing_remind"
 # HARMONIZATION_VERSION = "config_cmip7_v0_testing_aim"
 # HARMONIZATION_VERSION = "config_cmip7_v0_testing_ukesm_remind"
-HARMONIZATION_VERSION = "config_cmip7_v0_1_testing_ukesm_remind"
+# HARMONIZATION_VERSION = "config_cmip7_v0_1_testing_ukesm_remind"
+HARMONIZATION_VERSION = "config_cmip7_v0_2_testing_ukesm_remind"
 
 # %% [markdown]
 # ## Importing packages
@@ -288,7 +290,7 @@ hist = hist.sort_index()
 # Update column type and name
 hist.columns = hist.columns.astype(int)
 hist.columns.name = 'year'
-# hist
+#hist
 
 # %% [markdown]
 # # Read Harmonization Overrides

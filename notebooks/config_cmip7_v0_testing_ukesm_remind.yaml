@@ -8,8 +8,8 @@ local_config_path: 'local-config-cmip7_v0_testing.yaml'
 out_path: "../results"
 
 # this needs to be changed based on where you want to store your own data
-data_path: "/home/hoegner/Projects/CMIP7/" # Annika
-# data_path: "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_testing" # Jarmo
+# data_path: "/home/hoegner/Projects/CMIP7/" # Annika
+data_path: "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_testing" # Jarmo
 
 variabledefs_path: "$data_path/input/variabledefinitions/variabledefs-cmip7_noCDR.csv" # updated variabledefs-cmip7.csv and change to that file
 
@@ -26,9 +26,9 @@ base_year: 2023
 
 regionmappings: # region mappings for all models
   MESSAGEix-GLOBIOM-GAINS 2.1-M-R12:
-    path: "$regionmappings_path/region_definitions_message.csv"
-    country_column: "iso"
-    region_column: "message_r12"
+    path: "$regionmappings_path/region_definitions_MESSAGEix-GLOBIOM-GAINS 2.1-R12.csv"
+    country_column: "iso3"
+    region_column: "name"
     sep: ","
   REMIND-MAgPIE 3.5-4.10:
     path: "$regionmappings_path/region_definitions_REMIND-MAgPIE 3.5-4.10.csv"
@@ -45,21 +45,21 @@ regionmappings: # region mappings for all models
     country_column: "iso3"
     region_column: "name"
     sep: ","
-  # GCAM 7.1 scenarioMIP:
-  #   path: "$regionmappings_path/region_definitions_GCAM 7.1.csv"
-  #   country_column: "iso"
-  #   region_column: "tbd"
-  #   sep: ","
-  # IMAGE 3.4:
-  #   path: "$regionmappings_path/region_definitions_IMAGE 3.4.csv"
-  #   country_column: "iso"
-  #   region_column: "tbd"
-  #   sep: ","
-  # WITCH 6.0:
-  #   path: "$regionmappings_path/region_definitions_WITCH 6.0.csv"
-  #   country_column: "iso"
-  #   region_column: "tbd"
-  #   sep: ","
+  GCAM 7.1 scenarioMIP:
+    path: "$regionmappings_path/region_definitions_GCAM 7.1.csv"
+    country_column: "iso3"
+    region_column: "name"
+    sep: ","
+  IMAGE 3.4:
+    path: "$regionmappings_path/region_definitions_IMAGE 3.4.csv"
+    country_column: "iso3"
+    region_column: "name"
+    sep: ","
+  WITCH 6.0:
+    path: "$regionmappings_path/region_definitions_WITCH 6.0.csv"
+    country_column: "iso3"
+    region_column: "name"
+    sep: ","
 
 
 country_combinations:
