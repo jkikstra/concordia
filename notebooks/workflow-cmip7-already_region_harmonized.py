@@ -532,26 +532,6 @@ def select_only_countries_with_all_info(df,
     return df
 
 
-# %%
-# # Get unique countries from each dataframe
-# hist_countries = set(hist.pix.unique("country"))
-# gdp_countries = set(GDP_per_pathway.pix.unique("country"))
-
-# # Countries in hist but not in GDP_per_pathway
-# in_hist_not_gdp = hist_countries - gdp_countries
-# print("Countries in hist but not in GDP_per_pathway:")
-# print(sorted(in_hist_not_gdp))
-
-# # Countries in GDP_per_pathway but not in hist
-# in_gdp_not_hist = gdp_countries - hist_countries
-# print("Countries in GDP_per_pathway but not in hist:")
-# print(sorted(in_gdp_not_hist))
-
-# # Display counts for reference
-# print(f"\nTotal countries in hist: {len(hist_countries)}")
-# print(f"Total countries in GDP_per_pathway: {len(gdp_countries)}")
-# print(f"Countries in common: {len(hist_countries & gdp_countries)}")
-
 # %% [markdown]
 # # Set up technical bits for the workflow
 
@@ -587,6 +567,12 @@ indexraster_region = indexraster.dissolve(
 
 # %%
 iam_df.columns
+
+# %%
+# check completeness of historical data
+for c in countries_with_hist_and_gdp_and_regionmapping_data:
+    if len(hist.loc[ismatch(country=c)]) < 120:
+        print(c)
 
 # %%
 workflow = WorkflowDriver( 
