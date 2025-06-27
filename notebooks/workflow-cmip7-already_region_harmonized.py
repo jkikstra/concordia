@@ -54,7 +54,7 @@ SETTINGS_FILE = "config_cmip7_v0_testing_ukesm_remind.yaml"
 # HARMONIZATION_VERSION = "config_cmip7_v0_testing_aim"
 # HARMONIZATION_VERSION = "config_cmip7_v0_testing_ukesm_remind"
 # HARMONIZATION_VERSION = "config_cmip7_v0_1_testing_ukesm_remind"
-HARMONIZATION_VERSION = "config_cmip7_v0_2_testing_ukesm_remind"
+HARMONIZATION_VERSION = "config_cmip7_v0_2_testing_ukesm_remind-ah"
 
 # %% [markdown]
 # ## Importing packages
@@ -331,8 +331,6 @@ harm_overrides = extend_overrides(
 settings.scenario_path
 
 # %%
-
-# %%
 # TODO: (bug) resolve 0 values in model scenario data for historical
 
 # New; updated SSP data from CMIP7 era (downloaded from: http://files.ece.iiasa.ac.at/ssp/downloads/ssp_basic_drivers_release_3.2.beta_full.xlsx, and then selected only the GDP|PPP variable)
@@ -459,6 +457,37 @@ gdp
 # %% [markdown]
 # Determine likely SSP for each harmonized pathway from scenario string and create proxy data aligned with pathways
 #
+
+# %%
+rename_gdp = {"bolivia": "bol", 
+              "democratic republic of the congo": "cod",
+              "iran": "irn",
+              "laos": "lao",
+              "micronesia": "fsm",
+              "moldova": "mda",
+              "kosovo": "srb (kosovo)",
+              "palestine": "pse",
+              "north korea": "prk",
+              "south korea": "kor",
+              "syria": "syr",
+              "taiwan": "twn",
+              "tanzania": "tza",
+              "turkey": "tur",
+              "united states virgin islands": "vir",
+              "venezuela": "ven",
+              "world": "World"
+             }
+
+hist = hist.pix.aggregate(country=settings.country_combinations)
+
+# what about taiwan, 
+
+gdp.index = gdp.index.set_levels(
+    gdp.index.levels[gdp.index.names.index("country")].to_series().replace(rename_gdp),
+    level="country"
+)
+
+gdp = gdp.pix.aggregate(country=settings.country_combinations)
 
 # %%
 SSP_per_pathway = cmip7_utils.guess_ssp(iam_df)
@@ -652,6 +681,35 @@ print(
     "Countries covered (" + str(len(workflow.downscaled.data.loc[~isin(region="World")].reset_index().country.unique())) + "):"
 )
 print(workflow.downscaled.data.loc[~isin(region="World")].reset_index().country.unique())
+
+# %%
+# Get unique countries from each dataframe
+# what countries do we have in each data set?
+countries_with_gdp_data = GDP_per_pathway.pix.unique("country") # as Index
+countries_with_hist_data = hist.pix.unique("country") # as Index
+
+gdp_countries = set(countries_with_gdp_data)
+hist_countries = set(countries_with_hist_data)
+
+# Countries in hist but not in GDP_per_pathway
+in_hist_not_gdp = hist_countries - gdp_countries
+print("Countries in hist but not in GDP_per_pathway:")
+print(sorted(in_hist_not_gdp))
+
+# Countries in GDP_per_pathway but not in hist
+in_gdp_not_hist = gdp_countries - hist_countries
+print("\nCountries in GDP_per_pathway but not in hist:")
+print(sorted(in_gdp_not_hist))
+
+downscaled_countries = set(workflow.downscaled.data.reset_index().country.unique())
+print("\nCountries in GDP but not in downscaled countries:")
+print(list(gdp_countries - downscaled_countries))
+
+# Display counts for reference
+print(f"\nCountries in hist: {len(hist_countries)}")
+print(f"Countries in GDP_per_pathway: {len(gdp_countries)}")
+print(f"Countries in common: {len(hist_countries & gdp_countries)}")
+print(f"Countries downscaled: {len(downscaled_countries)}")
 
 # %% [markdown]
 # ## Alternative 1) Run full processing and create netcdf files
