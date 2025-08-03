@@ -89,7 +89,7 @@ class Settings:
     @classmethod
     def from_config(
         cls,
-        config_path: Pathy = "config.yaml", # "config_cmip7_v0_testing.yaml",
+        config_path: Pathy | None = None, # path with user-specific configuration - could be generalised as before
         local_config_path: Pathy | None = None, # path with user-specific configuration
         base_path: Pathy | None = None,
         **overwrites,
@@ -99,7 +99,9 @@ class Settings:
             config_path = base_path / config_path
 
         config = dict()
-        for path in [config_path, local_config_path]:  # local config takes precedence
+        # local config takes precedence and is therefore 
+        # read in later, overwriting what is in config
+        for path in [config_path, local_config_path]:  
             if path is not None:
                 with open(path) as f:
                     config.update(yaml.safe_load(f))

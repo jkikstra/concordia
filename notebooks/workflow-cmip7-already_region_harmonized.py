@@ -123,9 +123,6 @@ settings = Settings.from_config(version=HARMONIZATION_VERSION,
 
 settings.base_year
 
-# TODO: 
-# - from_config still reads the old 'config.yaml', which we can either commit or delete the dependency
-
 
 # %% [markdown]
 # Set logger (uses setting)
