@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # ---
 # jupyter:
 #   jupytext:
@@ -5,9 +6,9 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.11.2
+#       jupytext_version: 1.16.7
 #   kernelspec:
-#     display_name: concordia
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
@@ -52,7 +53,8 @@ SETTINGS_FILE = "config_cmip7_v0_testing_ukesm_remind.yaml"
 # HARMONIZATION_VERSION = "config_cmip7_v0_testing_remind"
 # HARMONIZATION_VERSION = "config_cmip7_v0_testing_aim"
 # HARMONIZATION_VERSION = "config_cmip7_v0_testing_ukesm_remind"
-HARMONIZATION_VERSION = "config_cmip7_v0_1_testing_ukesm_remind"
+# HARMONIZATION_VERSION = "config_cmip7_v0_1_testing_ukesm_remind"
+HARMONIZATION_VERSION = "config_cmip7_v0_2_testing_ukesm_remind-ah"
 
 # %% [markdown]
 # ## Importing packages
@@ -120,9 +122,6 @@ settings = Settings.from_config(version=HARMONIZATION_VERSION,
                                                        SETTINGS_FILE))
 
 settings.base_year
-
-# TODO: 
-# - from_config still reads the old 'config.yaml', which we can either commit or delete the dependency
 
 
 # %% [markdown]
@@ -288,7 +287,7 @@ hist = hist.sort_index()
 # Update column type and name
 hist.columns = hist.columns.astype(int)
 hist.columns.name = 'year'
-# hist
+#hist
 
 # %% [markdown]
 # # Read Harmonization Overrides
@@ -327,8 +326,6 @@ harm_overrides = extend_overrides(
 
 # %%
 settings.scenario_path
-
-# %%
 
 # %%
 # TODO: (bug) resolve 0 values in model scenario data for historical
@@ -459,6 +456,40 @@ gdp
 #
 
 # %%
+# pycountry is used but does not recognise all country names from
+# the gdp data, so we're manually renaming a few ourselves
+# In the future we could possibly replace this by using 
+# the counrty list from the `nomenclature-iamc` package that  
+# was used to produce this data 
+rename_gdp = {"bolivia": "bol", 
+              "democratic republic of the congo": "cod",
+              "iran": "irn",
+              "laos": "lao",
+              "micronesia": "fsm",
+              "moldova": "mda",
+              "kosovo": "srb (kosovo)",
+              "palestine": "pse",
+              "north korea": "prk",
+              "south korea": "kor",
+              "syria": "syr",
+              "taiwan": "twn",
+              "tanzania": "tza",
+              "turkey": "tur",
+              "united states virgin islands": "vir",
+              "venezuela": "ven",
+              "world": "World"
+             }
+
+hist = hist.pix.aggregate(country=settings.country_combinations)
+
+gdp.index = gdp.index.set_levels(
+    gdp.index.levels[gdp.index.names.index("country")].to_series().replace(rename_gdp),
+    level="country"
+)
+
+gdp = gdp.pix.aggregate(country=settings.country_combinations)
+
+# %%
 SSP_per_pathway = cmip7_utils.guess_ssp(iam_df)
 GDP_per_pathway = cmip7_utils.join_gdp_based_on_ssp(
     scenarios_with_ssp_mapping=SSP_per_pathway,
@@ -501,26 +532,6 @@ def select_only_countries_with_all_info(df,
     return df
 
 
-# %%
-# # Get unique countries from each dataframe
-# hist_countries = set(hist.pix.unique("country"))
-# gdp_countries = set(GDP_per_pathway.pix.unique("country"))
-
-# # Countries in hist but not in GDP_per_pathway
-# in_hist_not_gdp = hist_countries - gdp_countries
-# print("Countries in hist but not in GDP_per_pathway:")
-# print(sorted(in_hist_not_gdp))
-
-# # Countries in GDP_per_pathway but not in hist
-# in_gdp_not_hist = gdp_countries - hist_countries
-# print("Countries in GDP_per_pathway but not in hist:")
-# print(sorted(in_gdp_not_hist))
-
-# # Display counts for reference
-# print(f"\nTotal countries in hist: {len(hist_countries)}")
-# print(f"Total countries in GDP_per_pathway: {len(gdp_countries)}")
-# print(f"Countries in common: {len(hist_countries & gdp_countries)}")
-
 # %% [markdown]
 # # Set up technical bits for the workflow
 
@@ -556,6 +567,12 @@ indexraster_region = indexraster.dissolve(
 
 # %%
 iam_df.columns
+
+# %%
+# check completeness of historical data
+for c in countries_with_hist_and_gdp_and_regionmapping_data:
+    if len(hist.loc[ismatch(country=c)]) < 120:
+        print(c)
 
 # %%
 workflow = WorkflowDriver( 
@@ -650,6 +667,35 @@ print(
     "Countries covered (" + str(len(workflow.downscaled.data.loc[~isin(region="World")].reset_index().country.unique())) + "):"
 )
 print(workflow.downscaled.data.loc[~isin(region="World")].reset_index().country.unique())
+
+# %%
+# Get unique countries from each dataframe
+# what countries do we have in each data set?
+countries_with_gdp_data = GDP_per_pathway.pix.unique("country") # as Index
+countries_with_hist_data = hist.pix.unique("country") # as Index
+
+gdp_countries = set(countries_with_gdp_data)
+hist_countries = set(countries_with_hist_data)
+
+# Countries in hist but not in GDP_per_pathway
+in_hist_not_gdp = hist_countries - gdp_countries
+print("Countries in hist but not in GDP_per_pathway:")
+print(sorted(in_hist_not_gdp))
+
+# Countries in GDP_per_pathway but not in hist
+in_gdp_not_hist = gdp_countries - hist_countries
+print("\nCountries in GDP_per_pathway but not in hist:")
+print(sorted(in_gdp_not_hist))
+
+downscaled_countries = set(workflow.downscaled.data.reset_index().country.unique())
+print("\nCountries in GDP but not in downscaled countries:")
+print(list(gdp_countries - downscaled_countries))
+
+# Display counts for reference
+print(f"\nCountries in hist: {len(hist_countries)}")
+print(f"Countries in GDP_per_pathway: {len(gdp_countries)}")
+print(f"Countries in common: {len(hist_countries & gdp_countries)}")
+print(f"Countries downscaled: {len(downscaled_countries)}")
 
 # %% [markdown]
 # ## Alternative 1) Run full processing and create netcdf files
