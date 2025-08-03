@@ -1,15 +1,22 @@
-# We first read the local configuration which must include:
-# - data_path: the local path to all needed datasets
-# - ftp (optional): the FTP login details for upload at the end of a workflow
+local_config_path: 'config_cmip7_v0_testing_ukesm_remind.yaml' # this file
 
-local_config_path: 'local-config-cmip7_v0_testing.yaml'
+out_path: "../results"
+# - data_path: the local path to all needed datasets
+data_path: "C:/Users/kikstra/IIASA/RESCUE - WP 1/data_2024_03_14/cmip7/v01_message" # this needs to be changed based on where you want to store your own data
+
+history_path: "$data_path/historical"
+scenario_path: "$data_path/scenarios"
+gridding_path: "$data_path/gridding_process_files"
+proxy_path: "$data_path/gridding_process_files/proxy_rasters"
+postprocess_path: "$data_path/postprocessing"
+
 
 # ---- standard config for CMIP7 ----
 out_path: "../results"
 
 # this needs to be changed based on where you want to store your own data
-data_path: "/home/hoegner/Projects/CMIP7/" # Annika
-# data_path: "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_testing" # Jarmo
+# data_path: "/home/hoegner/Projects/CMIP7/" # Annika
+data_path: "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_testing" # Jarmo
 
 variabledefs_path: "$data_path/input/variabledefinitions/variabledefs-cmip7_noCDR.csv" # updated variabledefs-cmip7.csv and change to that file
 
@@ -24,7 +31,11 @@ postprocess_path: "$data_path/input/postprocessing" # e.g. used in rescue for ad
 variable_template: "CMIP7 Harmonization|Emissions|{gas}|{sector}"
 base_year: 2023
 
-regionmappings: # region mappings for all models
+# region mappings for all models
+# these are produced here: https://github.com/iiasa/emissions_harmonization_historical/blob/main/notebooks/5010_create-region-mapping.py
+# and then stored in `regionmappings_path`
+# which generally refers to a specific commit hash
+regionmappings: 
   MESSAGEix-GLOBIOM-GAINS 2.1-M-R12:
     path: "$regionmappings_path/region_definitions_MESSAGEix-GLOBIOM-GAINS 2.1-R12.csv"
     country_column: "iso3"
