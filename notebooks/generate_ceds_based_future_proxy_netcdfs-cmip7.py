@@ -650,7 +650,7 @@ def full_process(sector_key):
     gases = sector_files.gas.unique()
     for gas in gases:
         da = gen_da_for_gas(gas, sector_key)
-        output_path = settings.proxy_path / "jarmo_testrun" / f"{sector_key}_{gas}.nc"
+        output_path = settings.proxy_path / "produce-new" / f"{sector_key}_{gas}.nc"
 
         # delete file if it already exists to avoid permission denied error in the override attempt
         if output_path.exists():
@@ -671,8 +671,8 @@ settings.proxy_path
 # %%
 if __name__ == "__main__":
     #gen_indexraster()
-   # full_process("anthro")
+   full_process("anthro")
    # full_process("openburning")
-    full_process("aircraft")
+    # full_process("aircraft")
     ## old:
     ## full_process('shipping')
