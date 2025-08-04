@@ -70,7 +70,7 @@ openburning_sectors = list(sector_mapping.values())[1]
 # %%
 template_file = (
     settings.gridding_path
-    / "GCAM4-SSP4-34-SPA4-V25-Harmonized-DB-Sulfur-em-aircraft-anthro_input4MIPs_emissions_CMIP_IAMC-V1_gn_201501-210012.nc"
+    / "example_files" / "GCAM4-SSP4-34-SPA4-V25-Harmonized-DB-Sulfur-em-aircraft-anthro_input4MIPs_emissions_CMIP_IAMC-V1_gn_201501-210012.nc"
 )
 template = xr.open_dataset(template_file)
 
@@ -80,7 +80,10 @@ template = xr.open_dataset(template_file)
 # For shipping, seasonality files are available for all species except CO2 and CH4.
 
 # %%
-ceds_input_gridding_path = settings.gridding_path / "Jarmo_files"
+ceds_input_gridding_path = settings.gridding_path / "20250523" / "Jarmo_files"
+
+# %%
+ceds_input_gridding_path
 
 # %% [markdown]
 # ### prepare proxy file mapping
@@ -646,7 +649,7 @@ def full_process(sector_key):
     gases = sector_files.gas.unique()
     for gas in gases:
         da = gen_da_for_gas(gas, sector_key)
-        output_path = settings.proxy_path / f"{sector_key}_{gas}.nc"
+        output_path = settings.proxy_path / "jarmo_testrun" / f"{sector_key}_{gas}.nc"
 
         # delete file if it already exists to avoid permission denied error in the override attempt
         if output_path.exists():
