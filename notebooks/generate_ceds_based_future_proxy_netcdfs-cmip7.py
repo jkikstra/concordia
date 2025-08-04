@@ -270,8 +270,9 @@ df_files = latest_year.merge(
 df_files
 
 # %%
-# not sure which years exactly to add at the beginning. went for 2023 and 2025 now, but we can adjust this.
-years = [2023, 2025] + list(range(2030, 2101, 10))
+# doing 2023,2024, 2025:5:2100 now - to strike balance between historical years, what is modelled, and data output size
+# (could consider annual, because some IAMs do this, but is unlikely to actually be produced due to high data volume unless we can ascertain that annual interpolation isn't always correct here) 
+years = [2023, 2024, 2025] + list(range(2030, 2101, 5))
 years_df = pd.DataFrame({"year": years})
 # add dummy keys for joining dfs
 years_df["key"] = 1
