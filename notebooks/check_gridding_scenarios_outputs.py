@@ -387,7 +387,7 @@ full = []
 for species in species_list:
     anthro = (
         harmonized_data
-        .loc[pix.ismatch(variable=f"**{species}**")]
+        .loc[pix.ismatch(variable=f"*|{species}|*")]
         .loc[pix.ismatch(variable=SECTORS_ANTHRO)]
         .groupby(['model', 'scenario', 'unit'])
         .sum()
@@ -397,7 +397,7 @@ for species in species_list:
 
     air = (
         harmonized_data
-        .loc[pix.ismatch(variable=f"**{species}**")]
+        .loc[pix.ismatch(variable=f"*|{species}|*")]
         .loc[pix.ismatch(variable=SECTORS_AIR)]
         .groupby(['model', 'scenario', 'unit'])
         .sum()
@@ -407,7 +407,7 @@ for species in species_list:
 
     openburning = (
         harmonized_data
-        .loc[pix.ismatch(variable=f"**{species}**")]
+        .loc[pix.ismatch(variable=f"*|{species}|*")]
         .loc[pix.ismatch(variable=SECTORS_OPENBURNING)]
         .groupby(['model', 'scenario', 'unit'])
         .sum()
@@ -418,6 +418,9 @@ for species in species_list:
     full.extend([anthro, air, openburning])
 
 harmonized_data_reformatted = pix.concat(full)
+
+# %%
+harmonized_data_reformatted
 
 # %% [markdown]
 # ## CO2 example 1 scenario (CMIP7)
