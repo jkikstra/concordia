@@ -361,7 +361,7 @@ harmonized_data_file = f"harmonised-gridding_{MODEL_SELECTION}.csv"
 
 harmonized_data = cmip7_utils.load_data(
     Path(harmonized_data_location, harmonized_data_file)
-)
+).dropna(axis=1)
 # select scenario
 harmonized_data = cmip7_utils.filter_scenario(harmonized_data, scenarios=SCENARIO_SELECTION)
 # reformat as multi-index in IAMC format
@@ -370,32 +370,54 @@ harmonized_data
 
 
 # %%
-harmonized_data_co2_anthro = (
-    harmonized_data
-        .loc[pix.ismatch(variable="**CO2**")]
+# extract list of all species available in the harmonised scenario data
+
+variables = harmonized_data.index.get_level_values("variable").unique()
+species_temp = []
+for i in np.arange(0, len(variables)):
+    species_temp.append(variables[i].split("|")[1])
+species_list = np.unique(species_temp)
+species_list
+
+# %%
+# reaggregate the harmonised scenario data to match the gridded data
+
+full = []
+
+for species in species_list:
+    anthro = (
+        harmonized_data
+        .loc[pix.ismatch(variable=f"**{species}**")]
         .loc[pix.ismatch(variable=SECTORS_ANTHRO)]
         .groupby(['model', 'scenario', 'unit'])
         .sum()
-).pix.assign(variable="CO2_em_anthro", region="World").reorder_levels(IAMC_COLS)
+        .pix.assign(variable=f"{species}_em_anthro", region="World")
+        .reorder_levels(IAMC_COLS)
+    )
 
-harmonized_data_co2_air = (
-    harmonized_data
-        .loc[pix.ismatch(variable="**CO2**")]
+    air = (
+        harmonized_data
+        .loc[pix.ismatch(variable=f"**{species}**")]
         .loc[pix.ismatch(variable=SECTORS_AIR)]
         .groupby(['model', 'scenario', 'unit'])
         .sum()
-).pix.assign(variable="CO2_em_AIR", region="World").reorder_levels(IAMC_COLS)
+        .pix.assign(variable=f"{species}_em_AIR", region="World")
+        .reorder_levels(IAMC_COLS)
+    )
 
-harmonized_data_co2_openburning = (
-    harmonized_data
-        .loc[pix.ismatch(variable="**CO2**")]
+    openburning = (
+        harmonized_data
+        .loc[pix.ismatch(variable=f"**{species}**")]
         .loc[pix.ismatch(variable=SECTORS_OPENBURNING)]
         .groupby(['model', 'scenario', 'unit'])
         .sum()
-).pix.assign(variable="CO2_em_openburning", region="World").reorder_levels(IAMC_COLS)
+        .pix.assign(variable=f"{species}_em_openburning", region="World")
+        .reorder_levels(IAMC_COLS)
+    )
 
-# %%
-harmonized_data_co2_anthro
+    full.extend([anthro, air, openburning])
+
+harmonized_data_reformatted = pix.concat(full)
 
 # %% [markdown]
 # ## CO2 example 1 scenario (CMIP7)
