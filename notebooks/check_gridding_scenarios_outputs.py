@@ -19,6 +19,8 @@ import matplotlib.pyplot as plt
 import pandas_indexing as pix
 import pandas as pd
 import numpy as np
+import os
+from tqdm import tqdm
 import altair as alt
 alt.renderers.enable('default')
 from concordia.cmip7 import utils as cmip7_utils
@@ -170,7 +172,11 @@ def ds_to_annual_emissions_sectoral(ds, variable_name):
 def ds_to_annual_emissions_total(ds, variable_name):
     "Take an output scenario and return an annual emissions timeseries"
     # Step 1: Optionally sum over space and sector
-    ds_total = ds[variable_name].sum(dim=['lat', 'lon', 'sector'])
+
+    if "AIR" in variable_name:
+        ds_total = ds[variable_name].sum(dim=['lat', 'lon', 'level'])
+    else:
+        ds_total = ds[variable_name].sum(dim=['lat', 'lon', 'sector'])
 
     # Step 2: Convert time to year and group by it
     ds_annual = ds_total.groupby('time.year').mean() # mean across months, keep same unit
@@ -366,7 +372,6 @@ harmonized_data = cmip7_utils.load_data(
 harmonized_data = cmip7_utils.filter_scenario(harmonized_data, scenarios=SCENARIO_SELECTION)
 # reformat as multi-index in IAMC format
 harmonized_data = harmonized_data.set_index(IAMC_COLS)
-harmonized_data
 
 
 # %%
@@ -401,7 +406,7 @@ for species in species_list:
         .loc[pix.ismatch(variable=SECTORS_AIR)]
         .groupby(['model', 'scenario', 'unit'])
         .sum()
-        .pix.assign(variable=f"{species}_em_AIR", region="World")
+        .pix.assign(variable=f"{species}_em_AIR_anthro", region="World")
         .reorder_levels(IAMC_COLS)
     )
 
@@ -418,9 +423,6 @@ for species in species_list:
     full.extend([anthro, air, openburning])
 
 harmonized_data_reformatted = pix.concat(full)
-
-# %%
-harmonized_data_reformatted
 
 # %% [markdown]
 # ## CO2 example 1 scenario (CMIP7)
@@ -468,11 +470,6 @@ total_emissions_ts_cmip6 = ds_to_annual_emissions_total(scen_ds_cmip6, variable_
 
 
 # %%
-# plot_one_emissions_timeseries(total_emissions_ts)
-# plot_sectors_emissions_timeseries(sectoral_emissions_ts)
-# plot_one_emissions_timeseries(total_emissions_ts_cmip6)
-# plot_sectors_emissions_timeseries(sectoral_emissions_ts_cmip6)
-
 fig, axs = plt.subplots(2, 2, figsize=(15, 10), sharex=True)
 
 plot_one_emissions_timeseries(total_emissions_ts, ax=axs[0, 0],
@@ -504,12 +501,55 @@ plot_sectors_emissions_timeseries_area_DRAFT2(sectoral_emissions_ts_cmip6)
 
 nc_to_iamc_like(scen_ds, variable_name="CO2_em_anthro", keep_sectors=True)
 
-# %%
-scen_ds
+# %% [markdown]
+# # Compare CMIP7 gridded emissions with harmonised scenario emissions 
+
+# %% [markdown]
+# ## Species-level aggregates
 
 # %%
-# straight to sectoral timeseries in a familiar format (easier to keep track of when we have more than 1 scenario)
-nc_to_iamc_like(scen_ds, variable_name="CO2_em_anthro", keep_sectors=False)
+# prepare list of all files in the CMIP7 results folder
+
+nc_files = sorted([
+    f for f in os.listdir(cmip7_data_location)
+    if f.endswith(".nc") and MODEL_SELECTION_GRIDDED in f and SCENARIO_SELECTION_GRIDDED in f
+])
+
+# %%
+# test to ensure that dimensions are complete for all files
+
+for filename in nc_files:
+    ds = read_nc_file(filename, cmip7_data_location)
+    var_name = list(ds.data_vars.keys())[0]
+    dims = ds[var_name].dims
+    assert len(dims) == 4, f"Variable '{var_name}' in '{filename}' has {len(dims)} dimensions, expected 4."
+
+# %%
+gridded_data_keys = sorted(list(data_dict.keys()))
+
+# %%
+full = []
+
+for filename in tqdm(nc_files, desc="Processing CMIP7 .nc files"):
+    ds = read_nc_file(filename, cmip7_data_location)
+
+    var_name = list(ds.data_vars.keys())[0]
+    df = nc_to_iamc_like(ds, variable_name=var_name, keep_sectors=False)
+    
+    full.append(df)
+
+aggregated_gridded_emissions = pd.concat(full)
+
+# %%
+aggregated_gridded_emissions
+
+# %%
+harmonized_data_reformatted
+
+# %%
+
+# %% [markdown]
+# ### some notes on unit conversion
 
 # %%
 37712 / kg_m2_s_to_Gt_y(0.000473)
