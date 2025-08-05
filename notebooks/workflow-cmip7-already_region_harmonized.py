@@ -123,9 +123,6 @@ settings = Settings.from_config(version=HARMONIZATION_VERSION,
 
 settings.base_year
 
-# TODO: 
-# - from_config still reads the old 'config.yaml', which we can either commit or delete the dependency
-
 
 # %% [markdown]
 # Set logger (uses setting)
@@ -459,6 +456,11 @@ gdp
 #
 
 # %%
+# pycountry is used but does not recognise all country names from
+# the gdp data, so we're manually renaming a few ourselves
+# In the future we could possibly replace this by using 
+# the counrty list from the `nomenclature-iamc` package that  
+# was used to produce this data 
 rename_gdp = {"bolivia": "bol", 
               "democratic republic of the congo": "cod",
               "iran": "irn",
@@ -479,8 +481,6 @@ rename_gdp = {"bolivia": "bol",
              }
 
 hist = hist.pix.aggregate(country=settings.country_combinations)
-
-# what about taiwan, 
 
 gdp.index = gdp.index.set_levels(
     gdp.index.levels[gdp.index.names.index("country")].to_series().replace(rename_gdp),
