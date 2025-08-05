@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.4
+#       jupytext_version: 1.16.7
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -19,6 +19,8 @@ import matplotlib.pyplot as plt
 import pandas_indexing as pix
 import pandas as pd
 import numpy as np
+import altair as alt
+alt.renderers.enable('default')
 from concordia.cmip7 import utils as cmip7_utils
 
 IAMC_COLS = ["model", "scenario", "region", "variable", "unit"] 
@@ -67,6 +69,46 @@ IAMC_COLS = ["model", "scenario", "region", "variable", "unit"]
 # * ...
 #
 
+
+# %% [markdown]
+# # Paths, definitions
+
+# %%
+# Scenarios pre-gridding
+# harmonized_data_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_testing/input/scenarios/"
+harmonized_data_location = "/home/hoegner/Projects/CMIP7/input/scenarios/"
+
+# gridded emissions
+# CMIP7
+GRIDDING_VERSION = "config_cmip7_v0_2_testing_ukesm_remind-ah"
+
+#cmip7_data_location = Path("C:/Users/kikstra/Documents/GitHub/concordia/results/config_cmip7_v0_2_testing_ukesm_remind-ah")
+cmip7_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{GRIDDING_VERSION}")
+
+# CMIP6, for comparison
+#cmip6_data_location = Path("C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/ESGF/Example NetCDF files CMIP6")
+cmip6_data_location = Path("/home/hoegner/Projects/CMIP7/checks/Example NetCDF files CMIP6")
+
+# %%
+SECTORS_ANTHRO = [
+    '**International Shipping', 
+    '**Transportation Sector',
+    '**Waste',
+    '**Agriculture',
+    '**Energy Sector', 
+    '**Industrial Sector',
+    '**Residential Commercial Other',
+    '**Solvents Production and Application'
+]
+SECTORS_AIR = [
+    '**Aircraft'
+]
+SECTORS_OPENBURNING = [
+    '**Agricultural Waste Burning',
+    '**Forest Burning',
+    '**Grassland Burning', 
+    '**Peat Burning'
+]
 
 # %% [markdown]
 # # Functions
@@ -161,58 +203,11 @@ def kg_m2_s_to_Gt_y(x):
 
 # %%
 def nc_to_iamc_like(ds,
-                   variable_name, 
+                   variable_name,
                    model: str = "undefined",
                    scenario: str = "undefined",
-                   unit: str = "undefined",
                    region: str = "World",
-                   to_pix = True,
-                   keep_sectors=True):
-    
-    # first get a 2D pandas timeseries, with sector as index
-    if keep_sectors:
-        da = ds_to_annual_emissions_sectoral(ds, variable_name)
-        df = df_to_wide_timeseries(da)
-    if not keep_sectors:
-        da = ds_to_annual_emissions_total(ds, variable_name)
-        df = df_to_wide_timeseries(da)
-
-    # (optional) project to a pandas-indexing (pix) like multiindex pandas dataframe
-    if to_pix:
-        if keep_sectors:
-            df = (
-                pix.assignlevel(
-                    df,
-                    model=model, 
-                    scenario=scenario, 
-                    unit=unit, 
-                    variable= variable_name + "|" + pix.projectlevel(df.index, "sector"), 
-                    region=region
-                    )
-                    .droplevel(['sector'])
-                    .reorder_levels(["model", "scenario", "region", "variable", "unit"])
-            )
-        if not keep_sectors:
-            df = (
-                pix.assignlevel(
-                    df,
-                    model=model, 
-                    scenario=scenario, 
-                    unit=unit, 
-                    variable=variable_name, 
-                    region=region
-                    )
-                    .reorder_levels(["model", "scenario", "region", "variable", "unit"])
-            )
-
-    return df
-
-def nc_to_iamc_like(ds,
-                   variable_name, 
-                   model: str = "undefined",
-                   scenario: str = "undefined",
                    unit: str = "undefined",
-                   region: str = "World",
                    to_pix=True,
                    keep_sectors=True):
     
@@ -236,9 +231,9 @@ def nc_to_iamc_like(ds,
                 df,
                 model=model,
                 scenario=scenario,
-                unit=unit,
+                region=region,
                 variable=variable_name + "|" + pix.projectlevel(df.index, "sector"),
-                region=region
+                unit=ds.reporting_unit,
             )
             .droplevel(['sector'])
         )
@@ -309,8 +304,6 @@ def plot_sectors_emissions_timeseries(ts,
 #     plt.tight_layout()
 #     plt.show()
 
-import altair as alt
-alt.renderers.enable('default')
 def plot_sectors_emissions_timeseries_area_DRAFT2(ts,
                                   title: str = "Annual Global Anthropogenic CO₂ Emissions",
                                   xlabel: str = "Year",
@@ -343,9 +336,6 @@ def plot_sectors_emissions_timeseries_area_DRAFT2(ts,
     return chart
 
 
-
-
-
 # %% [markdown]
 # Miscellaneous
 
@@ -361,38 +351,23 @@ def pixunique(pixdf,column_name="variable"):
 # ## Harmonized data (timeseries)
 
 # %%
-harmonized_data_file = "harmonised-gridding_REMIND-MAgPIE 3.5-4.10.csv"
+MODEL_SELECTION = "REMIND-MAgPIE 3.5-4.10"
 SCENARIO_SELECTION = "SSP1 - Very Low Emissions"
-harmonized_data_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_testing/input/scenarios/"
+MODEL_SELECTION_GRIDDED = MODEL_SELECTION.replace(" ", "-")
+SCENARIO_SELECTION_GRIDDED = SCENARIO_SELECTION.replace(" ", "-")
+
+# %%
+harmonized_data_file = f"harmonised-gridding_{MODEL_SELECTION}.csv"
 
 harmonized_data = cmip7_utils.load_data(
     Path(harmonized_data_location, harmonized_data_file)
 )
+# select scenario
 harmonized_data = cmip7_utils.filter_scenario(harmonized_data, scenarios=SCENARIO_SELECTION)
+# reformat as multi-index in IAMC format
 harmonized_data = harmonized_data.set_index(IAMC_COLS)
 harmonized_data
 
-
-# %%
-SECTORS_ANTHRO = [
-    '**International Shipping', 
-    '**Transportation Sector',
-    '**Waste',
-    '**Agriculture',
-    '**Energy Sector', 
-    '**Industrial Sector',
-    '**Residential Commercial Other',
-    '**Solvents Production and Application'
-]
-SECTORS_AIR = [
-    '**Aircraft'
-]
-SECTORS_OPENBURNING = [
-    '**Agricultural Waste Burning',
-    '**Forest Burning',
-    '**Grassland Burning', 
-    '**Peat Burning'
-]
 
 # %%
 harmonized_data_co2_anthro = (
@@ -426,8 +401,8 @@ harmonized_data_co2_anthro
 # ## CO2 example 1 scenario (CMIP7)
 
 # %%
-cmip7_data_file = "CO2-em-anthro_input4MIPs_emissions_CMIP7_IIASA-REMIND-MAgPIE-3.5-4.10-SSP1---Very-Low-Emissions_gn_202301-210012.nc"
-cmip7_data_location = Path("C:/Users/kikstra/Documents/GitHub/concordia/results/config_cmip7_v0_2_testing_ukesm_remind-ah")
+cmip7_data_file = f"CO2-em-anthro_input4MIPs_emissions_CMIP7_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
+
 scen_ds = read_nc_file(
     f = cmip7_data_file,
     loc = cmip7_data_location
@@ -441,7 +416,6 @@ scen_ds.attrs
 
 # %%
 cmip6_data_file = "CO2-em-anthro_input4MIPs_emissions_ScenarioMIP_IAMC-MESSAGE-GLOBIOM-ssp245-1-1_gn_201501-210012.nc"
-cmip6_data_location = Path("C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/ESGF/Example NetCDF files CMIP6")
 
 scen_ds_cmip6 = read_nc_file(
     f = cmip6_data_file,
@@ -501,7 +475,12 @@ plot_sectors_emissions_timeseries_area_DRAFT2(sectoral_emissions_ts_cmip6)
 # ### Putting everything in IAMC format, then building automated checking tools based on that
 
 # %%
+# use pix assign to set model and scenario; could get from filename if they are not also variables in the netcdf?
+
 nc_to_iamc_like(scen_ds, variable_name="CO2_em_anthro", keep_sectors=True)
+
+# %%
+scen_ds
 
 # %%
 # straight to sectoral timeseries in a familiar format (easier to keep track of when we have more than 1 scenario)
