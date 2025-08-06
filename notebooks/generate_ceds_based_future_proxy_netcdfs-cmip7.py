@@ -366,7 +366,7 @@ def add_eez_to_mask(mask):
     )
     rasterize.read_shpf(
         pio.read_dataframe(
-            settings.gridding_path / "Jarmo_files" / "non_ceds_input" / "eez_v12.gpkg",
+            settings.gridding_path / "20250523" / "Jarmo_files" / "non_ceds_input" / "eez_v12.gpkg",
             where="ISO_TER1 IS NOT NULL and POL_TYPE='200NM'",
         )
         .dissolve(by="ISO_TER1")
@@ -650,7 +650,7 @@ def full_process(sector_key):
     gases = sector_files.gas.unique()
     for gas in gases:
         da = gen_da_for_gas(gas, sector_key)
-        output_path = settings.proxy_path / "produce-new" / f"{sector_key}_{gas}.nc"
+        output_path = settings.proxy_path / f"{sector_key}_{gas}.nc"
 
         # delete file if it already exists to avoid permission denied error in the override attempt
         if output_path.exists():
@@ -671,8 +671,8 @@ settings.proxy_path
 # %%
 if __name__ == "__main__":
     #gen_indexraster()
-   full_process("anthro")
+    full_process("anthro")
    # full_process("openburning")
     # full_process("aircraft")
     ## old:
-    ## full_process('shipping')
+    full_process("shipping")

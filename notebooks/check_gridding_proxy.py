@@ -160,3 +160,5 @@ for name, ds in proxy_rasters.items():
             if coord in da.coords:
                 coord_vals = da.coords[coord].values
                 print(f"    {coord}: {coord_vals}")
+
+# %%

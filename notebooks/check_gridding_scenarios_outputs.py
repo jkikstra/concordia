@@ -20,6 +20,8 @@ import pandas_indexing as pix
 import pandas as pd
 import numpy as np
 import os
+from dask import delayed, compute
+from dask.diagnostics import ProgressBar
 from tqdm import tqdm
 import altair as alt
 alt.renderers.enable('default')
@@ -145,9 +147,9 @@ def ds_reformat_cmip6_to_cmip7(ds):
 
 
 # %%
-def read_nc_file(f, loc, reorder_list=None, rename_sectors_cmip6=None):
-    ds = xr.open_dataset(loc / f)
-
+def read_nc_file(f, loc, reorder_list=None, rename_sectors_cmip6=None, chunks={'time': 1}):
+    ds = xr.open_dataset(loc / f, chunks=chunks)
+    
     if reorder_list is not None:
         ds = ds[reorder_list]
     
@@ -160,26 +162,71 @@ def read_nc_file(f, loc, reorder_list=None, rename_sectors_cmip6=None):
 # ## Aggregation
 
 # %%
-def ds_to_annual_emissions_sectoral(ds, variable_name):
-    "Take an output scenario and return an annual emissions timeseries"
-    # Step 1: Optionally sum over space and sector
-    ds_total = ds[variable_name].sum(dim=['lat', 'lon'])
+def gridcell_area(lat, lon, radius=6.371e6, cell_degree=0.5):
+    """
+    Approximate area of a lat-lon grid cell (in m²) assuming spherical Earth.
+    lat, lon in degrees, assumed to be 1D arrays.
+    """
+    dlat = np.deg2rad(cell_degree)
+    dlon = np.deg2rad(cell_degree)
 
-    # Step 2: Convert time to year and group by it
+    lat_rad = np.deg2rad(lat)
+    # Area = R² * dlat * dlon * cos(lat)
+    area = (radius**2) * dlat * dlon * np.cos(lat_rad)
+    return xr.DataArray(area, coords={"lat": lat}, dims=["lat"])
+
+
+# %%
+def ds_to_annual_emissions_sectoral(ds, variable_name):
+    """
+    Take an output scenario and return an annual emissions timeseries.
+    Input is in kg m-2 s-1, output is in kg s-1 (global)
+    """
+    # Step 1: compute cell area
+    area_da = gridcell_area(ds.lat, ds.lon)  # shape: (lat,)
+    
+    # TO DO: for AIR this should probably be summed over all levels?
+    if "AIR" in variable_name:
+        area_grid = area_da.broadcast_like(ds[variable_name].isel(time=0, level=0))
+    else:
+        area_grid = area_da.broadcast_like(ds[variable_name].isel(time=0, sector=0))  # shape: (lat, lon)
+    
+    # Step 2: apply area to get kg/s
+    ds_weighted = ds[variable_name] * area_grid  # shape: (time, sector, lat, lon), units: kg/s
+
+    # Step 3: sum over space (summing all sectors in the process too)
+    ds_total = ds_weighted.sum(dim=['lat', 'lon'])  # kg/s
+
+    # Step 4: Convert time to year and group by it
     ds_annual = ds_total.groupby('time.year').mean() # mean across months, keep same unit
 
     return ds_annual
 
-def ds_to_annual_emissions_total(ds, variable_name):
-    "Take an output scenario and return an annual emissions timeseries"
-    # Step 1: Optionally sum over space and sector
 
+def ds_to_annual_emissions_total(ds, variable_name):
+    """
+    Take an output scenario and return an annual emissions timeseries.
+    Input is in kg m-2 s-1, output is in kg s-1 (global)
+    """
+    # Step 1: compute cell area
+    area_da = gridcell_area(ds.lat, ds.lon)  # shape: (lat,)
+
+    # TO DO: for AIR this should probably be summed over all levels?
+    if "AIR" in variable_name:
+        area_grid = area_da.broadcast_like(ds[variable_name].isel(time=0, level=0))
+    else:
+        area_grid = area_da.broadcast_like(ds[variable_name].isel(time=0, sector=0))  # shape: (lat, lon)
+    
+    # Step 2: apply area to get kg/s
+    ds_weighted = ds[variable_name] * area_grid  # shape: (time, sector, lat, lon), units: kg/s
+
+    # Step 3: sum over space (keeping sector information)
     if "AIR" in variable_name:
         ds_total = ds[variable_name].sum(dim=['lat', 'lon', 'level'])
     else:
         ds_total = ds[variable_name].sum(dim=['lat', 'lon', 'sector'])
 
-    # Step 2: Convert time to year and group by it
+    # Step 4: Convert time to year and group by it
     ds_annual = ds_total.groupby('time.year').mean() # mean across months, keep same unit
 
     return ds_annual
@@ -259,6 +306,20 @@ def nc_to_iamc_like(ds,
             names=["model", "scenario", "region", "variable", "unit"]
         )
 
+    return df
+
+
+# aggregates gridded emissions back into global time series
+# using a wrapper for bulk processing using dask
+@delayed
+def process_nc_file(filename):
+    ds = read_nc_file(filename, cmip7_data_location, chunks={'time': 1})
+    var_name = list(ds.data_vars.keys())[0]
+    df = nc_to_iamc_like(ds,
+                         variable_name=var_name,
+                         model=MODEL_SELECTION,
+                         scenario=SCENARIO_SELECTION,
+                         keep_sectors=False)
     return df
 
 
@@ -500,10 +561,10 @@ plt.show()
 
 
 # %%
-plot_sectors_emissions_timeseries_area_DRAFT2(sectoral_emissions_ts)
+#plot_sectors_emissions_timeseries_area_DRAFT2(sectoral_emissions_ts)
 
 # %%
-plot_sectors_emissions_timeseries_area_DRAFT2(sectoral_emissions_ts_cmip6)
+#plot_sectors_emissions_timeseries_area_DRAFT2(sectoral_emissions_ts_cmip6)
 
 # %% [markdown]
 # ### Putting everything in IAMC format, then building automated checking tools based on that
@@ -529,7 +590,6 @@ nc_files = sorted([
 
 # %%
 # test to ensure that dimensions are complete for all files
-
 for filename in nc_files:
     ds = read_nc_file(filename, cmip7_data_location)
     var_name = list(ds.data_vars.keys())[0]
@@ -537,22 +597,17 @@ for filename in nc_files:
     assert len(dims) == 4, f"Variable '{var_name}' in '{filename}' has {len(dims)} dimensions, expected 4."
 
 # %%
-full = []
+# aggregate gridded emissions back into global time series
+# optionally we can set keep_sectors = True and pass it to process_nc_file(f, keep_sectors)
 
-for filename in tqdm(nc_files, desc="Processing CMIP7 .nc files"):
-    ds = read_nc_file(filename, cmip7_data_location)
-    var_name = list(ds.data_vars.keys())[0]
-    model_name = MODEL_SELECTION
-    scenario_name = SCENARIO_SELECTION
-    
-    df = nc_to_iamc_like(ds, variable_name=var_name, 
-                         model=model_name,
-                         scenario=scenario_name,
-                         keep_sectors=False)
-    
-    full.append(df)
+tasks = [process_nc_file(f) for f in nc_files]
 
-aggregated_gridded_emissions = pd.concat(full)
+# Trigger computation
+with ProgressBar():
+    results = compute(*tasks)
+
+# Final concatenation
+aggregated_gridded_emissions = pd.concat(results)
 
 # %%
 aggregated_gridded_emissions = aggregated_gridded_emissions.pix.assign(version = "aggregated gridded")
@@ -634,7 +689,6 @@ g = sns.relplot(
     x="time",
     y="values",
     col="variable",
-    hue="variable",
     col_wrap=3,
     kind="line",
     height=5,
