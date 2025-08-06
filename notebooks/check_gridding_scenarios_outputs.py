@@ -23,6 +23,7 @@ import os
 from tqdm import tqdm
 import altair as alt
 alt.renderers.enable('default')
+import seaborn as sns
 from concordia.cmip7 import utils as cmip7_utils
 
 IAMC_COLS = ["model", "scenario", "region", "variable", "unit"] 
@@ -82,7 +83,7 @@ harmonized_data_location = "/home/hoegner/Projects/CMIP7/input/scenarios/"
 
 # gridded emissions
 # CMIP7
-GRIDDING_VERSION = "config_cmip7_v0_2_testing_ukesm_remind-ah"
+GRIDDING_VERSION = "config_cmip7_v0_2_testing_new_proxies"
 
 #cmip7_data_location = Path("C:/Users/kikstra/Documents/GitHub/concordia/results/config_cmip7_v0_2_testing_ukesm_remind-ah")
 cmip7_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{GRIDDING_VERSION}")
@@ -194,6 +195,15 @@ def df_to_wide_timeseries(da):
 
 # %% [markdown]
 # ### Simple conversions
+
+# %%
+def kg_m2_s_to_Mt_y(x):
+    s_y = 365 * 24 * 60 * 60 # seconds per year; how do we account for leap years? (now missing)
+    Mt_kg = 1e-9 # Mt per kg
+    global_m2 = 5.1e14 # area of the earth
+    kg_m2_s_to_Mt_y = global_m2 * s_y * Mt_kg    
+    return x * kg_m2_s_to_Mt_y
+
 
 # %%
 def kg_m2_s_to_Gt_y(x):
@@ -352,6 +362,8 @@ def pixunique(pixdf,column_name="variable"):
 
 # %% [markdown]
 # # Load data
+
+# %%
 
 # %% [markdown]
 # ## Harmonized data (timeseries)
@@ -525,28 +537,121 @@ for filename in nc_files:
     assert len(dims) == 4, f"Variable '{var_name}' in '{filename}' has {len(dims)} dimensions, expected 4."
 
 # %%
-gridded_data_keys = sorted(list(data_dict.keys()))
-
-# %%
 full = []
 
 for filename in tqdm(nc_files, desc="Processing CMIP7 .nc files"):
     ds = read_nc_file(filename, cmip7_data_location)
-
     var_name = list(ds.data_vars.keys())[0]
-    df = nc_to_iamc_like(ds, variable_name=var_name, keep_sectors=False)
+    model_name = MODEL_SELECTION
+    scenario_name = SCENARIO_SELECTION
+    
+    df = nc_to_iamc_like(ds, variable_name=var_name, 
+                         model=model_name,
+                         scenario=scenario_name,
+                         keep_sectors=False)
     
     full.append(df)
 
 aggregated_gridded_emissions = pd.concat(full)
 
 # %%
+aggregated_gridded_emissions = aggregated_gridded_emissions.pix.assign(version = "aggregated gridded")
 aggregated_gridded_emissions
 
 # %%
-harmonized_data_reformatted
+harmonized_data_reformatted = harmonized_data_reformatted.pix.assign(version = "harmonised scenario")
+
 
 # %%
+def reshape_for_plot(df):
+    # Fix index names
+    if df.index.nlevels == 1:
+        if df.index.name is None:
+            df.index.name = "index"
+        else:
+            df.index.name = str(df.index.name)
+    else:
+        df.index.names = [f"level_{i}" if name is None else str(name)
+                          for i, name in enumerate(df.index.names)]
+
+    # Fix column names (e.g., years or times)
+    df.columns = [str(col) if pd.notnull(col) else "unknown_time" for col in df.columns]
+
+    # Reset index to move index into columns
+    df_reset = df.reset_index()
+
+    # Melt only over former index variables
+    id_vars = list(map(str, df.index.names))
+
+    df_long = df_reset.melt(
+        id_vars=id_vars,
+        var_name="time",
+        value_name="values"
+    )
+    return df_long
+
+df1_long = reshape_for_plot(harmonized_data_reformatted)
+df2_long = reshape_for_plot(aggregated_gridded_emissions)
+
+# Combine
+combined_long = pd.concat([df1_long, df2_long], axis=0, ignore_index=True)
+
+# %%
+to_plot = aggregated_gridded_emissions
+df_reset = to_plot.reset_index()
+df_long = df_reset.melt(id_vars=to_plot.index.names, var_name="time", value_name="values")
+
+g = sns.relplot(
+    data=df_long,
+    x="time",
+    y="values",
+    col="variable",
+    col_wrap=3,
+    kind="line",
+    height=5,
+    aspect=1.5,
+    facet_kws=dict(sharey=False),
+)
+
+if g._legend:
+    g._legend.remove()
+
+# Get legend info from one subplot
+ax0 = g.axes.flat[0]
+handles, labels = ax0.get_legend_handles_labels()
+
+plt.tight_layout()
+plt.savefig("/home/hoegner/Projects/CMIP7/checks/plots/gridding/pre-post/reaggregated_gridded_REMIND_vllo.png")
+plt.show()
+
+# %%
+to_plot = harmonized_data_reformatted
+df_reset = to_plot.reset_index()
+df_long = df_reset.melt(id_vars=to_plot.index.names, var_name="time", value_name="values")
+
+g = sns.relplot(
+    data=df_long,
+    x="time",
+    y="values",
+    col="variable",
+    hue="variable",
+    col_wrap=3,
+    kind="line",
+    height=5,
+    aspect=1.5,
+    facet_kws=dict(sharey=False),
+)
+
+if g._legend:
+    g._legend.remove()
+
+# Get legend info from one subplot
+ax0 = g.axes.flat[0]
+handles, labels = ax0.get_legend_handles_labels()
+
+plt.tight_layout()
+plt.savefig("/home/hoegner/Projects/CMIP7/checks/plots/gridding/pre-post/harmonised_data_REMIND_vllo.png")
+plt.show()
 
 # %% [markdown]
 # ### some notes on unit conversion
@@ -561,3 +666,4 @@ harmonized_data_reformatted
 1/0.0049613879189423105 # what is this scalar difference?
 
 # %%
+kg_m2_s_to_Mt_y(4.212752e-06)
