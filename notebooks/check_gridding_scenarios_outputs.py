@@ -20,26 +20,33 @@ import pandas_indexing as pix
 import pandas as pd
 import numpy as np
 import os
+import dask
 from dask import delayed, compute
 from dask.diagnostics import ProgressBar
+from dask.utils import SerializableLock
 from tqdm import tqdm
+
 import altair as alt
 alt.renderers.enable('default')
 import seaborn as sns
+
 from concordia.cmip7 import utils as cmip7_utils
 
 IAMC_COLS = ["model", "scenario", "region", "variable", "unit"] 
 
+
+# %%
+lock = SerializableLock()
 
 # %% [markdown]
 # **Observations**
 # (_Last update: 04/08/2028_)
 #
 # Notes: 
-# * Check units of NC file; some scalar difference with IAMC-standard output. I assume it is in kg/m2/s ?
+# * Check units of NC file; some scalar difference with IAMC-standard output. I assume it is in kg/m2/s ? --> DONE
 #
 # To be changed:
-# * International shipping: produces unexpected & unwanted 2015/2020 numbers, and zeroes for 2023, 2024, 2025
+# * International shipping: produces unexpected & unwanted 2015/2020 numbers, and zeroes for 2023, 2024, 2025 --> DONE
 #
 # Checked to be correct:
 # * Order-of-magnitude - new scenario vs CMIP6 scenario | anthro | CO2
@@ -82,7 +89,7 @@ IAMC_COLS = ["model", "scenario", "region", "variable", "unit"]
 # Scenarios pre-gridding
 # harmonized_data_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_testing/input/scenarios/"
 harmonized_data_location = "/home/hoegner/Projects/CMIP7/input/scenarios/"
-
+grid_file_location = "/home/hoegner/Projects/CMIP7/input/gridding/"
 # gridded emissions
 # CMIP7
 GRIDDING_VERSION = "config_cmip7_v0_2_testing_new_proxies"
@@ -114,6 +121,12 @@ SECTORS_OPENBURNING = [
     '**Grassland Burning', 
     '**Peat Burning'
 ]
+
+# %%
+MODEL_SELECTION = "REMIND-MAgPIE 3.5-4.10"
+SCENARIO_SELECTION = "SSP1 - Very Low Emissions"
+MODEL_SELECTION_GRIDDED = MODEL_SELECTION.replace(" ", "-")
+SCENARIO_SELECTION_GRIDDED = SCENARIO_SELECTION.replace(" ", "-")
 
 # %% [markdown]
 # # Functions
@@ -147,8 +160,13 @@ def ds_reformat_cmip6_to_cmip7(ds):
 
 
 # %%
-def read_nc_file(f, loc, reorder_list=None, rename_sectors_cmip6=None, chunks={'time': 1}):
-    ds = xr.open_dataset(loc / f, chunks=chunks)
+def read_nc_file(f, loc, reorder_list=None, rename_sectors_cmip6=None, chunks={"time": 1}):
+    ds = xr.open_dataset(
+        loc / f,
+        engine="netcdf4",
+        chunks=chunks,
+        lock=lock
+    )
     
     if reorder_list is not None:
         ds = ds[reorder_list]
@@ -162,75 +180,6 @@ def read_nc_file(f, loc, reorder_list=None, rename_sectors_cmip6=None, chunks={'
 # ## Aggregation
 
 # %%
-def gridcell_area(lat, lon, radius=6.371e6, cell_degree=0.5):
-    """
-    Approximate area of a lat-lon grid cell (in m²) assuming spherical Earth.
-    lat, lon in degrees, assumed to be 1D arrays.
-    """
-    dlat = np.deg2rad(cell_degree)
-    dlon = np.deg2rad(cell_degree)
-
-    lat_rad = np.deg2rad(lat)
-    # Area = R² * dlat * dlon * cos(lat)
-    area = (radius**2) * dlat * dlon * np.cos(lat_rad)
-    return xr.DataArray(area, coords={"lat": lat}, dims=["lat"])
-
-
-# %%
-def ds_to_annual_emissions_sectoral(ds, variable_name):
-    """
-    Take an output scenario and return an annual emissions timeseries.
-    Input is in kg m-2 s-1, output is in kg s-1 (global)
-    """
-    # Step 1: compute cell area
-    area_da = gridcell_area(ds.lat, ds.lon)  # shape: (lat,)
-    
-    # TO DO: for AIR this should probably be summed over all levels?
-    if "AIR" in variable_name:
-        area_grid = area_da.broadcast_like(ds[variable_name].isel(time=0, level=0))
-    else:
-        area_grid = area_da.broadcast_like(ds[variable_name].isel(time=0, sector=0))  # shape: (lat, lon)
-    
-    # Step 2: apply area to get kg/s
-    ds_weighted = ds[variable_name] * area_grid  # shape: (time, sector, lat, lon), units: kg/s
-
-    # Step 3: sum over space (summing all sectors in the process too)
-    ds_total = ds_weighted.sum(dim=['lat', 'lon'])  # kg/s
-
-    # Step 4: Convert time to year and group by it
-    ds_annual = ds_total.groupby('time.year').mean() # mean across months, keep same unit
-
-    return ds_annual
-
-
-def ds_to_annual_emissions_total(ds, variable_name):
-    """
-    Take an output scenario and return an annual emissions timeseries.
-    Input is in kg m-2 s-1, output is in kg s-1 (global)
-    """
-    # Step 1: compute cell area
-    area_da = gridcell_area(ds.lat, ds.lon)  # shape: (lat,)
-
-    # TO DO: for AIR this should probably be summed over all levels?
-    if "AIR" in variable_name:
-        area_grid = area_da.broadcast_like(ds[variable_name].isel(time=0, level=0))
-    else:
-        area_grid = area_da.broadcast_like(ds[variable_name].isel(time=0, sector=0))  # shape: (lat, lon)
-    
-    # Step 2: apply area to get kg/s
-    ds_weighted = ds[variable_name] * area_grid  # shape: (time, sector, lat, lon), units: kg/s
-
-    # Step 3: sum over space (keeping sector information)
-    if "AIR" in variable_name:
-        ds_total = ds[variable_name].sum(dim=['lat', 'lon', 'level'])
-    else:
-        ds_total = ds[variable_name].sum(dim=['lat', 'lon', 'sector'])
-
-    # Step 4: Convert time to year and group by it
-    ds_annual = ds_total.groupby('time.year').mean() # mean across months, keep same unit
-
-    return ds_annual
-
 def df_to_wide_timeseries(da):
 
     df = da.to_pandas()
@@ -241,24 +190,70 @@ def df_to_wide_timeseries(da):
     return df
 
 # %% [markdown]
-# ### Simple conversions
+# ## Aggregation to global total and unit conversion
 
 # %%
-def kg_m2_s_to_Mt_y(x):
-    s_y = 365 * 24 * 60 * 60 # seconds per year; how do we account for leap years? (now missing)
-    Mt_kg = 1e-9 # Mt per kg
-    global_m2 = 5.1e14 # area of the earth
-    kg_m2_s_to_Mt_y = global_m2 * s_y * Mt_kg    
-    return x * kg_m2_s_to_Mt_y
+# load a CMIP7 sample file
+cmip7_data_file = f"CO2-em-anthro_input4MIPs_emissions_CMIP7_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
+
+scen_ds = read_nc_file(
+    f = cmip7_data_file,
+    loc = cmip7_data_location
+)
+
+# %%
+areacella = xr.open_dataset(Path(grid_file_location, "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc"))
+cell_area = areacella["areacella"]
+
+# ensure that dimensions match the sample CMIP7 file
+assert set(cell_area.dims).issubset(set(scen_ds.dims))
 
 
 # %%
-def kg_m2_s_to_Gt_y(x):
-    s_y = 365 * 24 * 60 * 60 # seconds per year; how do we account for leap years? (now missing)
-    Gt_kg = 1e-12 # Gt per kg
-    global_m2 = 5.1e14 # area of the earth
-    kg_m2_s_to_Gt_y = global_m2 * s_y * Gt_kg    
-    return x * kg_m2_s_to_Gt_y
+def ds_to_annual_emissions_total(gridded_data, var_name, cell_area, keep_sectors=True):
+    """
+    Convert gridded emissions in kg/m2/s to Mt/year.
+    
+    Parameters:
+    - gridded_data: xr.Dataset containing the emission variable
+    - var_name: str, name of the variable to convert
+    - cell_area: xr.DataArray of shape (lat, lon), in m2
+    - keep_sectors: bool, if True, retain sector info
+    
+    Returns:
+    - xr.DataArray of Mt/year, shape (year,) or (sector, year)
+    """
+    da = gridded_data[var_name]
+
+    # obtain the seconds in each month for which data is available
+    seconds_per_month = da.time.dt.days_in_month * 24 * 60 * 60
+
+    # kg/m2/s --> kg/m2/month
+    monthly = seconds_per_month * da
+
+    # weight with cell area
+    area_weighted = cell_area * monthly
+
+    # Sum over spatial dimensions
+    sum_dims = ["lat", "lon"]
+    if "level" in area_weighted.dims:
+        sum_dims.append("level")
+
+    kg_per_month = area_weighted.sum(dim=sum_dims)
+
+    # Convert to annual totals (kg/year)
+    kg_per_year = kg_per_month.groupby("time.year").sum()
+
+    # Convert to Mt/year
+    da_Mt_y = kg_per_year * 1e-9
+
+    if "sector" in da_Mt_y.dims and not keep_sectors:
+        da_Mt_y = da_Mt_y.sum(dim="sector")
+
+    # make sure variable is correctly named
+    da_Mt_y = da_Mt_y.rename(var_name)
+    
+    return da_Mt_y
 
 
 # %% [markdown]
@@ -267,6 +262,7 @@ def kg_m2_s_to_Gt_y(x):
 # %%
 def nc_to_iamc_like(ds,
                    variable_name,
+                   cell_area,
                    model: str = "undefined",
                    scenario: str = "undefined",
                    region: str = "World",
@@ -276,10 +272,10 @@ def nc_to_iamc_like(ds,
     
     # First get a 2D pandas timeseries, with sector or not
     if keep_sectors:
-        da = ds_to_annual_emissions_sectoral(ds, variable_name)
+        da = ds_to_annual_emissions_total(ds, variable_name, cell_area, keep_sectors=True)
         df = df_to_wide_timeseries(da)  # shape: (sectors, years)
     else:
-        da = ds_to_annual_emissions_total(ds, variable_name)
+        da = ds_to_annual_emissions_total(ds, variable_name, cell_area, keep_sectors=False)
         s = da.to_series()
         df = pd.DataFrame([s.values], columns=s.index)
         df.index = pd.MultiIndex.from_tuples(
@@ -309,18 +305,67 @@ def nc_to_iamc_like(ds,
     return df
 
 
-# aggregates gridded emissions back into global time series
-# using a wrapper for bulk processing using dask
+# wrapper for bulk processing using dask
 @delayed
-def process_nc_file(filename):
-    ds = read_nc_file(filename, cmip7_data_location, chunks={'time': 1})
+def process_gridded_file(filename, loc, cell_area, model, scenario, keep_sectors=False):
+    ds = read_nc_file(filename, loc)
     var_name = list(ds.data_vars.keys())[0]
-    df = nc_to_iamc_like(ds,
-                         variable_name=var_name,
-                         model=MODEL_SELECTION,
-                         scenario=SCENARIO_SELECTION,
-                         keep_sectors=False)
+    
+    df = nc_to_iamc_like(
+        ds,
+        variable_name=var_name,
+        cell_area=cell_area,
+        model=model,
+        scenario=scenario,
+        keep_sectors=keep_sectors
+    )
     return df
+
+
+# %%
+# function calling the wrapper for bulk processing with dask
+
+def process_gridded_files(filenames, loc, cell_area, model, scenario, keep_sectors=False):
+    """
+    Process multiple NetCDF files in parallel and convert them to IAMC-style time series.
+
+    This function reads a list of NetCDF files containing gridded emissions data,
+    converts each file to annual global emissions in Mt/year, and returns a combined
+    IAMC-like pandas DataFrame suitable for climate/energy modeling frameworks.
+
+    Parameters
+    ----------
+    filenames : list of str
+        List of NetCDF file names to process (filenames only, not full paths).
+    loc : pathlib.Path or str
+        Directory path where the NetCDF files are located.
+    cell_area : xarray.DataArray
+        2D DataArray (lat, lon) containing the grid cell areas in m².
+    model : str
+        Name of the model to assign in the output IAMC-format index.
+    scenario : str
+        Name of the scenario to assign in the output IAMC-format index.
+    keep_sectors : bool, optional (default=False)
+        If True, retain sector-specific emissions in the output. If False,
+        aggregate over all sectors to produce a single total per year.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Combined DataFrame in IAMC format with columns for years and a
+        MultiIndex: ["model", "scenario", "region", "variable", "unit"].
+    """
+
+    tasks = [
+        process_gridded_file(f, loc, cell_area, model, scenario, keep_sectors=keep_sectors)
+        for f in filenames
+    ]
+    
+    with ProgressBar():
+        dfs = dask.compute(*tasks)
+    
+    df_all = pd.concat(dfs)
+    return df_all
 
 
 # %% [markdown]
@@ -361,26 +406,6 @@ def plot_sectors_emissions_timeseries(ts,
     ax.grid(True)
 
 
-# matplotlib stacked area chart crashes when a timeseries is first positive and later negative
-# def plot_sectors_emissions_timeseries_area_DRAFT1(ts,
-#                                   title: str = "Annual Global Anthropogenic CO₂ Emissions",
-#                                   xlabel: str = "Year",
-#                                   ylabel: str = "CO₂ Emissions [mass flux]",
-#                                   figsize: tuple = (10,6)):
-#     # Convert to pandas DataFrame for plotting
-#     df = ts.to_pandas()  # index: year, columns: sector
-
-#     # Stacked area plot
-#     plt.figure(figsize=figsize)
-#     df.plot.area(ax=plt.gca(), colormap='tab20')
-#     plt.title(title)
-#     plt.xlabel(xlabel)
-#     plt.ylabel(ylabel)
-#     plt.legend(title="Sector", bbox_to_anchor=(1.05, 1), loc='upper left')
-#     plt.grid(True)
-#     plt.tight_layout()
-#     plt.show()
-
 def plot_sectors_emissions_timeseries_area_DRAFT2(ts,
                                   title: str = "Annual Global Anthropogenic CO₂ Emissions",
                                   xlabel: str = "Year",
@@ -413,21 +438,71 @@ def plot_sectors_emissions_timeseries_area_DRAFT2(ts,
     return chart
 
 
+# %%
+test = unit_conversion_and_aggregation(scen_ds, "CO2_em_anthro", areacella, keep_sectors=True)
+test
+
 # %% [markdown]
 # Miscellaneous
-
-# %%
-def pixunique(pixdf,column_name="variable"):
-    return pixdf.index.get_level_values(column_name).unique()
-
 
 # %% [markdown]
 # # Load data
 
-# %%
-
 # %% [markdown]
 # ## Harmonized data (timeseries)
+
+# %%
+# extract list of all species available in the harmonised scenario data
+
+harmonized_data_file = f"harmonised-gridding_{MODEL_SELECTION}.csv"
+
+harmonized_data = cmip7_utils.load_data(
+    Path(harmonized_data_location, harmonized_data_file)
+).dropna(axis=1)
+# select scenario
+harmonized_data = cmip7_utils.filter_scenario(harmonized_data, scenarios=SCENARIO_SELECTION)
+# reformat as multi-index in IAMC format
+harmonized_data = harmonized_data.set_index(IAMC_COLS)
+
+# %%
+# reaggregate the harmonised scenario data to match the gridded data
+
+full = []
+
+for species in species_list:
+    anthro = (
+        harmonized_data
+        .loc[pix.ismatch(variable=f"*|{species}|*")]
+        .loc[pix.ismatch(variable=SECTORS_ANTHRO)]
+        .groupby(['model', 'scenario', 'unit'])
+        .sum()
+        .pix.assign(variable=f"{species}_em_anthro", region="World")
+        .reorder_levels(IAMC_COLS)
+    )
+
+    air = (
+        harmonized_data
+        .loc[pix.ismatch(variable=f"*|{species}|*")]
+        .loc[pix.ismatch(variable=SECTORS_AIR)]
+        .groupby(['model', 'scenario', 'unit'])
+        .sum()
+        .pix.assign(variable=f"{species}_em_AIR_anthro", region="World")
+        .reorder_levels(IAMC_COLS)
+    )
+
+    openburning = (
+        harmonized_data
+        .loc[pix.ismatch(variable=f"*|{species}|*")]
+        .loc[pix.ismatch(variable=SECTORS_OPENBURNING)]
+        .groupby(['model', 'scenario', 'unit'])
+        .sum()
+        .pix.assign(variable=f"{species}_em_openburning", region="World")
+        .reorder_levels(IAMC_COLS)
+    )
+
+    full.extend([anthro, air, openburning])
+
+harmonized_data_reformatted = pix.concat(full)
 
 # %%
 MODEL_SELECTION = "REMIND-MAgPIE 3.5-4.10"
@@ -501,14 +576,7 @@ harmonized_data_reformatted = pix.concat(full)
 # ## CO2 example 1 scenario (CMIP7)
 
 # %%
-cmip7_data_file = f"CO2-em-anthro_input4MIPs_emissions_CMIP7_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
-
-scen_ds = read_nc_file(
-    f = cmip7_data_file,
-    loc = cmip7_data_location
-)
-
-# %%
+# loaded above
 scen_ds.attrs
 
 # %% [markdown]
@@ -532,6 +600,8 @@ scen_ds_cmip6 = read_nc_file(
 
 # %%
 # simple pandas-dataframe based checks & plots
+
+# TO DO: this all needs adapting, after the aggregation function has been corrected
 
 # cmip7 dfs
 sectoral_emissions_ts = ds_to_annual_emissions_sectoral(scen_ds, variable_name="CO2_em_anthro")
@@ -572,7 +642,7 @@ plt.show()
 # %%
 # use pix assign to set model and scenario; could get from filename if they are not also variables in the netcdf?
 
-nc_to_iamc_like(scen_ds, variable_name="CO2_em_anthro", keep_sectors=True)
+nc_to_iamc_like(scen_ds, variable_name="CO2_em_anthro", cell_area=cell_area, keep_sectors=False)
 
 # %% [markdown]
 # # Compare CMIP7 gridded emissions with harmonised scenario emissions 
@@ -581,37 +651,19 @@ nc_to_iamc_like(scen_ds, variable_name="CO2_em_anthro", keep_sectors=True)
 # ## Species-level aggregates
 
 # %%
-# prepare list of all files in the CMIP7 results folder
+filenames = [f.name for f in cmip7_data_location.glob("*.nc")]
 
-nc_files = sorted([
-    f for f in os.listdir(cmip7_data_location)
-    if f.endswith(".nc") and MODEL_SELECTION_GRIDDED in f and SCENARIO_SELECTION_GRIDDED in f
-])
-
-# %%
-# test to ensure that dimensions are complete for all files
-for filename in nc_files:
-    ds = read_nc_file(filename, cmip7_data_location)
-    var_name = list(ds.data_vars.keys())[0]
-    dims = ds[var_name].dims
-    assert len(dims) == 4, f"Variable '{var_name}' in '{filename}' has {len(dims)} dimensions, expected 4."
-
-# %%
-# aggregate gridded emissions back into global time series
-# optionally we can set keep_sectors = True and pass it to process_nc_file(f, keep_sectors)
-
-tasks = [process_nc_file(f) for f in nc_files]
-
-# Trigger computation
-with ProgressBar():
-    results = compute(*tasks)
-
-# Final concatenation
-aggregated_gridded_emissions = pd.concat(results)
+aggregated_gridded_emissions = process_gridded_files(
+    filenames,
+    loc=cmip7_data_location,
+    cell_area=cell_area,
+    model=MODEL_SELECTION_GRIDDED,
+    scenario=SCENARIO_SELECTION_GRIDDED,
+    keep_sectors=False
+)
 
 # %%
 aggregated_gridded_emissions = aggregated_gridded_emissions.pix.assign(version = "aggregated gridded")
-aggregated_gridded_emissions
 
 # %%
 harmonized_data_reformatted = harmonized_data_reformatted.pix.assign(version = "harmonised scenario")
@@ -619,20 +671,7 @@ harmonized_data_reformatted = harmonized_data_reformatted.pix.assign(version = "
 
 # %%
 def reshape_for_plot(df):
-    # Fix index names
-    if df.index.nlevels == 1:
-        if df.index.name is None:
-            df.index.name = "index"
-        else:
-            df.index.name = str(df.index.name)
-    else:
-        df.index.names = [f"level_{i}" if name is None else str(name)
-                          for i, name in enumerate(df.index.names)]
 
-    # Fix column names (e.g., years or times)
-    df.columns = [str(col) if pd.notnull(col) else "unknown_time" for col in df.columns]
-
-    # Reset index to move index into columns
     df_reset = df.reset_index()
 
     # Melt only over former index variables
@@ -645,22 +684,20 @@ def reshape_for_plot(df):
     )
     return df_long
 
-df1_long = reshape_for_plot(harmonized_data_reformatted)
-df2_long = reshape_for_plot(aggregated_gridded_emissions)
-
-# Combine
-combined_long = pd.concat([df1_long, df2_long], axis=0, ignore_index=True)
 
 # %%
-to_plot = aggregated_gridded_emissions
-df_reset = to_plot.reset_index()
-df_long = df_reset.melt(id_vars=to_plot.index.names, var_name="time", value_name="values")
+scenario_data = reshape_for_plot(harmonized_data_reformatted)
+gridded_data = reshape_for_plot(aggregated_gridded_emissions)
+combined = pd.concat([scenario_data, gridded_data], axis=0, ignore_index=True)
+
+to_plot = combined[combined["variable"].str.endswith("_em_anthro")]
 
 g = sns.relplot(
-    data=df_long,
+    data=to_plot,
     x="time",
     y="values",
     col="variable",
+    hue="version",
     col_wrap=3,
     kind="line",
     height=5,
@@ -676,48 +713,8 @@ ax0 = g.axes.flat[0]
 handles, labels = ax0.get_legend_handles_labels()
 
 plt.tight_layout()
-plt.savefig("/home/hoegner/Projects/CMIP7/checks/plots/gridding/pre-post/reaggregated_gridded_REMIND_vllo.png")
-plt.show()
-
-# %%
-to_plot = harmonized_data_reformatted
-df_reset = to_plot.reset_index()
-df_long = df_reset.melt(id_vars=to_plot.index.names, var_name="time", value_name="values")
-
-g = sns.relplot(
-    data=df_long,
-    x="time",
-    y="values",
-    col="variable",
-    col_wrap=3,
-    kind="line",
-    height=5,
-    aspect=1.5,
-    facet_kws=dict(sharey=False),
-)
-
-if g._legend:
-    g._legend.remove()
-
-# Get legend info from one subplot
-ax0 = g.axes.flat[0]
-handles, labels = ax0.get_legend_handles_labels()
-
-plt.tight_layout()
-plt.savefig("/home/hoegner/Projects/CMIP7/checks/plots/gridding/pre-post/harmonised_data_REMIND_vllo.png")
+plt.savefig("/home/hoegner/Projects/CMIP7/checks/plots/gridding/pre-post/reaggregated_gridded_REMIND_vllo_em_anthro.png")
 plt.show()
 
 # %% [markdown]
-# ### some notes on unit conversion
-
-# %%
-37712 / kg_m2_s_to_Gt_y(0.000473)
-
-# %%
--3830.197824 /  kg_m2_s_to_Gt_y(-0.000048)
-
-# %%
-1/0.0049613879189423105 # what is this scalar difference?
-
-# %%
-kg_m2_s_to_Mt_y(4.212752e-06)
+# ## Sector-level aggregates
