@@ -24,7 +24,6 @@ import dask
 from dask import delayed, compute
 from dask.diagnostics import ProgressBar
 from dask.utils import SerializableLock
-from tqdm import tqdm
 
 import altair as alt
 alt.renderers.enable('default')
@@ -87,9 +86,11 @@ lock = SerializableLock()
 
 # %%
 # Scenarios pre-gridding
-# harmonized_data_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_testing/input/scenarios/"
-harmonized_data_location = "/home/hoegner/Projects/CMIP7/input/scenarios/"
+# scenario_data_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_testing/input/scenarios/"
+scenario_data_location = "/home/hoegner/Projects/CMIP7/input/scenarios/"
+harmonized_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{GRIDDING_VERSION}")
 grid_file_location = "/home/hoegner/Projects/CMIP7/input/gridding/"
+
 # gridded emissions
 # CMIP7
 GRIDDING_VERSION = "config_cmip7_v0_2_testing_new_proxies"
@@ -449,20 +450,75 @@ test
 # # Load data
 
 # %% [markdown]
-# ## Harmonized data (timeseries)
+# ## Original scenario data (timeseries)
 
 # %%
 # extract list of all species available in the harmonised scenario data
 
-harmonized_data_file = f"harmonised-gridding_{MODEL_SELECTION}.csv"
+scenario_data_file = f"harmonised-gridding_{MODEL_SELECTION}.csv"
 
-harmonized_data = cmip7_utils.load_data(
-    Path(harmonized_data_location, harmonized_data_file)
+scenario_data = cmip7_utils.load_data(
+    Path(scenario_data_location, scenario_data_file)
 ).dropna(axis=1)
 # select scenario
-harmonized_data = cmip7_utils.filter_scenario(harmonized_data, scenarios=SCENARIO_SELECTION)
+scenario_data = cmip7_utils.filter_scenario(scenario_data, scenarios=SCENARIO_SELECTION)
 # reformat as multi-index in IAMC format
+scenario_data = scenario_data.set_index(IAMC_COLS)
+
+# %%
+# reaggregate the scenario data to match the gridded data
+
+full = []
+
+for species in species_list:
+    anthro = (
+        scenario_data
+        .loc[pix.ismatch(variable=f"*|{species}|*")]
+        .loc[pix.ismatch(variable=SECTORS_ANTHRO)]
+        .groupby(['model', 'scenario', 'unit'])
+        .sum()
+        .pix.assign(variable=f"{species}_em_anthro", region="World")
+        .reorder_levels(IAMC_COLS)
+    )
+
+    air = (
+        scenario_data
+        .loc[pix.ismatch(variable=f"*|{species}|*")]
+        .loc[pix.ismatch(variable=SECTORS_AIR)]
+        .groupby(['model', 'scenario', 'unit'])
+        .sum()
+        .pix.assign(variable=f"{species}_em_AIR_anthro", region="World")
+        .reorder_levels(IAMC_COLS)
+    )
+
+    openburning = (
+        scenario_data
+        .loc[pix.ismatch(variable=f"*|{species}|*")]
+        .loc[pix.ismatch(variable=SECTORS_OPENBURNING)]
+        .groupby(['model', 'scenario', 'unit'])
+        .sum()
+        .pix.assign(variable=f"{species}_em_openburning", region="World")
+        .reorder_levels(IAMC_COLS)
+    )
+
+    full.extend([anthro, air, openburning])
+
+scenario_data_reformatted = pix.concat(full)
+
+# %% [markdown]
+# ## Concordia-harmonised data (timeseries)
+
+# %%
+harmonized_data_file = f"harmonization-{GRIDDING_VERSION}.csv"
+harmonized_data = cmip7_utils.load_data(
+    Path(harmonized_data_location, harmonized_data_file)
+)
+harmonized_data = cmip7_utils.filter_scenario(harmonized_data, scenarios=SCENARIO_SELECTION).dropna(axis=1)
+harmonized_data = harmonized_data[harmonized_data["variable"].str.contains(r'\bHarmonized\b', regex=True)]
+harmonized_data["variable"] = harmonized_data["variable"].str.split('|').apply(lambda parts: "|".join(parts[1:-2]))
+
 harmonized_data = harmonized_data.set_index(IAMC_COLS)
+harmonized_data
 
 # %%
 # reaggregate the harmonised scenario data to match the gridded data
@@ -664,9 +720,8 @@ aggregated_gridded_emissions = process_gridded_files(
 
 # %%
 aggregated_gridded_emissions = aggregated_gridded_emissions.pix.assign(version = "aggregated gridded")
-
-# %%
-harmonized_data_reformatted = harmonized_data_reformatted.pix.assign(version = "harmonised scenario")
+scenario_data_reformatted = scenario_data_reformatted.pix.assign(version = "CMIP7 harmonised scenario")
+harmonized_data_reformatted = harmonized_data_reformatted.pix.assign(version = "concordia harmonised scenario")
 
 
 # %%
@@ -686,11 +741,16 @@ def reshape_for_plot(df):
 
 
 # %%
-scenario_data = reshape_for_plot(harmonized_data_reformatted)
-gridded_data = reshape_for_plot(aggregated_gridded_emissions)
-combined = pd.concat([scenario_data, gridded_data], axis=0, ignore_index=True)
+to_plot["version"].unique()
 
-to_plot = combined[combined["variable"].str.endswith("_em_anthro")]
+# %%
+scenario_data = reshape_for_plot(scenario_data_reformatted)
+harmonised_data = reshape_for_plot(harmonized_data_reformatted)
+gridded_data = reshape_for_plot(aggregated_gridded_emissions)
+combined = pix.concat([scenario_data, harmonised_data, gridded_data], axis=0, ignore_index=True)
+
+to_plot = combined[combined["variable"].str.endswith("em_anthro")].dropna()
+to_plot["time"] = pd.to_datetime(to_plot["time"], errors="coerce")
 
 g = sns.relplot(
     data=to_plot,
@@ -698,19 +758,15 @@ g = sns.relplot(
     y="values",
     col="variable",
     hue="version",
-    col_wrap=3,
+    col_wrap=2,
     kind="line",
-    height=5,
+    height=3,
     aspect=1.5,
     facet_kws=dict(sharey=False),
 )
 
-if g._legend:
-    g._legend.remove()
-
-# Get legend info from one subplot
-ax0 = g.axes.flat[0]
-handles, labels = ax0.get_legend_handles_labels()
+g._legend.set_bbox_to_anchor((1.05, 0.5))
+g._legend.set_loc("center left")
 
 plt.tight_layout()
 plt.savefig("/home/hoegner/Projects/CMIP7/checks/plots/gridding/pre-post/reaggregated_gridded_REMIND_vllo_em_anthro.png")
