@@ -115,22 +115,59 @@ def read_nc_file(f, loc, reorder_list=None, rename_sectors_cmip6=None):
 # ## Aggregation
 
 # %%
-def ds_to_annual_emissions_sectoral(ds, variable_name):
-    "Take an output scenario and return an annual emissions timeseries"
-    # Step 1: Optionally sum over space and sector
-    ds_total = ds[variable_name].sum(dim=['lat', 'lon'])
+scen_ds.lat
 
-    # Step 2: Convert time to year and group by it
+
+# %%
+def gridcell_area(lat, lon, radius=6.371e6, cell_degree=0.5):
+    """
+    Approximate area of a lat-lon grid cell (in m²) assuming spherical Earth.
+    lat, lon in degrees, assumed to be 1D arrays.
+    """
+    dlat = np.deg2rad(cell_degree)  # 0.5° in radians
+    dlon = np.deg2rad(cell_degree)
+
+    lat_rad = np.deg2rad(lat)
+    # Area = R² * dlat * dlon * cos(lat)
+    area = (radius**2) * dlat * dlon * np.cos(lat_rad)
+    return xr.DataArray(area, coords={"lat": lat}, dims=["lat"])
+
+def ds_to_annual_emissions_sectoral(ds, variable_name):
+    """
+    Take an output scenario and return an annual emissions timeseries.
+    Input is in kg m-2 s-1, output is in kg s-1 (global)
+    """
+    # Step 1: compute cell area
+    area_da = gridcell_area(ds.lat, ds.lon)  # shape: (lat,)
+    area_grid = area_da.broadcast_like(ds[variable_name].isel(time=0, sector=0))  # shape: (lat, lon)
+    
+    # Step 2: apply area to get kg/s
+    ds_weighted = ds[variable_name] * area_grid  # shape: (time, sector, lat, lon), units: kg/s
+
+    # Step 3: sum over space (summing all sectors in the process too)
+    ds_total = ds_weighted.sum(dim=['lat', 'lon'])  # kg/s
+
+    # Step 4: Convert time to year and group by it
     ds_annual = ds_total.groupby('time.year').mean() # mean across months, keep same unit
 
     return ds_annual
 
 def ds_to_annual_emissions_total(ds, variable_name):
-    "Take an output scenario and return an annual emissions timeseries"
-    # Step 1: Optionally sum over space and sector
-    ds_total = ds[variable_name].sum(dim=['lat', 'lon', 'sector'])
+    """
+    Take an output scenario and return an annual emissions timeseries.
+    Input is in kg m-2 s-1, output is in kg s-1 (global)
+    """
+    # Step 1: compute cell area
+    area_da = gridcell_area(ds.lat, ds.lon)  # shape: (lat,)
+    area_grid = area_da.broadcast_like(ds[variable_name].isel(time=0, sector=0))  # shape: (lat, lon)
+    
+    # Step 2: apply area to get kg/s
+    ds_weighted = ds[variable_name] * area_grid  # shape: (time, sector, lat, lon), units: kg/s
 
-    # Step 2: Convert time to year and group by it
+    # Step 3: sum over space (keeping sector information)
+    ds_total = ds_weighted.sum(dim=['lat', 'lon', 'sector'])
+
+    # Step 4: Convert time to year and group by it
     ds_annual = ds_total.groupby('time.year').mean() # mean across months, keep same unit
 
     return ds_annual
@@ -148,8 +185,18 @@ def df_to_wide_timeseries(da):
 # ### Simple conversions
 
 # %%
+365 * 24 * 60 * 60 * 1e-9
+
+
+# %%
+def kg_s_to_Mt_y(x):
+    s_y = 365.24219 * 24 * 60 * 60 # seconds per tropical year; see https://github.com/OMS-NetZero/FAIR/blob/master/src/fair/earth_params.py
+    Mt_kg = 1e-9 # Mt per kg
+    kg_m2_s_to_Mt_y = s_y * Mt_kg    
+    return x * kg_m2_s_to_Mt_y
+
 def kg_m2_s_to_Gt_y(x):
-    s_y = 365 * 24 * 60 * 60 # seconds per year; how do we account for leap years? (now missing)
+    s_y = 365.24219 * 24 * 60 * 60 # seconds per tropical year; see https://github.com/OMS-NetZero/FAIR/blob/master/src/fair/earth_params.py
     Gt_kg = 1e-12 # Gt per kg
     global_m2 = 5.1e14 # area of the earth
     kg_m2_s_to_Gt_y = global_m2 * s_y * Gt_kg    
@@ -160,53 +207,6 @@ def kg_m2_s_to_Gt_y(x):
 # ## To IAMC format using pix
 
 # %%
-def nc_to_iamc_like(ds,
-                   variable_name, 
-                   model: str = "undefined",
-                   scenario: str = "undefined",
-                   unit: str = "undefined",
-                   region: str = "World",
-                   to_pix = True,
-                   keep_sectors=True):
-    
-    # first get a 2D pandas timeseries, with sector as index
-    if keep_sectors:
-        da = ds_to_annual_emissions_sectoral(ds, variable_name)
-        df = df_to_wide_timeseries(da)
-    if not keep_sectors:
-        da = ds_to_annual_emissions_total(ds, variable_name)
-        df = df_to_wide_timeseries(da)
-
-    # (optional) project to a pandas-indexing (pix) like multiindex pandas dataframe
-    if to_pix:
-        if keep_sectors:
-            df = (
-                pix.assignlevel(
-                    df,
-                    model=model, 
-                    scenario=scenario, 
-                    unit=unit, 
-                    variable= variable_name + "|" + pix.projectlevel(df.index, "sector"), 
-                    region=region
-                    )
-                    .droplevel(['sector'])
-                    .reorder_levels(["model", "scenario", "region", "variable", "unit"])
-            )
-        if not keep_sectors:
-            df = (
-                pix.assignlevel(
-                    df,
-                    model=model, 
-                    scenario=scenario, 
-                    unit=unit, 
-                    variable=variable_name, 
-                    region=region
-                    )
-                    .reorder_levels(["model", "scenario", "region", "variable", "unit"])
-            )
-
-    return df
-
 def nc_to_iamc_like(ds,
                    variable_name, 
                    model: str = "undefined",
@@ -358,6 +358,57 @@ def pixunique(pixdf,column_name="variable"):
 # # Load data
 
 # %% [markdown]
+# ### CEDS grid cell area
+
+# %%
+# grid cell area from CEDS
+#  (could also be available in concordia itself, IndexRaster?)
+
+ceds_gridcellarea_file = "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc"
+ceds_gridcellarea_location = Path("C:/Users/kikstra/Downloads")
+ceds_gridcellarea_ds = read_nc_file(
+    f = ceds_gridcellarea_file,
+    loc = ceds_gridcellarea_location
+)
+
+# %%
+ceds_gridcellarea_ds["areacella"].plot()
+
+# %%
+ceds_gridcellarea_ds["areacella"].values.max()
+
+# %%
+gridcell_area(0,0) # gridcell area at 0 by 0 degree
+
+# %%
+# load two CEDS files from https://rcdtn1.pnl.gov/data/CEDS/CEDS_release-v_2025_04_18/gridded_emissions/bulk_emissions/
+
+ceds_data_location = Path("C:/Users/kikstra/Downloads")
+
+fine_ds = read_nc_file(
+    f = "BC-em-anthro_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gr_202301-202312.nc",
+    loc = ceds_data_location
+)
+coarse_ds = read_nc_file(
+    f = "BC-em-anthro_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn_200001-202312.nc",
+    loc = ceds_data_location
+)
+
+# %%
+fine_ds
+
+# %%
+coarse_ds
+
+# %%
+
+# %%
+
+# %%
+
+# %%
+
+# %% [markdown]
 # ## Harmonized data (timeseries)
 
 # %%
@@ -420,7 +471,7 @@ harmonized_data_co2_openburning = (
 ).pix.assign(variable="CO2_em_openburning", region="World").reorder_levels(IAMC_COLS)
 
 # %%
-harmonized_data_co2_anthro
+harmonized_data_co2_anthro["2030"]
 
 # %% [markdown]
 # ## CO2 example 1 scenario (CMIP7)
@@ -432,6 +483,11 @@ scen_ds = read_nc_file(
     f = cmip7_data_file,
     loc = cmip7_data_location
 )
+
+# %%
+
+# %%
+scen_ds
 
 # %%
 scen_ds.attrs
@@ -492,10 +548,10 @@ plt.show()
 
 
 # %%
-plot_sectors_emissions_timeseries_area_DRAFT2(sectoral_emissions_ts)
+# plot_sectors_emissions_timeseries_area_DRAFT2(sectoral_emissions_ts)
 
 # %%
-plot_sectors_emissions_timeseries_area_DRAFT2(sectoral_emissions_ts_cmip6)
+# plot_sectors_emissions_timeseries_area_DRAFT2(sectoral_emissions_ts_cmip6)
 
 # %% [markdown]
 # ### Putting everything in IAMC format, then building automated checking tools based on that
@@ -508,12 +564,10 @@ nc_to_iamc_like(scen_ds, variable_name="CO2_em_anthro", keep_sectors=True)
 nc_to_iamc_like(scen_ds, variable_name="CO2_em_anthro", keep_sectors=False)
 
 # %%
-37712 / kg_m2_s_to_Gt_y(0.000473)
+abs(1 - (33842.27087 / kg_s_to_Mt_y(1.073234e+06)))*100 # 2030
 
 # %%
--3830.197824 /  kg_m2_s_to_Gt_y(-0.000048)
+abs(1 - (-3830.197824 /  kg_s_to_Mt_y(-121372.030247)))*100 # 2100
 
 # %%
 1/0.0049613879189423105 # what is this scalar difference?
-
-# %%
