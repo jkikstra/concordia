@@ -31,16 +31,17 @@ HISTORY_FILE = "cmip7_history_0022.csv"
 
 # %%
 # SCENARIO_FILE = "check_harmonisation_regions_REMIND.csv" # example (ALREADY HARMONIZED) REMIND scenario (used in v0 UKESM testing)
-SCENARIO_FILE = "harmonised-gridding_REMIND-MAgPIE 3.5-4.10.csv" # example (ALREADY HARMONIZED) REMIND scenario (used from 16.06.2026 towards v0_1 UKESM testing)
+#SCENARIO_FILE = "harmonised-gridding_REMIND-MAgPIE 3.5-4.10.csv" # example (ALREADY HARMONIZED) REMIND scenario (used from 17.07.2026 towards v0_2 UKESM testing)
 
+SCENARIO_FILE = "harmonised-gridding_GCAM 7.1 scenarioMIP.csv"
 # SCENARIO_FILE = "scenarios_scenariomip_COFFEE 1.6_SSP2 - Low Overshoot.csv" # example COFFEE scenario
 # SCENARIO_FILE = "scenarios_scenariomip_AIM 3.0_SSP2 - Low Emissions.csv" # example AIM scenario
 # SCENARIO_FILE = "scenarios_scenariomip_REMIND-MAgPIE 3.5-4.10_SSP2 - Low Emissions.csv" # example REMIND scenario
 # SCENARIO_FILE = "scenarios_scenariomip_MESSAGEix-GLOBIOM-GAINS 2.1-M-R12_SSP2 - Low Overshoot.csv" # example MESSAGE scenario
 # SCENARIO_FILE = "scenarios_scenariomip_allmodels_2025-03-05-messagegains.csv" # TODO: update later for all models. Location for this file is specified in the yaml file read into the `settings` object later on
 
-
-SCENARIO_SELECTION = "SSP1 - Very Low Emissions"
+#SCENARIO_SELECTION = "SSP1 - Very Low Emissions"
+SCENARIO_SELECTION = "SSP3 - High Emissions"
 
 # %% [markdown]
 # Specify settings
@@ -54,7 +55,7 @@ SETTINGS_FILE = "config_cmip7_v0_testing_ukesm_remind.yaml"
 # HARMONIZATION_VERSION = "config_cmip7_v0_testing_aim"
 # HARMONIZATION_VERSION = "config_cmip7_v0_testing_ukesm_remind"
 # HARMONIZATION_VERSION = "config_cmip7_v0_1_testing_ukesm_remind"
-HARMONIZATION_VERSION = "config_cmip7_v0_2_testing_ukesm_remind-ah"
+HARMONIZATION_VERSION = "config_cmip7_v0_2_testing_new_proxies"
 
 # %% [markdown]
 # ## Importing packages
@@ -184,9 +185,6 @@ variabledefs = VariableDefinitions.from_csv(settings.variabledefs_path)
 settings.data_path
 
 # %%
-settings.regionmappings.items()
-
-# %%
 regionmappings = {}
 
 for m, kwargs in settings.regionmappings.items():
@@ -249,7 +247,7 @@ iam_df = iam_df.sort_index()
 # Update column type and name
 iam_df.columns = iam_df.columns.astype(int)
 iam_df.columns.name = 'year'
-# iam_df
+iam_df = iam_df.dropna(axis=1)
 
 
 # %% [markdown]

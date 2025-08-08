@@ -85,7 +85,8 @@ lock = SerializableLock()
 # # Paths, definitions
 
 # %%
-GRIDDING_VERSION = "config_cmip7_v0_2_testing_new_proxies"
+GRIDDING_VERSION = "config_cmip7_v0_3_REMIND"
+#GRIDDING_VERSION = "config_cmip7_v0_3_GCAM"
 
 # Scenarios pre-gridding
 # scenario_data_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_testing/input/scenarios/"
@@ -136,6 +137,8 @@ sector_dict = {
 # %%
 MODEL_SELECTION = "REMIND-MAgPIE 3.5-4.10"
 SCENARIO_SELECTION = "SSP1 - Very Low Emissions"
+#MODEL_SELECTION = "GCAM 7.1 scenarioMIP"
+#SCENARIO_SELECTION = "SSP3 - High Emissions"
 MODEL_SELECTION_GRIDDED = MODEL_SELECTION.replace(" ", "-")
 SCENARIO_SELECTION_GRIDDED = SCENARIO_SELECTION.replace(" ", "-")
 
@@ -394,6 +397,20 @@ def process_gridded_files(filenames, loc, cell_area, model, scenario, keep_secto
 # ## Plotting
 
 # %%
+def reshape_for_plot(df):
+
+    df_reset = df.reset_index()
+
+    # Melt only over former index variables
+    id_vars = list(map(str, df.index.names))
+
+    df_long = df_reset.melt(
+        id_vars=id_vars,
+        var_name="time",
+        value_name="values"
+    )
+    return df_long
+    
 def plot_one_emissions_timeseries(ts,
                                   title: str = "Annual Global Anthropogenic CO₂ Emissions",
                                   xlabel: str = "Year",
@@ -560,13 +577,7 @@ for species in species_list:
         .groupby(["model", "scenario", "unit", "sector"])
         .sum()
         .rename(index=sector_dict, level="sector")
-    )
-
-    new_var_name = [f"{species}_em_AIR_anthro|{sec}" for sec in air.index.get_level_values("sector")]
-
-    air = (
-        air
-        .pix.assign(variable=new_var_name, region="World")
+        .pix.assign(variable=f"{species}_em_AIR_anthro", region="World")
         .reset_index("sector", drop=True)
         .reorder_levels(IAMC_COLS)
     )
@@ -580,7 +591,7 @@ for species in species_list:
         .rename(index=sector_dict, level="sector")
     )
 
-    new_var_name = ["{species}_em_openburning|{sec}" for sec in openburning.index.get_level_values("sector")]
+    new_var_name = [f"{species}_em_openburning|{sec}" for sec in openburning.index.get_level_values("sector")]
 
     openburning = (
         openburning
@@ -686,13 +697,7 @@ for species in species_list:
         .groupby(["model", "scenario", "unit", "sector"])
         .sum()
         .rename(index=sector_dict, level="sector")
-    )
-
-    new_var_name = [f"{species}_em_AIR_anthro|{sec}" for sec in air.index.get_level_values("sector")]
-
-    air = (
-        air
-        .pix.assign(variable=new_var_name, region="World")
+        .pix.assign(variable=f"{species}_em_AIR_anthro", region="World")
         .reset_index("sector", drop=True)
         .reorder_levels(IAMC_COLS)
     )
@@ -706,7 +711,7 @@ for species in species_list:
         .rename(index=sector_dict, level="sector")
     )
 
-    new_var_name = ["{species}_em_openburning|{sec}" for sec in openburning.index.get_level_values("sector")]
+    new_var_name = [f"{species}_em_openburning|{sec}" for sec in openburning.index.get_level_values("sector")]
 
     openburning = (
         openburning
@@ -748,15 +753,13 @@ scen_ds_cmip6 = read_nc_file(
 # %%
 # simple pandas-dataframe based checks & plots
 
-# TO DO: this all needs adapting, after the aggregation function has been corrected
-
 # cmip7 dfs
-sectoral_emissions_ts = ds_to_annual_emissions_sectoral(scen_ds, variable_name="CO2_em_anthro")
-total_emissions_ts = ds_to_annual_emissions_total(scen_ds, variable_name="CO2_em_anthro")
+sectoral_emissions_ts = ds_to_annual_emissions_total(scen_ds, var_name="CO2_em_anthro", cell_area=cell_area, keep_sectors=True)
+total_emissions_ts = ds_to_annual_emissions_total(scen_ds, var_name="CO2_em_anthro", cell_area=cell_area, keep_sectors=False)
 
 # cmip6 dfs
-sectoral_emissions_ts_cmip6 = ds_to_annual_emissions_sectoral(scen_ds_cmip6, variable_name="CO2_em_anthro").transpose() # to make it year,sector (instead of sector,year)
-total_emissions_ts_cmip6 = ds_to_annual_emissions_total(scen_ds_cmip6, variable_name="CO2_em_anthro")
+sectoral_emissions_ts_cmip6 = ds_to_annual_emissions_total(scen_ds_cmip6, var_name="CO2_em_anthro", cell_area=cell_area, keep_sectors=True).transpose() # to make it year,sector (instead of sector,year)
+total_emissions_ts_cmip6 = ds_to_annual_emissions_total(scen_ds_cmip6, var_name="CO2_em_anthro", cell_area=cell_area, keep_sectors=False)
 
 
 # %%
@@ -773,7 +776,9 @@ plot_sectors_emissions_timeseries(sectoral_emissions_ts_cmip6, ax=axs[1, 1],
     title="Sectoral Emissions (CMIP6)")
 
 fig.suptitle("Emissions Time Series Comparison", fontsize=16)
+
 plt.tight_layout(rect=[0, 0, 1, 0.96])
+plt.savefig(Path(plots_path, f"comparison_with_CMIP6_MESSAGE_ssp245_{MODEL_SELECTION_GRIDDED}_{SCENARIO_SELECTION_GRIDDED}.png"))
 plt.show()
 
 
@@ -806,22 +811,7 @@ aggregated_gridded_emissions = aggregated_gridded_emissions.pix.assign(version =
 scenario_data_reformatted = scenario_data_reformatted.pix.assign(version = "CMIP7 harmonised scenario")
 harmonized_data_reformatted = harmonized_data_reformatted.pix.assign(version = "concordia harmonised scenario")
 
-
-# %%
-def reshape_for_plot(df):
-
-    df_reset = df.reset_index()
-
-    # Melt only over former index variables
-    id_vars = list(map(str, df.index.names))
-
-    df_long = df_reset.melt(
-        id_vars=id_vars,
-        var_name="time",
-        value_name="values"
-    )
-    return df_long
-
+sectors = ["em_anthro", "em_AIR_anthro", "em_openburning"]
 
 # %%
 scenario_data = reshape_for_plot(scenario_data_reformatted)
@@ -829,35 +819,34 @@ harmonised_data = reshape_for_plot(harmonized_data_reformatted)
 gridded_data = reshape_for_plot(aggregated_gridded_emissions)
 combined = pix.concat([scenario_data, harmonised_data, gridded_data], axis=0, ignore_index=True)
 
-to_plot = combined[combined["variable"].str.endswith("em_anthro")].dropna()
-to_plot["time"] = pd.to_datetime(to_plot["time"], errors="coerce")
+for sec in sectors:
 
-g = sns.relplot(
-    data=to_plot,
-    x="time",
-    y="values",
-    col="variable",
-    hue="version",
-    style="version",
-    col_wrap=2,
-    kind="line",
-    height=3,
-    aspect=1.5,
-    facet_kws=dict(sharey=False),
-)
+    to_plot = combined[combined["variable"].str.contains(f"{sec}")].dropna()
+    to_plot["time"] = pd.to_datetime(to_plot["time"], errors="coerce")
 
-g._legend.set_bbox_to_anchor((1.05, 0.5))
-g._legend.set_loc("center left")
-
-plt.tight_layout()
-plt.savefig(Path(plots_path, "reaggregated_gridded_REMIND_vllo_em_anthro.png"))
-plt.show()
+    g = sns.relplot(
+        data=to_plot,
+        x="time",
+        y="values",
+        col="variable",
+        hue="version",
+        style="version",
+        col_wrap=2,
+        kind="line",
+        height=3,
+        aspect=1.5,
+        facet_kws=dict(sharey=False),
+    )
+    
+    g._legend.set_bbox_to_anchor((1.05, 0.5))
+    g._legend.set_loc("center left")
+    
+    plt.tight_layout()
+    plt.savefig(Path(plots_path, f"reaggregated_gridded_{MODEL_SELECTION_GRIDDED}_{SCENARIO_SELECTION_GRIDDED}_{sec}.png"))
+    plt.show()
 
 # %% [markdown]
 # ## Sector-level aggregates
-
-# %%
-Path(cmip7_data_location, filenames[0])
 
 # %%
 aggregated_gridded_emissions_sectors = process_gridded_files(
@@ -880,26 +869,28 @@ harmonised_data = reshape_for_plot(harmonized_data_with_sectors)
 gridded_data = reshape_for_plot(aggregated_gridded_emissions_sectors)
 combined = pix.concat([scenario_data, harmonised_data, gridded_data], axis=0, ignore_index=True)
 
-to_plot = combined[combined["variable"].str.contains("em_anthro")].dropna()
-to_plot["time"] = pd.to_datetime(to_plot["time"], errors="coerce")
-
-g = sns.relplot(
-    data=to_plot,
-    x="time",
-    y="values",
-    col="variable",
-    hue="version",
-    style="version",
-    col_wrap=3,
-    kind="line",
-    height=3,
-    aspect=1.5,
-    facet_kws=dict(sharey=False),
-)
-
-g._legend.set_bbox_to_anchor((1.05, 0.5))
-g._legend.set_loc("center left")
-
-plt.tight_layout()
-plt.savefig(Path(plots_path, "sectoral_reaggregated_gridded_REMIND_vllo_em_anthro.png"))
-plt.show()
+for sec in sectors:
+    
+    to_plot = combined[combined["variable"].str.contains(f"{sec}")].dropna()
+    to_plot["time"] = pd.to_datetime(to_plot["time"], errors="coerce")
+    
+    g = sns.relplot(
+        data=to_plot,
+        x="time",
+        y="values",
+        col="variable",
+        hue="version",
+        style="version",
+        col_wrap=3,
+        kind="line",
+        height=3,
+        aspect=1.5,
+        facet_kws=dict(sharey=False),
+    )
+    
+    g._legend.set_bbox_to_anchor((1.05, 0.5))
+    g._legend.set_loc("center left")
+    
+    plt.tight_layout()
+    plt.savefig(Path(plots_path, f"sectoral_reaggregated_gridded_{MODEL_SELECTION_GRIDDED}_{SCENARIO_SELECTION_GRIDDED}_{sec}.png"))
+    plt.show()
