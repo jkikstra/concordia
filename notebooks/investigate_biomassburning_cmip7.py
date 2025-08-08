@@ -78,9 +78,6 @@ IAMC_COLS = ["model", "scenario", "region", "variable", "unit"]
 # %% [markdown]
 # # Functions
 
-# %%
-"Latitudinal" if "lat" == "latitude" else "Longitudinal"
-
 # %% [markdown]
 # ## Reading in
 
@@ -228,13 +225,13 @@ def compare_1d_profiles(
     
     axis = ds[lat_or_long]
     profiles = {
-        label: extract_latitude_mean_over_years(ds, varname, years, lat_or_long)
+        label: extract_1d_mean_over_years(ds, varname, years, lat_or_long)
         for label, years in year_ranges.items()
     }
     return axis, profiles
 
 
-def plot_multiple_variables_latitudinal_comparison(
+def plot_multiple_variables_1d_comparison(
     base_path: Path,
     varnames: List[str],
     year_ranges: Dict[str, List[int]],
@@ -259,12 +256,12 @@ def plot_multiple_variables_latitudinal_comparison(
         if year_ranges_background:
             for label, years in year_ranges_background.items():
                 profile = extract_1d_mean_over_years(ds, varname, years, lat_or_long)
-                ax.plot(lat, profile, color="grey", linewidth=1.0, alpha=0.5, zorder=1)
+                ax.plot(lat, profile, color="grey", linewidth=0.7, alpha=0.3, zorder=1)
 
         # Foreground profiles (colored)
         for i, (label, years) in enumerate(year_ranges.items()):
             profile = extract_1d_mean_over_years(ds, varname, years, lat_or_long)
-            ax.plot(lat, profile, label=label, linewidth=2, zorder=2)  # Matplotlib assigns color automatically
+            ax.plot(lat, profile, label=label, linewidth=1.2, zorder=2)  # Matplotlib assigns color automatically
 
         ax.set_title(f"{varname} {first_word} Profile")
         ax.set_ylabel(f"{varname} (avg)")
@@ -341,6 +338,120 @@ def plot_grid_2d_by_var_and_year_range(
         pdf.savefig(fig)
         plt.close(fig)
 
+def plot_maps_years_bb4cmip_sectoral_data(
+    ds,
+    years: list,
+    ncols: int = 3,
+    proj=ccrs.Robinson(),
+    save_pdf: bool = True,
+    output_file: str = "bb4cmip_sectoral_maps.pdf"
+):
+    """
+    Plot BB4CMIP sectoral maps for given years from an xarray.Dataset.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        The dataset containing the variable to plot.
+    years : list
+        List of years to plot.
+    ncols : int, optional
+        Number of columns in the subplot grid, default = 3.
+    proj : cartopy.crs projection, optional
+        Map projection to use, default = Robinson.
+    save_pdf : bool, optional
+        If True, save the plot as a PDF file. Default = True.
+    output_file : str, optional
+        Filename for the saved PDF. Default = "bb4cmip_sectoral_maps.pdf".
+    """
+
+    nrows = int(np.ceil(len(years) / ncols))
+
+    fig, axes = plt.subplots(
+        nrows=nrows,
+        ncols=ncols,
+        figsize=(6 * ncols, 4.5 * nrows),
+        subplot_kw={"projection": proj}
+    )
+
+    # Flatten axes safely
+    if isinstance(axes, np.ndarray):
+        axes = axes.flatten()
+    else:
+        axes = [axes]
+
+    for i, yr in enumerate(years):
+        da = (
+            ds.sel(year=yr)
+            .squeeze()
+            .__xarray_dataarray_variable__  # replace if needed
+        )
+
+        da.plot.pcolormesh(
+            ax=axes[i],
+            transform=ccrs.PlateCarree(),
+            cmap="GnBu",
+            robust=True,
+            cbar_kwargs={"orientation": "horizontal", "shrink": 0.65},
+        )
+        axes[i].set_title(str(yr))
+        axes[i].coastlines()
+
+    # Remove any unused axes
+    for j in range(i + 1, len(axes)):
+        fig.delaxes(axes[j])
+
+    plt.tight_layout()
+
+    if save_pdf:
+        output_path = Path(output_file)
+        fig.savefig(output_path, bbox_inches="tight")
+        print(f"Saved PDF to: {output_path.resolve()}")
+
+    plt.show()
+
+def plot_maps_sectors(ds, sectors, ncols=3, year=2100, month=1, proj=ccrs.Robinson()): 
+    # used in cdr_maps to plot CDR_CO2 RESCUE proxy maps
+
+    nrows = int(np.ceil(len(sectors) / ncols))
+
+    fig, axes = plt.subplots(
+        nrows=nrows,
+        ncols=ncols,
+        figsize=(6 * ncols, 4.5 * nrows),
+        subplot_kw={"projection": ccrs.Robinson()}
+    )
+
+    # Flatten axes safely
+    if isinstance(axes, np.ndarray):
+        axes = axes.flatten() # make indexing easier
+    else:
+        axes = [axes]
+
+    for i, sector in enumerate(sectors):
+        da = (
+            ds.sel(sector=sector, year=year, month=month)
+            .squeeze()
+            .emissions  # or whatever your variable is
+        )
+
+        # Plot directly with xarray's .plot.pcolormesh
+        da.plot.pcolormesh(
+            ax=axes[i],
+            transform=ccrs.PlateCarree(),  
+            cmap="GnBu",
+            robust=True,
+            cbar_kwargs={"orientation": "horizontal", "shrink": 0.65},
+        )
+        axes[i].set_title(sector)
+        axes[i].coastlines()
+
+    # Remove any unused axes
+    for j in range(i + 1, len(axes)):
+        fig.delaxes(axes[j])
+
+    plt.tight_layout()
+    plt.show()
 
 # %%
 # dres_location = Path("D:/ESGF/DRES-CMIP-BB4CMIP7-2-0/atmos/mon")
@@ -355,11 +466,13 @@ def main(
     lat=False,
     lon=False,
     maps=False,
-    species = ["BC", "OC",
-              "CO2", "CH4",
-              "CO", "N2O",
-              "NH3", "NMVOCbulk",
-              "NOx", "SO2"],
+    species = [
+        "BC", "OC",
+        "CO2", "CH4",
+        "CO", "N2O",
+        "NH3", "NMVOCbulk",
+        "NOx", "SO2"
+              ],
     year_ranges = {
         "5yr avg (2019-2023)": list(range(2019, 2024)),
         "10yr avg (2014-2023)": list(range(2014, 2024)),
@@ -371,15 +484,15 @@ def main(
     
     year_ranges_background = {
         "1900s": list(range(1900, 1910)),
-        "1900s": list(range(1910, 1920)),
-        "1900s": list(range(1920, 1930)),
-        "1900s": list(range(1930, 1940)),
-        "1900s": list(range(1940, 1950)),
-        "1900s": list(range(1950, 1960)),
-        "1900s": list(range(1960, 1970)),
-        "1900s": list(range(1970, 1980)),
-        "1900s": list(range(1980, 1990)),
-        "1900s": list(range(1990, 2000)),
+        "1910s": list(range(1910, 1920)),
+        "1920s": list(range(1920, 1930)),
+        "1930s": list(range(1930, 1940)),
+        "1940s": list(range(1940, 1950)),
+        "1950s": list(range(1950, 1960)),
+        "1960s": list(range(1960, 1970)),
+        "1970s": list(range(1970, 1980)),
+        "1980s": list(range(1980, 1990)),
+        "1990s": list(range(1990, 2000)),
         "2000s": list(range(2000, 2010)),
         "2010s": list(range(2010, 2020)),
         # "2020s": list(range(2020, 2024))
@@ -387,7 +500,7 @@ def main(
 
     # do latitudinal plots, comparing possible ranges against background 10yr means  
     if lat:
-        plot_multiple_variables_latitudinal_comparison(
+        plot_multiple_variables_1d_comparison(
             base_path=dres_location,
             varnames=species,
             year_ranges=year_ranges,
@@ -398,12 +511,12 @@ def main(
     
     # do longitudinal plots, comparing possible ranges against background 10yr means  
     if lon:
-        plot_multiple_variables_latitudinal_comparison(
+        plot_multiple_variables_1d_comparison(
             base_path=dres_location,
             varnames=species,
             year_ranges=year_ranges,
             year_ranges_background=year_ranges_background,
-            lat_or_long="latitude",
+            lat_or_long="longitude",
             output_file=Path("C:/Users/kikstra/Documents/GitHub/concordia/results") / "biomass_burning" / "longitudinal_comparison.pdf"
         )
 
@@ -419,19 +532,116 @@ def main(
 
 
 
+# %% [markdown]
+# ## Run BB4CMIP7 plots 
+
 # %%
 if __name__ == "__main__":
     main(maps=False,
          lat=True,
-         lon=True)
+         lon=False)
 
 # %%
 
-# %%
+# %% [markdown]
+# ## BB4CMIP7 - sectoral emisisons 
 
 # %%
+VERSION_BB4CMIP7 = "2-0"
+# v2.0 product is already 5yr smoothed and only goes until 2021
+# v2.1 is being downloaded now, raw.
+
+for gas in [
+    # "BC"
+    "OC",
+    "SO2"
+]:
+    for sector in [
+        "AGRI",
+        "BORF",
+        "DEFO",
+        "PEAT",
+        "SAVA",
+        "TEMF",
+    ]:
+        gas_sector = gas + "_" + sector 
+        cmip7_bb4cmip7_sectoral_folder = Path("C:/Users/kikstra/Documents/GitHub/emissions_harmonization_historical/data/bb4cmip7/maps/") / VERSION_BB4CMIP7 
+        sectoral_cmip7_ds = read_nc_file(f = f"{gas_sector}.nc", 
+                                loc = cmip7_bb4cmip7_sectoral_folder)
+        plot_maps_years_bb4cmip_sectoral_data(sectoral_cmip7_ds,
+                                            years=range(1999,2022),   
+                                                    output_file=Path("C:/Users/kikstra/Documents/GitHub/concordia/results") / "biomass_burning" / f"{VERSION_BB4CMIP7}_{gas_sector}.pdf"
+                                                    )
+
+
+# %% [markdown]
+# ## Check RESCUE proxy data
 
 # %%
+rescue_folder = Path("C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_testing/input/gridding/proxy_rasters")
+
+# %%
+rescue_ds = read_nc_file(f = "openburning_BC.nc", 
+                         loc = rescue_folder)
+
+# %%
+rescue_ds
+
+# %% [markdown]
+# ### Change the years of the proxy
+
+
+# %% [markdown]
+# #### Example 
+
+# %% 
+# Create a copy so we don't overwrite the original accidentally
+ds_new = rescue_ds.copy()
+
+# Get the current years as a NumPy array
+years = ds_new['year'].values.copy()
+
+# Replace 2015 → 2023, 2020 → 2025
+years = np.where(years == 2015, 2023, years)
+years = np.where(years == 2020, 2025, years)
+
+# Assign the updated years back
+ds_new = ds_new.assign_coords(year=years)
+
+print(ds_new['year'].values)
+
+# %% [markdown]
+# #### Run update for 2023 and 2025
+
+# %% 
+for gas in [
+    # "BC", "OC",
+    # "CO2", "CH4",
+    # "CO", #"N2O", # not available
+    # "NH3", 
+    # "VOC",
+    # "NOx", 
+    "Sulfur"
+]:
+    filename = f"openburning_{gas}.nc"
+    rescue_ds = read_nc_file(f = filename, 
+                         loc = rescue_folder)
+    ds_new = rescue_ds.copy()
+    # Get the current years as a NumPy array
+    years = ds_new['year'].values.copy()
+    # Replace 2015 → 2023, 2020 → 2025
+    years = np.where(years == 2015, 2023, years)
+    years = np.where(years == 2020, 2025, years)
+    # Assign the updated years back
+    ds_new = ds_new.assign_coords(year=years)
+    # write out
+    outpath = rescue_folder / "renamed_openburning_rescue_for_cmip7round2" / filename
+    ds_new.to_netcdf(
+            outpath,
+            # encoding={da.name: settings.encoding},
+        )
+    
+
 
 # %% [markdown]
 # ## Code snippets & Interactive cells
