@@ -85,6 +85,8 @@ lock = SerializableLock()
 # # Paths, definitions
 
 # %%
+GRIDDING_VERSION = "config_cmip7_v0_2_testing_new_proxies"
+
 # Scenarios pre-gridding
 # scenario_data_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_testing/input/scenarios/"
 scenario_data_location = "/home/hoegner/Projects/CMIP7/input/scenarios/"
@@ -93,8 +95,6 @@ grid_file_location = "/home/hoegner/Projects/CMIP7/input/gridding/"
 
 # gridded emissions
 # CMIP7
-GRIDDING_VERSION = "config_cmip7_v0_2_testing_new_proxies"
-
 #cmip7_data_location = Path("C:/Users/kikstra/Documents/GitHub/concordia/results/config_cmip7_v0_2_testing_ukesm_remind-ah")
 cmip7_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{GRIDDING_VERSION}")
 
@@ -102,16 +102,18 @@ cmip7_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{GRIDDING_VE
 #cmip6_data_location = Path("C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/ESGF/Example NetCDF files CMIP6")
 cmip6_data_location = Path("/home/hoegner/Projects/CMIP7/checks/Example NetCDF files CMIP6")
 
+plots_path = "/home/hoegner/Projects/CMIP7/checks/plots/gridding/pre-post/"
+
 # %%
 SECTORS_ANTHRO = [
     '**International Shipping', 
-    '**Transportation Sector',
-    '**Waste',
     '**Agriculture',
     '**Energy Sector', 
     '**Industrial Sector',
     '**Residential Commercial Other',
-    '**Solvents Production and Application'
+    '**Solvents Production and Application',
+    '**Transportation Sector',
+    '**Waste'
 ]
 SECTORS_AIR = [
     '**Aircraft'
@@ -122,6 +124,14 @@ SECTORS_OPENBURNING = [
     '**Grassland Burning', 
     '**Peat Burning'
 ]
+
+# %%
+sector_dict = {
+"Energy Sector": "Energy",
+"Industrial Sector": "Industrial",
+"Residential Commercial Other": "Residential, Commercial, Other",
+"Transportation Sector": "Transportation"
+}
 
 # %%
 MODEL_SELECTION = "REMIND-MAgPIE 3.5-4.10"
@@ -270,6 +280,17 @@ def nc_to_iamc_like(ds,
                    unit: str = "undefined",
                    to_pix=True,
                    keep_sectors=True):
+
+    
+    # check whether we are processing aircraft emissions
+    is_air_file = (
+        "AIR" in variable_name.upper()
+    )
+
+    # if so, force keep_sectors=False workflow
+    if is_air_file:
+        keep_sectors = False
+
     
     # First get a 2D pandas timeseries, with sector or not
     if keep_sectors:
@@ -439,13 +460,6 @@ def plot_sectors_emissions_timeseries_area_DRAFT2(ts,
     return chart
 
 
-# %%
-test = unit_conversion_and_aggregation(scen_ds, "CO2_em_anthro", areacella, keep_sectors=True)
-test
-
-# %% [markdown]
-# Miscellaneous
-
 # %% [markdown]
 # # Load data
 
@@ -453,8 +467,6 @@ test
 # ## Original scenario data (timeseries)
 
 # %%
-# extract list of all species available in the harmonised scenario data
-
 scenario_data_file = f"harmonised-gridding_{MODEL_SELECTION}.csv"
 
 scenario_data = cmip7_utils.load_data(
@@ -464,9 +476,19 @@ scenario_data = cmip7_utils.load_data(
 scenario_data = cmip7_utils.filter_scenario(scenario_data, scenarios=SCENARIO_SELECTION)
 # reformat as multi-index in IAMC format
 scenario_data = scenario_data.set_index(IAMC_COLS)
+scenario_data
 
 # %%
-# reaggregate the scenario data to match the gridded data
+# extract list of all species available in the harmonised scenario data
+
+variables = scenario_data.index.get_level_values("variable").unique()
+species_temp = []
+for i in np.arange(0, len(variables)):
+    species_temp.append(variables[i].split("|")[1])
+species_list = np.unique(species_temp)
+
+# %%
+# reaggregate the scenario data to match the gridded data without sectoral resolution
 
 full = []
 
@@ -505,6 +527,72 @@ for species in species_list:
 
 scenario_data_reformatted = pix.concat(full)
 
+# %%
+# reaggregate the scenario data to match the gridded data retaining sectoral resolution
+
+scenario_data = scenario_data.pix.assign(sector = scenario_data.index.get_level_values("variable").str.split("|").str[2])
+
+full = []
+
+for species in species_list:
+    anthro = (
+        scenario_data
+        .loc[pix.ismatch(variable=f"*|{species}|*")]
+        .loc[pix.ismatch(variable=SECTORS_ANTHRO)]
+        .groupby(["model", "scenario", "unit", "sector"])
+        .sum()
+        .rename(index=sector_dict, level="sector")
+    )
+    
+    new_var_name = [f"{species}_em_anthro|{sec}" for sec in anthro.index.get_level_values("sector")]
+    
+    anthro = (
+        anthro
+        .pix.assign(variable=new_var_name, region="World")
+        .reset_index("sector", drop=True)
+        .reorder_levels(IAMC_COLS)
+    )
+
+    air = (
+        scenario_data
+        .loc[pix.ismatch(variable=f"*|{species}|*")]
+        .loc[pix.ismatch(variable=SECTORS_AIR)]
+        .groupby(["model", "scenario", "unit", "sector"])
+        .sum()
+        .rename(index=sector_dict, level="sector")
+    )
+
+    new_var_name = [f"{species}_em_AIR_anthro|{sec}" for sec in air.index.get_level_values("sector")]
+
+    air = (
+        air
+        .pix.assign(variable=new_var_name, region="World")
+        .reset_index("sector", drop=True)
+        .reorder_levels(IAMC_COLS)
+    )
+
+    openburning = (
+        scenario_data
+        .loc[pix.ismatch(variable=f"*|{species}|*")]
+        .loc[pix.ismatch(variable=SECTORS_OPENBURNING)]
+        .groupby(["model", "scenario", "unit", "sector"])
+        .sum()
+        .rename(index=sector_dict, level="sector")
+    )
+
+    new_var_name = ["{species}_em_openburning|{sec}" for sec in openburning.index.get_level_values("sector")]
+
+    openburning = (
+        openburning
+        .pix.assign(variable=new_var_name, region="World")
+        .reset_index("sector", drop=True)
+        .reorder_levels(IAMC_COLS)
+    )
+
+    full.extend([anthro, air, openburning])
+
+scenario_data_with_sectors = pix.concat(full)
+
 # %% [markdown]
 # ## Concordia-harmonised data (timeseries)
 
@@ -514,14 +602,19 @@ harmonized_data = cmip7_utils.load_data(
     Path(harmonized_data_location, harmonized_data_file)
 )
 harmonized_data = cmip7_utils.filter_scenario(harmonized_data, scenarios=SCENARIO_SELECTION).dropna(axis=1)
+harmonized_data = harmonized_data[~harmonized_data["variable"].str.contains("aggregate")]
 harmonized_data = harmonized_data[harmonized_data["variable"].str.contains(r'\bHarmonized\b', regex=True)]
 harmonized_data["variable"] = harmonized_data["variable"].str.split('|').apply(lambda parts: "|".join(parts[1:-2]))
 
+# %%
 harmonized_data = harmonized_data.set_index(IAMC_COLS)
 harmonized_data
 
 # %%
-# reaggregate the harmonised scenario data to match the gridded data
+set(list(scenario_data.index.get_level_values("variable").unique())) - set(list(harmonized_data.index.get_level_values("variable").unique()))
+
+# %%
+# reaggregate the harmonised scenario data to match the gridded data without sectoral resolution
 
 full = []
 
@@ -561,35 +654,9 @@ for species in species_list:
 harmonized_data_reformatted = pix.concat(full)
 
 # %%
-MODEL_SELECTION = "REMIND-MAgPIE 3.5-4.10"
-SCENARIO_SELECTION = "SSP1 - Very Low Emissions"
-MODEL_SELECTION_GRIDDED = MODEL_SELECTION.replace(" ", "-")
-SCENARIO_SELECTION_GRIDDED = SCENARIO_SELECTION.replace(" ", "-")
+# reaggregate the scenario data to match the gridded data retaining sectoral resolution
 
-# %%
-harmonized_data_file = f"harmonised-gridding_{MODEL_SELECTION}.csv"
-
-harmonized_data = cmip7_utils.load_data(
-    Path(harmonized_data_location, harmonized_data_file)
-).dropna(axis=1)
-# select scenario
-harmonized_data = cmip7_utils.filter_scenario(harmonized_data, scenarios=SCENARIO_SELECTION)
-# reformat as multi-index in IAMC format
-harmonized_data = harmonized_data.set_index(IAMC_COLS)
-
-
-# %%
-# extract list of all species available in the harmonised scenario data
-
-variables = harmonized_data.index.get_level_values("variable").unique()
-species_temp = []
-for i in np.arange(0, len(variables)):
-    species_temp.append(variables[i].split("|")[1])
-species_list = np.unique(species_temp)
-species_list
-
-# %%
-# reaggregate the harmonised scenario data to match the gridded data
+harmonized_data = harmonized_data.pix.assign(sector = harmonized_data.index.get_level_values("variable").str.split("|").str[2])
 
 full = []
 
@@ -598,9 +665,17 @@ for species in species_list:
         harmonized_data
         .loc[pix.ismatch(variable=f"*|{species}|*")]
         .loc[pix.ismatch(variable=SECTORS_ANTHRO)]
-        .groupby(['model', 'scenario', 'unit'])
+        .groupby(["model", "scenario", "unit", "sector"])
         .sum()
-        .pix.assign(variable=f"{species}_em_anthro", region="World")
+        .rename(index=sector_dict, level="sector")
+    )
+    
+    new_var_name = [f"{species}_em_anthro|{sec}" for sec in anthro.index.get_level_values("sector")]
+    
+    anthro = (
+        anthro
+        .pix.assign(variable=new_var_name, region="World")
+        .reset_index("sector", drop=True)
         .reorder_levels(IAMC_COLS)
     )
 
@@ -608,9 +683,17 @@ for species in species_list:
         harmonized_data
         .loc[pix.ismatch(variable=f"*|{species}|*")]
         .loc[pix.ismatch(variable=SECTORS_AIR)]
-        .groupby(['model', 'scenario', 'unit'])
+        .groupby(["model", "scenario", "unit", "sector"])
         .sum()
-        .pix.assign(variable=f"{species}_em_AIR_anthro", region="World")
+        .rename(index=sector_dict, level="sector")
+    )
+
+    new_var_name = [f"{species}_em_AIR_anthro|{sec}" for sec in air.index.get_level_values("sector")]
+
+    air = (
+        air
+        .pix.assign(variable=new_var_name, region="World")
+        .reset_index("sector", drop=True)
         .reorder_levels(IAMC_COLS)
     )
 
@@ -618,15 +701,23 @@ for species in species_list:
         harmonized_data
         .loc[pix.ismatch(variable=f"*|{species}|*")]
         .loc[pix.ismatch(variable=SECTORS_OPENBURNING)]
-        .groupby(['model', 'scenario', 'unit'])
+        .groupby(["model", "scenario", "unit", "sector"])
         .sum()
-        .pix.assign(variable=f"{species}_em_openburning", region="World")
+        .rename(index=sector_dict, level="sector")
+    )
+
+    new_var_name = ["{species}_em_openburning|{sec}" for sec in openburning.index.get_level_values("sector")]
+
+    openburning = (
+        openburning
+        .pix.assign(variable=new_var_name, region="World")
+        .reset_index("sector", drop=True)
         .reorder_levels(IAMC_COLS)
     )
 
     full.extend([anthro, air, openburning])
 
-harmonized_data_reformatted = pix.concat(full)
+harmonized_data_with_sectors = pix.concat(full)
 
 # %% [markdown]
 # ## CO2 example 1 scenario (CMIP7)
@@ -693,14 +784,6 @@ plt.show()
 #plot_sectors_emissions_timeseries_area_DRAFT2(sectoral_emissions_ts_cmip6)
 
 # %% [markdown]
-# ### Putting everything in IAMC format, then building automated checking tools based on that
-
-# %%
-# use pix assign to set model and scenario; could get from filename if they are not also variables in the netcdf?
-
-nc_to_iamc_like(scen_ds, variable_name="CO2_em_anthro", cell_area=cell_area, keep_sectors=False)
-
-# %% [markdown]
 # # Compare CMIP7 gridded emissions with harmonised scenario emissions 
 
 # %% [markdown]
@@ -741,9 +824,6 @@ def reshape_for_plot(df):
 
 
 # %%
-to_plot["version"].unique()
-
-# %%
 scenario_data = reshape_for_plot(scenario_data_reformatted)
 harmonised_data = reshape_for_plot(harmonized_data_reformatted)
 gridded_data = reshape_for_plot(aggregated_gridded_emissions)
@@ -758,6 +838,7 @@ g = sns.relplot(
     y="values",
     col="variable",
     hue="version",
+    style="version",
     col_wrap=2,
     kind="line",
     height=3,
@@ -769,8 +850,56 @@ g._legend.set_bbox_to_anchor((1.05, 0.5))
 g._legend.set_loc("center left")
 
 plt.tight_layout()
-plt.savefig("/home/hoegner/Projects/CMIP7/checks/plots/gridding/pre-post/reaggregated_gridded_REMIND_vllo_em_anthro.png")
+plt.savefig(Path(plots_path, "reaggregated_gridded_REMIND_vllo_em_anthro.png"))
 plt.show()
 
 # %% [markdown]
 # ## Sector-level aggregates
+
+# %%
+Path(cmip7_data_location, filenames[0])
+
+# %%
+aggregated_gridded_emissions_sectors = process_gridded_files(
+    filenames,
+    loc=cmip7_data_location,
+    cell_area=cell_area,
+    model=MODEL_SELECTION_GRIDDED,
+    scenario=SCENARIO_SELECTION_GRIDDED,
+    keep_sectors=True
+)
+
+# %%
+aggregated_gridded_emissions_sectors = aggregated_gridded_emissions_sectors.pix.assign(version = "aggregated gridded")
+scenario_data_with_sectors = scenario_data_with_sectors.pix.assign(version = "CMIP7 harmonised scenario")
+harmonized_data_with_sectors = harmonized_data_with_sectors.pix.assign(version = "concordia harmonised scenario")
+
+# %%
+scenario_data = reshape_for_plot(scenario_data_with_sectors)
+harmonised_data = reshape_for_plot(harmonized_data_with_sectors)
+gridded_data = reshape_for_plot(aggregated_gridded_emissions_sectors)
+combined = pix.concat([scenario_data, harmonised_data, gridded_data], axis=0, ignore_index=True)
+
+to_plot = combined[combined["variable"].str.contains("em_anthro")].dropna()
+to_plot["time"] = pd.to_datetime(to_plot["time"], errors="coerce")
+
+g = sns.relplot(
+    data=to_plot,
+    x="time",
+    y="values",
+    col="variable",
+    hue="version",
+    style="version",
+    col_wrap=3,
+    kind="line",
+    height=3,
+    aspect=1.5,
+    facet_kws=dict(sharey=False),
+)
+
+g._legend.set_bbox_to_anchor((1.05, 0.5))
+g._legend.set_loc("center left")
+
+plt.tight_layout()
+plt.savefig(Path(plots_path, "sectoral_reaggregated_gridded_REMIND_vllo_em_anthro.png"))
+plt.show()
