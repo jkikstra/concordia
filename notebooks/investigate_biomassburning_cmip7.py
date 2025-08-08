@@ -43,12 +43,15 @@ IAMC_COLS = ["model", "scenario", "region", "variable", "unit"]
 # * Huge latitudinal spike around -39 degree coming from the 2021-12 slice. In BC emissions. 
 # * Need to look by sector, e.g. deforestation pattern (e.g. brazil) will probably be time-dependent?
 # * Total latitudinal pattern relatively constant, but 30yr does look markedly smoother, with less extreme peaks (e.g. the 40degree south one)
-# * ... 
+#   * Boreal burning has increased, much higher in last 5yr, and last 10yr.
+#   * Savannah (I think) fires between -20 and 0 degrees have are a bit higher in 30yr avg than in 10 or 5yr; same for savannah burning around 10 degrees north.
+#   * 
 #
 # To be changed:
 # * ...
 #
 # Checked to be correct:
+# * If we're gridding with a non-5-year timestep, then we should most likely perform a smoothing for the first years of the scenario?
 # * ...
 
 # %% [markdown]
@@ -65,14 +68,18 @@ IAMC_COLS = ["model", "scenario", "region", "variable", "unit"]
 # * ...
 #
 # Visualisations to perform:
-# * (global) ...
-# * (latitudinal) ...
+# * (global) standard deviation 
+# * (latitudinal) by "sector"
+# * (maps) by "sector"
 # * ...
 #
 
 
 # %% [markdown]
 # # Functions
+
+# %%
+"Latitudinal" if "lat" == "latitude" else "Longitudinal"
 
 # %% [markdown]
 # ## Reading in
@@ -193,6 +200,16 @@ def extract_latitude_mean_over_years(ds: xr.Dataset, varname: str, years: List[i
     ts = ds.sel(time=ds.time.dt.year.isin(years))[varname]
     return ts.mean(dim=["time", "longitude"], skipna=True)
 
+def extract_longitude_mean_over_years(ds: xr.Dataset, varname: str, years: List[int]) -> xr.DataArray:
+    ts = ds.sel(time=ds.time.dt.year.isin(years))[varname]
+    return ts.mean(dim=["time", "latitude"], skipna=True)
+
+def extract_1d_mean_over_years(ds: xr.Dataset, varname: str, years: List[int], lat_or_long: str) -> xr.DataArray:
+    if lat_or_long == "latitude":
+        return extract_latitude_mean_over_years(ds, varname, years)
+    if lat_or_long == "longitude":
+        return extract_longitude_mean_over_years(ds, varname, years)
+
 def extract_2d_mean_over_years(ds: xr.Dataset, varname: str, years: List[int]) -> xr.DataArray:
     """
     Extract and average a 2D lat-lon emissions field over the specified years.
@@ -202,17 +219,19 @@ def extract_2d_mean_over_years(ds: xr.Dataset, varname: str, years: List[int]) -
     return mean_field
     
 
-def compare_latitudinal_profiles(
+def compare_1d_profiles(
     ds: xr.Dataset,
     varname: str,
-    year_ranges: Dict[str, List[int]]
+    year_ranges: Dict[str, List[int]],
+    lat_or_long = "latitude"
 ) -> Tuple[xr.DataArray, Dict[str, xr.DataArray]]:
-    lat = ds["latitude"]
+    
+    axis = ds[lat_or_long]
     profiles = {
-        label: extract_latitude_mean_over_years(ds, varname, years)
+        label: extract_latitude_mean_over_years(ds, varname, years, lat_or_long)
         for label, years in year_ranges.items()
     }
-    return lat, profiles
+    return axis, profiles
 
 
 def plot_multiple_variables_latitudinal_comparison(
@@ -220,6 +239,7 @@ def plot_multiple_variables_latitudinal_comparison(
     varnames: List[str],
     year_ranges: Dict[str, List[int]],
     year_ranges_background: Dict[str, List[int]] = None,
+    lat_or_long: str = "latitude",
     output_file: str = "latitudinal_comparison.pdf"
 ):
     n_vars = len(varnames)
@@ -228,32 +248,35 @@ def plot_multiple_variables_latitudinal_comparison(
 
     fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(12, 4 * nrows), sharex=True)
     axs = axs.flatten()
+    first_word = "Latitudinal" if lat_or_long == "latitude" else "Longitudinal"
 
     for idx, varname in enumerate(varnames):
         ds = read_nc_file(f = dres_file_structure(gas=varname), loc = base_path)
-        lat = ds["latitude"]
+        lat = ds[lat_or_long]
         ax = axs[idx]
 
         # Background profiles (grey)
         if year_ranges_background:
             for label, years in year_ranges_background.items():
-                profile = extract_latitude_mean_over_years(ds, varname, years)
+                profile = extract_1d_mean_over_years(ds, varname, years, lat_or_long)
                 ax.plot(lat, profile, color="grey", linewidth=1.0, alpha=0.5, zorder=1)
 
         # Foreground profiles (colored)
         for i, (label, years) in enumerate(year_ranges.items()):
-            profile = extract_latitude_mean_over_years(ds, varname, years)
+            profile = extract_1d_mean_over_years(ds, varname, years, lat_or_long)
             ax.plot(lat, profile, label=label, linewidth=2, zorder=2)  # Matplotlib assigns color automatically
 
-        ax.set_title(f"{varname} Latitudinal Profile")
-        ax.set_ylabel(f"{varname} (avg over lon)")
+        ax.set_title(f"{varname} {first_word} Profile")
+        ax.set_ylabel(f"{varname} (avg)")
         ax.grid(True)
         ax.legend()
 
     for j in range(idx + 1, len(axs)):
         axs[j].axis("off")
 
-    fig.suptitle("Latitudinal Emissions Comparison/n(background grey lines are decadal mean emissions/nfrom 1900s, 1910s, to 2010s)", fontsize=16)
+    fig.suptitle(f"{first_word} Emissions Comparison\n(background grey lines are decadal mean emissions\nfrom 1900s, 1910s, to 2010s)", 
+                 fontsize=16,
+                 linespacing=1.2)
     fig.tight_layout(rect=[0, 0, 1, 0.97])
 
     with PdfPages(output_file) as pdf:
@@ -330,6 +353,7 @@ def dres_file_structure(gas="BC", version="v20250227"):
 # %%
 def main(
     lat=False,
+    lon=False,
     maps=False,
     species = ["BC", "OC",
               "CO2", "CH4",
@@ -368,7 +392,19 @@ def main(
             varnames=species,
             year_ranges=year_ranges,
             year_ranges_background=year_ranges_background,
+            lat_or_long="latitude",
             output_file=Path("C:/Users/kikstra/Documents/GitHub/concordia/results") / "biomass_burning" / "latitudinal_comparison.pdf"
+        )
+    
+    # do longitudinal plots, comparing possible ranges against background 10yr means  
+    if lon:
+        plot_multiple_variables_latitudinal_comparison(
+            base_path=dres_location,
+            varnames=species,
+            year_ranges=year_ranges,
+            year_ranges_background=year_ranges_background,
+            lat_or_long="latitude",
+            output_file=Path("C:/Users/kikstra/Documents/GitHub/concordia/results") / "biomass_burning" / "longitudinal_comparison.pdf"
         )
 
     # plot maps
@@ -385,8 +421,9 @@ def main(
 
 # %%
 if __name__ == "__main__":
-    main(maps=True,
-         lat=True)
+    main(maps=False,
+         lat=True,
+         lon=True)
 
 # %%
 
