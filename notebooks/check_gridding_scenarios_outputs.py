@@ -841,8 +841,11 @@ for sec in sectors:
     g._legend.set_bbox_to_anchor((1.05, 0.5))
     g._legend.set_loc("center left")
     
-    plt.tight_layout()
-    plt.savefig(Path(plots_path, f"reaggregated_gridded_{MODEL_SELECTION_GRIDDED}_{SCENARIO_SELECTION_GRIDDED}_{sec}.png"))
+    g.figure.tight_layout()
+    g.figure.savefig(
+        Path(plots_path, f"reaggregated_gridded_{MODEL_SELECTION_GRIDDED}_{SCENARIO_SELECTION_GRIDDED}_{sec}.png"),
+        bbox_inches="tight"
+    )
     plt.show()
 
 # %% [markdown]
@@ -890,7 +893,9 @@ for sec in sectors:
     
     g._legend.set_bbox_to_anchor((1.05, 0.5))
     g._legend.set_loc("center left")
-    
-    plt.tight_layout()
-    plt.savefig(Path(plots_path, f"sectoral_reaggregated_gridded_{MODEL_SELECTION_GRIDDED}_{SCENARIO_SELECTION_GRIDDED}_{sec}.png"))
-    plt.show()
+
+    g.figure.tight_layout()
+    g.figure.savefig(
+        Path(plots_path, f"sectoral_reaggregated_gridded_{MODEL_SELECTION_GRIDDED}_{SCENARIO_SELECTION_GRIDDED}_{sec}.png"),
+        bbox_inches="tight"
+    )
