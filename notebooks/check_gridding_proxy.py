@@ -49,7 +49,13 @@ proxies = {
 }
 
 # %%
-proxies["anthro_OC"]
+ds = proxies["anthro_SO2"]
+print(ds.coords['gas'].values)
+
+# %%
+ds = proxies["anthro_SO2"]
+ds = ds.assign_coords(gas=("gas", ["Sulfur"]))
+ds.to_netcdf(os.path.join(path, "anthro_SO2.nc"))
 
 # %%
 for name, ds in proxies.items():

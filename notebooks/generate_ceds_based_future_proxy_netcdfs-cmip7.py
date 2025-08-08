@@ -270,6 +270,14 @@ df_files = latest_year.merge(
 df_files
 
 # %%
+# keep consistency with previous naming conventions
+
+df_files["gas"] = df_files["gas"].replace("SO2", "Sulfur")
+
+# %%
+df_files["gas"].unique()
+
+# %%
 # doing 2023,2024, 2025:5:2100 now - to strike balance between historical years, what is modelled, and data output size
 # (could consider annual, because some IAMs do this, but is unlikely to actually be produced due to high data volume unless we can ascertain that annual interpolation isn't always correct here) 
 years = [2023, 2024, 2025] + list(range(2030, 2101, 5))
@@ -670,7 +678,7 @@ settings.proxy_path
 
 # %%
 if __name__ == "__main__":
-    #gen_indexraster()
+    gen_indexraster()
     full_process("anthro")
    # full_process("openburning")
     # full_process("aircraft")
