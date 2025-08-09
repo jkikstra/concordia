@@ -25,8 +25,6 @@ from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib import colors
 import cartopy.crs as ccrs
 
-IAMC_COLS = ["model", "scenario", "region", "variable", "unit"] 
-
 
 # %% [markdown]
 # Download data from ESGF, Jarmo has them stored on his SanDisk drive and on H: drive
@@ -613,30 +611,60 @@ print(ds_new['year'].values)
 # %% [markdown]
 # #### Run update for 2023 and 2025
 
+# %%
+def ds_rename_recent_years_rescue_to_cmip7(ds):
+
+    # all the above in 1 line:
+    ds = ds.assign_coords(year=[2023 if y == 2015 else 2025 if y == 2020 else y for y in ds.year.values])
+
+    return ds
+
+def add_year_copy(ds, source_year, new_year):
+    if new_year in ds.year.values:
+        print(f"Year {new_year} already exists in dataset — skipping.")
+        return ds
+    ds_source = ds.sel(year=source_year)
+    ds_new = ds_source.assign_coords(year=[new_year])
+    return xr.concat([ds, ds_new], dim="year").sortby("year")
+
+def ds_add_missing_years_by_copying_one_year(ds, old_year_to_copy_from: int, new_years: list):
+        
+    for yr in new_years:
+        ds = add_year_copy(ds, source_year=old_year_to_copy_from, new_year=yr)
+    
+    # NOTE: could rewrite, or add an extra function, 
+    # that takes a dictionary, mapping which old_year
+    # each new_year should be copied from 
+
+    return ds
+
+# %%
+
+
 # %% 
 for gas in [
-    # "BC", "OC",
-    # "CO2", "CH4",
-    # "CO", #"N2O", # not available
-    # "NH3", 
-    # "VOC",
-    # "NOx", 
+    "BC", "OC",
+    "CO2", "CH4",
+    "CO", #"N2O", # not available
+    "NH3", 
+    "VOC",
+    "NOx", 
     "Sulfur"
 ]:
     filename = f"openburning_{gas}.nc"
+    print(f"Updating {gas} openburning proxy file.")
     rescue_ds = read_nc_file(f = filename, 
                          loc = rescue_folder)
-    ds_new = rescue_ds.copy()
-    # Get the current years as a NumPy array
-    years = ds_new['year'].values.copy()
-    # Replace 2015 → 2023, 2020 → 2025
-    years = np.where(years == 2015, 2023, years)
-    years = np.where(years == 2020, 2025, years)
-    # Assign the updated years back
-    ds_new = ds_new.assign_coords(year=years)
+    
+    new_ds = ds_rename_recent_years_rescue_to_cmip7(rescue_ds)
+    # ensure we have 5-yearly timesteps in the proxy
+    new_ds = ds_add_missing_years_by_copying_one_year(new_ds, 
+                                                      old_year_to_copy_from=2023, 
+                                                      new_years=[2024] + list(range(2025, 2101, 5)))
+    
     # write out
     outpath = rescue_folder / "renamed_openburning_rescue_for_cmip7round2" / filename
-    ds_new.to_netcdf(
+    new_ds.to_netcdf(
             outpath,
             # encoding={da.name: settings.encoding},
         )
