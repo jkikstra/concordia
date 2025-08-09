@@ -26,30 +26,22 @@ from matplotlib import colors
 import cartopy.crs as ccrs
 
 
-# %% [markdown]
-# Download data from ESGF, Jarmo has them stored on his SanDisk drive and on H: drive
 
 # %% [markdown]
 # **Documentation:**
-# https://docs.google.com/document/d/1H9sKOkTLC1oDxEWUNurXqilkEoz3obH5J5rk5PCTXvk/edit?tab=t.2uxf5irnitm7
+# https://docs.google.com/document/d/1H9sKOkTLC1oDxEWUNurXqilkEoz3obH5J5rk5PCTXvk/edit?tab=t.ozl8f8vi3kgh#heading=h.u0e4zw58ce7s
 
 # %% [markdown]
 # **Observations**
 # (_Last update: 09/08/2025_)
 #
 # Notes: 
-# * Huge latitudinal spike around -39 degree coming from the 2021-12 slice. In BC emissions. 
-# * Need to look by sector, e.g. deforestation pattern (e.g. brazil) will probably be time-dependent?
-# * Total latitudinal pattern relatively constant, but 30yr does look markedly smoother, with less extreme peaks (e.g. the 40degree south one)
-#   * Boreal burning has increased, much higher in last 5yr, and last 10yr.
-#   * Savannah (I think) fires between -20 and 0 degrees have are a bit higher in 30yr avg than in 10 or 5yr; same for savannah burning around 10 degrees north.
-#   * 
+# * ...
 #
 # To be changed:
 # * ...
 #
 # Checked to be correct:
-# * If we're gridding with a non-5-year timestep, then we should most likely perform a smoothing for the first years of the scenario?
 # * ...
 
 # %% [markdown]
@@ -66,9 +58,6 @@ import cartopy.crs as ccrs
 # * ...
 #
 # Visualisations to perform:
-# * (global) standard deviation 
-# * (latitudinal) by "sector"
-# * (maps) by "sector"
 # * ...
 #
 
@@ -81,14 +70,11 @@ import cartopy.crs as ccrs
 
 
 # %%
-def read_nc_file(f, loc, reorder_list=None, rename_sectors_cmip6=None):
+def read_nc_file(f, loc, reorder_list=None):
     ds = xr.open_dataset(loc / f)
 
     if reorder_list is not None:
         ds = ds[reorder_list]
-    
-    if rename_sectors_cmip6:
-        ds = ds_reformat_cmip6_to_cmip7(ds)
     
     return ds
 
@@ -451,126 +437,6 @@ def plot_maps_sectors(ds, sectors, ncols=3, year=2100, month=1, proj=ccrs.Robins
     plt.tight_layout()
     plt.show()
 
-# %%
-# dres_location = Path("D:/ESGF/DRES-CMIP-BB4CMIP7-2-0/atmos/mon")
-# dres_location = Path("C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_testing/input/gridding/DRES-CMIP-BB4CMIP7-2-0/atmos/mon")
-
-def dres_file_structure(gas="BC", version="v20250227"):
-    return Path(gas) / "gn" / version / f"{gas}_input4MIPs_emissions_CMIP_DRES-CMIP-BB4CMIP7-2-0_gn_190001-202312.nc"
-
-
-# %%
-def main(
-    lat=False,
-    lon=False,
-    maps=False,
-    species = [
-        "BC", "OC",
-        "CO2", "CH4",
-        "CO", "N2O",
-        "NH3", "NMVOCbulk",
-        "NOx", "SO2"
-              ],
-    year_ranges = {
-        "5yr avg (2019-2023)": list(range(2019, 2024)),
-        "10yr avg (2014-2023)": list(range(2014, 2024)),
-        "30yr avg (1994-2023)": list(range(1994, 2024)),
-        "1980s (1980-1989)": list(range(1980, 1990))
-    }
-):
-    dres_location = Path("C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_testing/input/gridding/DRES-CMIP-BB4CMIP7-2-0/atmos/mon")
-    
-    year_ranges_background = {
-        "1900s": list(range(1900, 1910)),
-        "1910s": list(range(1910, 1920)),
-        "1920s": list(range(1920, 1930)),
-        "1930s": list(range(1930, 1940)),
-        "1940s": list(range(1940, 1950)),
-        "1950s": list(range(1950, 1960)),
-        "1960s": list(range(1960, 1970)),
-        "1970s": list(range(1970, 1980)),
-        "1980s": list(range(1980, 1990)),
-        "1990s": list(range(1990, 2000)),
-        "2000s": list(range(2000, 2010)),
-        "2010s": list(range(2010, 2020)),
-        # "2020s": list(range(2020, 2024))
-    }
-
-    # do latitudinal plots, comparing possible ranges against background 10yr means  
-    if lat:
-        plot_multiple_variables_1d_comparison(
-            base_path=dres_location,
-            varnames=species,
-            year_ranges=year_ranges,
-            year_ranges_background=year_ranges_background,
-            lat_or_long="latitude",
-            output_file=Path("C:/Users/kikstra/Documents/GitHub/concordia/results") / "biomass_burning" / "latitudinal_comparison.pdf"
-        )
-    
-    # do longitudinal plots, comparing possible ranges against background 10yr means  
-    if lon:
-        plot_multiple_variables_1d_comparison(
-            base_path=dres_location,
-            varnames=species,
-            year_ranges=year_ranges,
-            year_ranges_background=year_ranges_background,
-            lat_or_long="longitude",
-            output_file=Path("C:/Users/kikstra/Documents/GitHub/concordia/results") / "biomass_burning" / "longitudinal_comparison.pdf"
-        )
-
-    # plot maps
-    if maps:
-        plot_grid_2d_by_var_and_year_range(
-            base_path=dres_location,
-            varnames=species,
-            year_ranges=year_ranges,
-            output_file=Path("C:/Users/kikstra/Documents/GitHub/concordia/results") / "biomass_burning" / "grid_comparison.pdf",
-            cmap="plasma"
-        )
-
-
-
-# %% [markdown]
-# ## Run BB4CMIP7 plots 
-
-# %%
-if __name__ == "__main__":
-    main(maps=False,
-         lat=True,
-         lon=False)
-
-# %%
-
-# %% [markdown]
-# ## BB4CMIP7 - sectoral emisisons 
-
-# %%
-VERSION_BB4CMIP7 = "2-0"
-# v2.0 product is already 5yr smoothed and only goes until 2021
-# v2.1 is being downloaded now, raw.
-
-for gas in [
-    # "BC"
-    "OC",
-    "SO2"
-]:
-    for sector in [
-        "AGRI",
-        "BORF",
-        "DEFO",
-        "PEAT",
-        "SAVA",
-        "TEMF",
-    ]:
-        gas_sector = gas + "_" + sector 
-        cmip7_bb4cmip7_sectoral_folder = Path("C:/Users/kikstra/Documents/GitHub/emissions_harmonization_historical/data/bb4cmip7/maps/") / VERSION_BB4CMIP7 
-        sectoral_cmip7_ds = read_nc_file(f = f"{gas_sector}.nc", 
-                                loc = cmip7_bb4cmip7_sectoral_folder)
-        plot_maps_years_bb4cmip_sectoral_data(sectoral_cmip7_ds,
-                                            years=range(1999,2022),   
-                                                    output_file=Path("C:/Users/kikstra/Documents/GitHub/concordia/results") / "biomass_burning" / f"{VERSION_BB4CMIP7}_{gas_sector}.pdf"
-                                                    )
-
 
 # %% [markdown]
 # ## Check RESCUE proxy data
@@ -579,7 +445,7 @@ for gas in [
 rescue_folder = Path("C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_testing/input/gridding/proxy_rasters")
 
 # %%
-rescue_ds = read_nc_file(f = "openburning_BC.nc", 
+rescue_ds = read_nc_file(f = "CDR_CO2.nc", 
                          loc = rescue_folder)
 
 # %%
@@ -590,26 +456,7 @@ rescue_ds
 
 
 # %% [markdown]
-# #### Example 
-
-# %% 
-# Create a copy so we don't overwrite the original accidentally
-ds_new = rescue_ds.copy()
-
-# Get the current years as a NumPy array
-years = ds_new['year'].values.copy()
-
-# Replace 2015 → 2023, 2020 → 2025
-years = np.where(years == 2015, 2023, years)
-years = np.where(years == 2020, 2025, years)
-
-# Assign the updated years back
-ds_new = ds_new.assign_coords(year=years)
-
-print(ds_new['year'].values)
-
-# %% [markdown]
-# #### Run update for 2023 and 2025
+# #### Run update for 2023, 2024, 2025, and 5-yearly afterwards 
 
 # %%
 def ds_rename_recent_years_rescue_to_cmip7(ds):
@@ -638,19 +485,56 @@ def ds_add_missing_years_by_copying_one_year(ds, old_year_to_copy_from: int, new
 
     return ds
 
+
+def add_sector_copy(
+    ds: xr.Dataset,
+    source_sector: str,
+    new_sector: str,
+    varname: str = "emissions",
+    overwrite: bool = False,
+) -> xr.Dataset:
+    """
+    Copy data for `source_sector` to a new sector `new_sector` along the `sector` dim.
+
+    - If `new_sector` exists and `overwrite=False`, returns ds unchanged.
+    - If `overwrite=True`, replaces `new_sector` with a copy of `source_sector`.
+    """
+    if "sector" not in ds.dims:
+        raise ValueError("Dataset has no 'sector' dimension.")
+    if varname not in ds.data_vars:
+        raise ValueError(f"Variable '{varname}' not found in dataset.")
+    if source_sector not in ds["sector"].values:
+        raise KeyError(f"Source sector '{source_sector}' not found.")
+    
+    # If target exists
+    if new_sector in ds["sector"].values:
+        if not overwrite:
+            # nothing to do
+            return ds
+        # drop existing target before replacing
+        ds = ds.drop_sel(sector=new_sector)
+
+    # Take source slice and reintroduce sector dim with the new label
+    da_src = ds[varname].sel(sector=source_sector)
+    # ensure sector dim present for concat
+    if "sector" not in da_src.dims:
+        da_src = da_src.expand_dims(sector=[source_sector])
+    da_new = da_src.sel(sector=source_sector).expand_dims(sector=[new_sector])
+
+    # Concat along sector
+    dims_order = ds[varname].dims  # preserve original order
+    da_out = xr.concat([ds[varname], da_new], dim="sector").transpose(*dims_order)
+
+    # Return updated dataset (other variables/coords unchanged)
+    return ds.assign({varname: da_out})
+
 # %%
 
 
-# %% 
-proxy_file_sector = "openburning" # same for 'aircraft'
+# %%
+proxy_file_sector = "CDR" # same for 'openburning' and 'aircraft'
 for gas in [
-    "BC", "OC",
-    "CO2", "CH4",
-    "CO", #"N2O", # not available
-    "NH3", 
-    "VOC",
-    "NOx", 
-    "Sulfur"
+    "CO2"
 ]:
     filename = f"{proxy_file_sector}_{gas}.nc"
     print(f"Updating {gas} {proxy_file_sector} proxy file.")
@@ -669,47 +553,6 @@ for gas in [
             outpath,
             # encoding={da.name: settings.encoding},
         )
-    
 
-
-# %% [markdown]
-# ## Code snippets & Interactive cells
-
-# %%
-BC_file = dres_file_structure(gas="BC")
-dres_ds = read_nc_file(
-    f = BC_file,
-    loc = dres_location
-)
-
-# %%
-dres_ds
-
-# %%
-# Select variable and period
-varname = "BC"
-start = "2021-11"
-end = "2021-11"
-
-selected = select_time_period(dres_ds, var=varname, start=start, end=end)
-selected
-
-
-# %%
-# Compute and plot zonal mean
-zonal_mean = compute_latitudinal_mean(selected)
-zonal_mean
-
-# %%
-plot_latitudinal_profile(zonal_mean, title=f"Zonal Mean {varname} ({start} to {end})")
-
-# %%
-time_ranges = {
-        "30yr average (1994-2023)": ("1994-01", "2023-12"),
-        "10yr average (2014-2023)": ("2014-01", "2023-12"),
-        "5yr average (2019-2023)": ("2019-01", "2023-12"),
-    }
-
-compare_timeslices(dres_ds, var=varname, time_ranges=time_ranges, title="Fire Emissions from Black Carbon by Latitude")
 
 # %%
