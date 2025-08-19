@@ -42,15 +42,30 @@ import os
 # %%
 from concordia.settings import Settings
 
-
 # %%
-notebook_dir = Path().resolve()
+def get_settings(base_path: Path, 
+                 file = "config_cmip7_v0_2.yaml"):
+    settings = Settings.from_config(
+        file, 
+        base_path=base_path,
+        version=None
+    )
+    return settings
 
-settings = Settings.from_config(
-    "config_cmip7_v0_testing_ukesm_remind.yaml", 
-    base_path=notebook_dir,
-    version=None
-)
+try:
+    # when running the script from a terminal or otherwise
+    notebook_dir = Path(__file__).resolve().parent
+    settings = get_settings(base_path=notebook_dir)
+except (FileNotFoundError, NameError):
+    try:
+        # when running the script from a terminal or otherwise
+        notebook_dir = Path(__file__).resolve().parent.parent
+        settings = get_settings(base_path=notebook_dir)
+    except (FileNotFoundError, NameError):
+        # Fallback for interactive/Jupyter mode, where 'file location' does not exist
+        notebook_dir = Path().resolve()  # current working dir
+        settings = get_settings(base_path=notebook_dir)
+
 
 # %%
 dim_order = ["gas", "sector", "level", "year", "month", "lat", "lon"]
@@ -80,7 +95,7 @@ template = xr.open_dataset(template_file)
 # For shipping, seasonality files are available for all species except CO2 and CH4.
 
 # %%
-ceds_input_gridding_path = settings.gridding_path / "20250523" / "Jarmo_files"
+ceds_input_gridding_path = settings.gridding_path / "ceds_input"
 
 # %%
 ceds_input_gridding_path
@@ -142,6 +157,7 @@ year_files["backup"] = year_files["backup"].map(year_file_path_map)
 year_files
 
 # %%
+# ceds gridding convention is to always use the latest available year
 latest_year = year_files.loc[year_files.groupby(["gas", "sector"])["year"].idxmax()]
 
 # %%
@@ -162,7 +178,9 @@ if not latest_year["file"].apply(os.path.exists).all():
     print([p.name for p in missing_files])
 
 # %%
-missing_files_list = ['BC_2022_AGR.Rd', 'BC_2022_SLV.Rd', 'CH4_2022_SLV.Rd', 'CO_2022_AGR.Rd', 'CO_2022_SLV.Rd', 'NOx_2022_SLV.Rd', 'OC_2022_AGR.Rd', 'OC_2022_SLV.Rd', 'SO2_2022_AGR.Rd', 'SO2_2022_SLV.Rd']
+missing_files_list = ['BC_2022_AGR.Rd', 'BC_2022_SLV.Rd', 'CH4_2022_SLV.Rd', 'CO_2022_AGR.Rd', 
+                      'CO_2022_SLV.Rd', 'NOx_2022_SLV.Rd', 'OC_2022_AGR.Rd', 'OC_2022_SLV.Rd', 
+                      'SO2_2022_AGR.Rd', 'SO2_2022_SLV.Rd']
 
 # %%
 data_dir = Path(
@@ -678,7 +696,7 @@ settings.proxy_path
 
 # %%
 if __name__ == "__main__":
-    gen_indexraster()
+    # gen_indexraster() # currently fails for usa; File "C:\Users\kikstra\Documents\GitHub\concordia\notebooks\gridding_data\generate_ceds_based_future_proxy_netcdfs-cmip7.py", line 354, in mask_to_ary; a = pyreadr.read_r(row.file)[f"{row.iso}_mask"]; KeyError: 'usa_mask'
     full_process("anthro")
    # full_process("openburning")
     # full_process("aircraft")
