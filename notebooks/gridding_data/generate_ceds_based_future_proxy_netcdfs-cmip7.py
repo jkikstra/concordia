@@ -109,6 +109,8 @@ year_files = pd.read_csv(
     ceds_input_gridding_path / "proxy_mapping.csv"
 )
 
+# NOTE: we need to do the replacing per country already before using the 'aggregate'/'final' sectors, it seems like from Steve's emails.
+
 # not sure why we are droping the proxybackup_files here
 # will restore for now, since we are missing some files where the backups are needed
 year_files = year_files.rename(columns={"em": "gas", "proxy_file": "file", "proxybackup_file": "backup"})
@@ -152,6 +154,9 @@ year_file_path_map = {
 # Apply the mapping
 year_files["file"] = year_files["file"].map(year_file_path_map)
 year_files["backup"] = year_files["backup"].map(year_file_path_map)
+
+
+
 
 # %%
 year_files
@@ -211,6 +216,8 @@ truly_missing_pairs = missing_pairs - existing_pairs
 # %%
 # replace the paths of the missing files under "file" with the paths from the "backup" column 
 # that point to the fallback population proxies
+
+# NOTE: fallback MISSING! NEED TO ADD THIS (back) IN
 
 latest_year["file"] = latest_year.apply(
     lambda row: row["backup"] if not row["file"].exists() else row["file"],

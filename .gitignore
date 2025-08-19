@@ -15,7 +15,8 @@ __pycache__/
 # ipython notebooks (use jupytext --sync for conversion)
 notebooks/**/*.ipynb
 
-notebooks/gridding_data
+notebooks/gridding_data/*
+!/notebooks/gridding_data/*.py
 notebooks/Jarmo_files
 
 # Ignore output files
