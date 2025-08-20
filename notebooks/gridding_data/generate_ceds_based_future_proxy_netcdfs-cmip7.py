@@ -399,7 +399,7 @@ def add_eez_to_mask(mask):
     )
     rasterize.read_shpf(
         pio.read_dataframe(
-            settings.gridding_path / "20250523" / "Jarmo_files" / "non_ceds_input" / "eez_v12.gpkg",
+            settings.gridding_path / "eez_v12.gpkg",
             where="ISO_TER1 IS NOT NULL and POL_TYPE='200NM'",
         )
         .dissolve(by="ISO_TER1")
