@@ -351,23 +351,24 @@ settings.scenario_path
 
 # %%
 harm_overrides = pd.read_excel(
-    settings.scenario_path / "harmonization_overrides.xlsx", # placeholder for now, should be empty as already harmonized.
+    settings.scenario_path / "harmonization_overrides.xlsx", # placeholder for now, empty now as already harmonized.
     index_col=list(range(3)),
 ).method
 # harm_overrides
 
 # %%
-harm_overrides = extend_overrides(
-    harm_overrides,
-    "constant_ratio",
-    sector=[
-        f"{sec} Burning"
-        for sec in ["Agricultural Waste", "Forest", "Grassland", "Peat"]
-    ],
-    variables=variabledefs.data.index,
-    regionmappings=regionmappings,
-    model_baseyear=iam_df[settings.base_year],
-)
+# no need to reharmonise, so no rechoosing methods
+# harm_overrides = extend_overrides(
+#     harm_overrides,
+#     "constant_ratio",
+#     sector=[
+#         f"{sec} Burning"
+#         for sec in ["Agricultural Waste", "Forest", "Grassland", "Peat"]
+#     ],
+#     variables=variabledefs.data.index,
+#     regionmappings=regionmappings,
+#     model_baseyear=iam_df[settings.base_year],
+# )
 
 # %% [markdown]
 # # Prepare GDP proxy
