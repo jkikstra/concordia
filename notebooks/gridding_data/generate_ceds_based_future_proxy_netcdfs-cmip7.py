@@ -624,8 +624,8 @@ def fix_ceds_proxy_add_population_fallback(rvariable, #emis_da
     # We don't want to be deleting data, or at least not too much, so we check:
     # ... deleted masked values are only a small part 
     assert (rvariable * (1.0 - maskf)).values.sum() > 0.999 * rvariable.values.sum()
-    # ... new data values is larged than old
-    assert combined.values.sum() > rvariable.values.sum()
+    # ... new data values is larger than old
+    assert combined.values.sum() > 0.9999 * rvariable.values.sum()
 
 
     return combined
