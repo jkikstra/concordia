@@ -37,10 +37,13 @@ import pyogrio as pio
 import pyreadr
 import xarray as xr
 from pathlib import Path
+from typing import Callable, Dict, Tuple
 import os
 
 # %%
 from concordia.settings import Settings
+
+from concordia.cmip7.utils import read_r_variable, read_r_to_da, save_da_as_rd
 
 # %%
 def get_settings(base_path: Path, 
@@ -63,7 +66,7 @@ except (FileNotFoundError, NameError):
         settings = get_settings(base_path=notebook_dir)
     except (FileNotFoundError, NameError):
         # Fallback for interactive/Jupyter mode, where 'file location' does not exist
-        notebook_dir = Path().resolve()  # current working dir
+        notebook_dir = Path().resolve().parent  # one up
         settings = get_settings(base_path=notebook_dir)
 
 
@@ -104,22 +107,7 @@ ceds_input_gridding_path
 # ### prepare proxy file mapping
 
 # %%
-# # get all files
-year_files = pd.read_csv(
-    ceds_input_gridding_path / "proxy_mapping.csv"
-)
-
-# NOTE: we need to do the replacing per country already before using the 'aggregate'/'final' sectors, it seems like from Steve's emails.
-
-# not sure why we are droping the proxybackup_files here
-# will restore for now, since we are missing some files where the backups are needed
-year_files = year_files.rename(columns={"em": "gas", "proxy_file": "file", "proxybackup_file": "backup"})
-# .drop(columns=["proxybackup_file"])
-
-# some renaming
-year_files["gas"] = year_files["gas"].replace({"NMVOC": "VOC"})
-
-# for aggregate sectors
+# # intermediary to aggregate final sector
 # could also derive this from the CEDS_gridding_sectors.csv
 sector_map = {
     "ELEC": "ENE",
@@ -135,6 +123,75 @@ sector_map = {
     "SHP":  "SHP",
     "TANK": "SHP"
 }
+
+def ceds_format_to_cmip7_format(df):
+    df = df.rename(columns={"em": "gas"})
+    df["gas"] = df["gas"].replace({"NMVOC": "VOC"})
+    df["sector"] = df["sector"].replace(sector_map)
+
+    return df
+
+# %%
+# # fallback method
+# NOTE: we need to do the replacing per country already before using the 'aggregate'/'final' sectors, it seems like from Steve's emails.
+# Not all countries have sufficient information in the provided CEDS proxies.
+# In some cases, the "fallback" method (i.e., use population density of 2015 as the proxy for distributing emissions within a country)
+# did not materialise.
+# We now read in a file provided by Steve Smith in August 2025, which indicates for which country-sector combinations
+# the fallback method (=proxybackup_file) should be implemented. 
+# The code below should take care of:
+# 1. reading in the fallback method country-sector mapping information
+# 2. reading in the intermediate-sector proxy data
+# 3. replacing zeroes with population density data IF the country-sector is in the country-sector mapping information
+# However, this would mean a significant rewrite towards using the intermediate sector data.
+# For that, we would also need to (double?) clarify whether or not we need to do something with the point-source emissions.
+# So, instead, we for now do:
+# 1.1. reading in the fallback method country-sector mapping information (same)
+# 1.2. do the 'sector_map' already here, effectively saying that "IF ANY OF THE UNDERLYING PROXIES IS MISSING FOR THIS COUNTRY" we use the fallback method
+# 2. reading in the final-sector proxy data
+# 3. replacing zeroes with population density data IF the country-sector is in the MODIFIED country-sector mapping information
+
+GASES = ["BC", "CH4", "CO", "CO2", "NH3", "NOx", "OC", 
+         "SO2", #"Sulfur", 
+         "NMVOC", #"VOC"
+         ]
+
+fallback_information_intermed_sector = pd.concat(
+    (
+        pd.read_csv(ceds_input_gridding_path / "non-point_source_proxy_final_sector" / "fixed_fallback" / "countries_using_population_backup" / f"{gas}_proxy_substitution_mapping.csv")
+        for gas in GASES
+    ),
+    ignore_index=True,
+).drop(columns=["sub_flag"]).rename(columns={"iso": "iso3"})
+
+# some renaming
+fallback_information_intermed_sector = fallback_information_intermed_sector.rename(columns={"em": "gas"})
+fallback_information_intermed_sector["gas"] = fallback_information_intermed_sector["gas"].replace({"NMVOC": "VOC"})
+# Apply sector map
+fallback_information_intermed_sector["sector"] = fallback_information_intermed_sector["sector"].replace(sector_map)
+# Drop duplicates
+fallback_information_intermed_sector = fallback_information_intermed_sector.drop_duplicates(subset=['gas','sector','iso3'])
+
+# add which source we want, just for clarity
+fallback_information_intermed_sector["source"] = "pop"
+# filter mapping: remove USA states (Steve Smith clarified that the gridding only happens on the national level)
+fallback_information_intermed_sector = fallback_information_intermed_sector[~fallback_information_intermed_sector["iso3"].str.startswith("usa_")]
+
+# %%
+# # get all files
+year_files = pd.read_csv(
+    ceds_input_gridding_path / "proxy_mapping.csv"
+) # this proxy mapping happens on the intermediate sector level (e.g. it includes 'FFFI')
+
+# not sure why we are droping the proxybackup_files here
+# will restore for now, since we are missing some files where the backups are needed
+year_files = year_files.rename(columns={"em": "gas", "proxy_file": "file", "proxybackup_file": "backup"})
+# .drop(columns=["proxybackup_file"])
+
+# some renaming
+year_files["gas"] = year_files["gas"].replace({"NMVOC": "VOC"})
+
+# Apply sector map
 year_files["sector"] = year_files["sector"].replace(sector_map)
 
 # also rename proxy files the aggregate sectors are pointing to
@@ -154,8 +211,6 @@ year_file_path_map = {
 # Apply the mapping
 year_files["file"] = year_files["file"].map(year_file_path_map)
 year_files["backup"] = year_files["backup"].map(year_file_path_map)
-
-
 
 
 # %%
@@ -275,8 +330,8 @@ if not latest_season['file'].apply(os.path.exists).all():
 # ### create combined proxy mapping df
 
 # %%
-latest_year = latest_year.drop(columns=["year"]).reset_index(drop=True)
-latest_season = latest_season.drop(columns=["year"]).reset_index(drop=True)
+latest_year = latest_year.drop(columns=["year"]).reset_index(drop=True) # these files need to be changed
+latest_season = latest_season.drop(columns=["year"]).reset_index(drop=True) # these files probably stay the same for now
 
 # %%
 df_files = latest_year.merge(
@@ -462,31 +517,212 @@ def gen_indexraster():
 
 
 # %% [markdown]
-# ## Generate sector proxy files
+# ## Fix CEDS anthro WST
 
 
 # %%
-def read_r_variable(file):
-    file = Path(file)
-    print(f"Reading in {file}\n")
+# Test reading in a CEDS .Rd file, and writing it out again in the same format, without changing anything.
 
-    result = pyreadr.read_r(file)
+# in_test = settings.gridding_path / "ceds_input" / "non-point_source_proxy_final_sector" / "CO_2022_WST.Rd"
+# out_test = settings.gridding_path / "ceds_input" / "non-point_source_proxy_final_sector" / "fixed_fallback" / "CO_2022_WST.Rd"
 
-    # If there's more than one, you can decide how to handle it
-    if len(result) > 1:
-        print(f"Warning: More than one variable found in {file.name}, using the first one.")
+# save_da_as_rd(xr.DataArray(read_r_variable(in_test, float_dtype="float64"), 
+#                  coords={"lat": template.lat, "lon": template.lon}, 
+#                  name="emissions"), 
+#               out_path=out_test, 
+#               object_name="CO_2022_WST", 
+#               undo_flip=True)
 
-    # Get the first variable's name and value
-    old_var_name, value = next(iter(result.items()))
-
-    # Rename the variable to the filename
-    if old_var_name != file.stem:
-        print(f"Renaming variable '{old_var_name}' to '{file.stem}'")
-        value.name = file.stem
+# assert_ordereddict_equal(pyreadr.read_r(in_test), 
+#                          pyreadr.read_r(out_test))
 
 
-    return np.asarray(value, dtype="float32")[::-1]
+# %% [markdown]
+# ### Produce new proxy files mixing emissions and population
 
+# %%
+# Data for the fixes
+
+# read template file
+template_file = (
+    settings.gridding_path
+    / "example_files" / "GCAM4-SSP4-34-SPA4-V25-Harmonized-DB-Sulfur-em-aircraft-anthro_input4MIPs_emissions_CMIP_IAMC-V1_gn_201501-210012.nc"
+)
+template = xr.open_dataset(template_file)
+country_mask =  xr.open_dataset(settings.gridding_path / "ssp_comb_countrymask.nc").__xarray_dataarray_variable__
+
+# Code for the fixes
+
+def validate_and_normalize_mapping(df: pd.DataFrame, fallback_source: str) -> Tuple[Dict[str, str], str]:
+    """
+    Return (choice_map, fallback_source), where choice_map maps iso3 -> 'pop'/'emis'.
+    Both keys and values are normalized to lowercase.
+    """
+    if not {"iso3", "source"}.issubset(df.columns):
+        raise ValueError("mapping_df must have columns: 'iso3' and 'source'")
+
+    valid_sources = {"pop", "emis"}
+    fallback_source = str(fallback_source).lower()
+    if fallback_source not in valid_sources:
+        raise ValueError("fallback_source must be 'pop' or 'emis'")
+
+    choice_map = {
+        str(row.iso3).strip().lower(): str(row.source).strip().lower()
+        for _, row in df.iterrows()
+        if str(row.source).strip().lower() in valid_sources
+    }
+    return choice_map, fallback_source
+def align_grids(pop_da: xr.DataArray, emis_da: xr.DataArray, country_grid: xr.DataArray) -> Tuple[xr.DataArray, xr.DataArray, xr.DataArray]:
+    """
+    Require exact coordinate match; if they don't match, reproject / regrid upstream.
+    """
+    return xr.align(pop_da, emis_da, country_grid, join="exact")
+
+
+def country_to_iso_grid(country_grid,
+                 maximum_value_countrymask = 0.99    # -> currently setting maxval > 0.99, to avoid overlapping borders and skewing the countries with emissions data by having all emissions going towards population because pop/sqmile is higher than kg/m2 flux. now this means that their won't be any emissions at the border for these fallback method options
+                 ):
+    maxval = country_grid.max(dim="iso")
+    iso_grid = country_grid.idxmax(dim="iso")                 # (lat, lon) of ISO labels
+    iso_grid = iso_grid.where(maxval > maximum_value_countrymask, other=np.nan)       # ocean/void -> NaN
+
+    # think about this combination more carefully for borders (which now might have some emissions already, which we could potentially be deleting here)
+    # normalize to lowercase strings
+    iso_grid = xr.apply_ufunc(np.char.lower, iso_grid.astype("U"),
+                            dask="parallelized", output_dtypes=[str])
+
+    return iso_grid
+
+def fix_ceds_proxy_add_population_fallback(rvariable, #emis_da
+                                           pop_da,
+                                           country_grid, #country_mapping (adjusted) 
+                                           mapping_df #dfil
+                                           ):
+
+
+    # --- 1) Dominant ISO per pixel ---
+    iso_grid = country_to_iso_grid(country_grid) # # for faster execution, we could move this to outside of the function, as it only needs to be run once
+
+    # --- 2) Build sets from mapping (lowercase) ---
+    choice_map = {str(r.iso3).strip().lower(): str(r.source).strip().lower()
+                for _, r in mapping_df.iterrows()
+                if str(r.source).strip().lower() in {"pop","emis"}}
+    
+    pop_set = {iso for iso, src in choice_map.items() if src == "pop"}
+    
+    # --- 3) Mask: True where we should use population ---
+    # use fallback is ISO is in pop_set
+    mask_pop = iso_grid.isin(list(pop_set)) # make sure it is a list, not a set
+    mask_pop.name = "mask_pop"
+
+    # --- 4) Combine via sum formulation (avoids dtype surprises) ---
+    maskf = mask_pop.astype(pop_da.dtype)
+    population_modifier = 1e-6 # if the normalisation happens afterwards, per country, this should not matter, and is just helpful for visualisation purposes right now. 
+    combined = (pop_da * maskf * population_modifier) + (rvariable * (1.0 - maskf)) 
+    
+    # We don't want to be deleting data, or at least not too much, so we check:
+    # ... deleted masked values are only a small part 
+    assert (rvariable * (1.0 - maskf)).values.sum() > 0.999 * rvariable.values.sum()
+    # ... new data values is larged than old
+    assert combined.values.sum() > rvariable.values.sum()
+
+
+    return combined
+
+
+# %%
+# Run the fixes
+f_pop = settings.gridding_path / "ceds_input" / "population_proxy" / "population_2015.Rd"
+
+for row in latest_year.itertuples(index=False):
+    if (
+        # only for anthro files on land (first only for Waste)
+        "population" not in row.file.name 
+        and "AIR" not in row.file.name 
+        and "SHP" not in row.file.name
+        and "WST" in row.file.name
+        # and "CO_" in row.file.name
+    ):
+        gas = row.gas
+        sector = row.sector
+        f = row.file
+
+        # load the population density, our fallback method
+        pop_da = read_r_to_da(f_pop, 
+                              template, dtype="float64")
+        # load the relevant emissions-based proxy file
+        emis_da = read_r_to_da(f, template, dtype="float64")
+
+        # filter country mapping: only selected gas & sector
+        country_sector_mapping_df = fallback_information_intermed_sector[
+            (fallback_information_intermed_sector['gas']==gas)&(fallback_information_intermed_sector['sector']==sector)
+        ]
+
+        if len(country_sector_mapping_df)>0:
+            choice_map, fallback_source = validate_and_normalize_mapping(country_sector_mapping_df, "pop")
+            pop_da, emis_da, country_grid = align_grids(pop_da, emis_da, country_mask)
+            print(country_sector_mapping_df)
+
+            new_proxy = fix_ceds_proxy_add_population_fallback(
+                rvariable = emis_da,
+                pop_da = pop_da,
+                country_grid = country_grid,
+                mapping_df = country_sector_mapping_df,
+            )
+
+            out_filepath = settings.gridding_path / "ceds_input" / "non-point_source_proxy_final_sector" / "fixed_fallback" / f"{f.name}"
+            save_da_as_rd(new_proxy, 
+                out_path=out_filepath,
+                object_name=f.stem, 
+                undo_flip=True)
+            print(f"Saved: {out_filepath}")
+
+        else:
+            print(f"No fixes needed for {gas}-{sector}")
+
+# %%
+# # TESTING/DEBUGGING CODE
+
+# # check original and fixed files
+# from concordia.rescue.proxy import plot_map
+
+# plot_map(pop_da)
+
+# # for g in GASES:
+# for g in ["CO"]:
+#     filename = f"{g}_2022_WST.Rd"
+    
+#     ceds_original = settings.gridding_path / "ceds_input" / "non-point_source_proxy_final_sector" / filename
+#     ceds_original = read_r_to_da(ceds_original, template=template)
+#     ceds_fixed = settings.gridding_path / "ceds_input" / "non-point_source_proxy_final_sector" / "fixed_fallback" / f"fixed_{filename}"
+#     ceds_fixed = read_r_to_da(ceds_fixed, template=template)
+    
+#     plot_map(ceds_original)
+    
+#     plot_map(ceds_fixed)
+
+
+
+# %% [markdown]
+# ### Update proxy file mapping; df_files fix
+
+# %%
+# df_files.to_csv("df_files_before_fix.csv")
+def update_with_fix_if_exists(p):
+    p = Path(p)
+    p_fix = p.parent / "fixed_fallback" / f"{p.stem}.Rd"
+    if p_fix.exists():
+        return p_fix
+    else:
+        return p
+
+mask = df_files["sector"] == "WST"
+df_files.loc[mask, "file_year"] = df_files.loc[mask, "file_year"].apply(update_with_fix_if_exists)
+# df_files.to_csv("df_files_after_fix.csv")
+
+
+# %% [markdown]
+# ## Generate sector proxy files
 
 # %%
 # original function, might need this for aircraft emissions
@@ -703,7 +939,7 @@ settings.proxy_path
 
 # %%
 if __name__ == "__main__":
-    # gen_indexraster() # currently fails for usa; File "C:\Users\kikstra\Documents\GitHub\concordia\notebooks\gridding_data\generate_ceds_based_future_proxy_netcdfs-cmip7.py", line 354, in mask_to_ary; a = pyreadr.read_r(row.file)[f"{row.iso}_mask"]; KeyError: 'usa_mask'
+    # gen_indexraster() # currently fails for srb (kosovo)
     full_process("anthro")
    # full_process("openburning")
     # full_process("aircraft")
