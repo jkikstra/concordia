@@ -846,32 +846,6 @@ def season_to_ary(row, file_key="file", with_dask=True):
 
 
 # %%
-# OUTDATED
-
-def gen_da_for_sector(gas, sector, with_dask=True):
-    files = df_files[(df_files.gas == gas) & (df_files.sector == sector)]
-    if len(files.gas.unique()) != 1:
-        raise ValueError(f"Expected 1 gas, got {files.gas.unique()}")
-    if len(files.sector.unique()) != 1:
-        raise ValueError(f"Expected 1 sector, got {files.sector.unique()}")
-    if len(files.file_season.unique()) != 1:
-        raise ValueError(
-            f"Expected 1 seasonality file, got {files.file_season.unique()}"
-        )
-    yda = xr.concat(
-        [
-            year_to_ary(row, file_key="file_year", with_dask=with_dask)
-            for i, row in files.iterrows()
-        ],
-        dim="year",
-    )
-    sda = season_to_ary(files.iloc[0], file_key="file_season", with_dask=with_dask)
-    da = yda * sda
-    da.name = "emissions"
-    return da
-
-
-# %%
 # updated function to be able to handle different seasonality files for different years
 
 def gen_da_for_sector(gas, sector, with_dask=True):
