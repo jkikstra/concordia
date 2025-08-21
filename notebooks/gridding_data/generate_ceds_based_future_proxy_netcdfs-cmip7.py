@@ -152,7 +152,8 @@ def ceds_format_to_cmip7_format(df):
 # 3. replacing zeroes with population density data IF the country-sector is in the MODIFIED country-sector mapping information
 
 GASES = ["BC", "CH4", "CO", "CO2", "NH3", "NOx", "OC", 
-         "SO2", #"Sulfur", 
+         "N2O",
+         "SO2", # "Sulfur", 
          "NMVOC", #"VOC"
          ]
 
