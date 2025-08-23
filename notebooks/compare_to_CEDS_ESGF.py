@@ -389,13 +389,14 @@ def plot_ceds_vs_scenario_comparison(ceds_da, scen_da, gas, sectors, time_slice,
             # Set colormap normalization
             # --> think about also using shifted_white_colormap() for 2 and 3 (maybe even for 0 and 1?)
             if col in [0, 1]:
-                vmin_auto = float(np.percentile(ceds_values.values[~np.isnan(data.values)], 2)) # generally should be zero (except for negative emissions)
-                vmax_auto = float(np.percentile(ceds_values.values[~np.isnan(data.values)], 98))
-                print(f"Column {col}: robust vmin={vmin_auto:.2e}, vmax={vmax_auto:.2e}")
-            if col == 2:
+                vmin_auto = float(np.percentile(ceds_values.values[~np.isnan(ceds_values.values)], 2)) # generally should be zero (except for negative emissions)
+                vmax_auto = float(np.percentile(ceds_values.values[~np.isnan(ceds_values.values)], 98))
+                print(f"Column {col}: linear vmin={vmin_auto:.2e}, vmax={vmax_auto:.2e}")
+                norm = colors.Normalize(vmin=vmin_auto, vmax=vmax_auto)  # Simple linear normalization from 0 to max
+            elif col == 2:
                 vmax = float(np.percentile(ceds_values.values[~np.isnan(data.values)], 98)) # use CEDS min/max for colourbar
                 # vmin, vmax = float(data.min()), float(data.max())
-                norm = colors.TwoSlopeNorm(vmin=-vmax, vcenter=0, vmax=vmax) # set colourbar to 10% of maximum value of CEDS
+                norm = colors.TwoSlopeNorm(vmin=-vmax, vcenter=0, vmax=vmax) # set colourbar to maximum value of CEDS
             elif col == 3:  # Percentage difference - center at 0
                 # abs_max = max(abs(float(data.min())), abs(float(data.max())))
                 abs_max = 100 # cap out the colour bar at 50%
@@ -740,11 +741,11 @@ from matplotlib import colors
 import matplotlib.cm as cm
 
 GASES = [
-    # "BC", 
-    # "CO", 
-    # "CO2", "NOx", "OC", 
+    "BC", 
+    "CO", 
+    "CO2", "NOx", "OC", 
     "Sulfur",
-    # "CH4","N2O", "NH3", 
+    "CH4","N2O", "NH3", 
     "VOC"
          ]
 
@@ -781,8 +782,8 @@ TIMES = [
 ]
 
 PLOTS = [
-    # 'maps',
-    'timeseries'
+    'maps',
+    # 'timeseries'
 ]
 
 for g in GASES:
