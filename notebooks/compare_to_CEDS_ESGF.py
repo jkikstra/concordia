@@ -166,11 +166,6 @@ def ds_reformat_cmip6_to_cmip7(ds):
     # Assign new sector coordinate with object dtype
     scen_ds_cmip6_named = ds.assign_coords(sector=("sector", sector_labels))
 
-    # change SO2 to Sulfur (or vice versa)
-    # ...
-    # change NMVOC to VOC (or vice versa)
-    # ...
-
     return scen_ds_cmip6_named
 
 
@@ -745,11 +740,29 @@ from matplotlib import colors
 import matplotlib.cm as cm
 
 GASES = [
-    "BC", 
-    "CO", 
-    "CO2", "NOx", "OC", #"Sulfur",
-    "CH4","N2O", "NH3", #"VOC"
+    # "BC", 
+    # "CO", 
+    # "CO2", "NOx", "OC", 
+    "Sulfur",
+    # "CH4","N2O", "NH3", 
+    "VOC"
          ]
+
+# Mapping for gases where the file name differs from the analysis name
+GAS_FILE_MAPPING = {
+    "Sulfur": "SO2",  # Sulfur data is stored in SO2 files
+    "VOC": "NMVOC"
+}
+
+# Function to get the correct file gas name
+def get_file_gas_name_CEDS(gas):
+    return GAS_FILE_MAPPING.get(gas, gas)
+
+# Function to get the correct variable name in the dataset
+def rename_CEDS_data_variable_name(ds, gas):
+    file_gas = get_file_gas_name_CEDS(gas)
+    return ds.rename({f"{file_gas}_em_anthro": f"{gas}_em_anthro"})
+    
 SECTORS = [
     # "Agriculture",
     "Energy",
@@ -784,13 +797,15 @@ for g in GASES:
     )
 
     # load a CMIP7 CEDS sample file
-    ceds_cmip7_data_file = f"{g}-em-anthro_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn_200001-202312.nc"
+    file_gas_ceds = get_file_gas_name_CEDS(g) # for different naming VOC and Sulfur
+    ceds_cmip7_data_file = f"{file_gas_ceds}-em-anthro_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn_200001-202312.nc"
 
     ceds_ds = read_nc_file(
         f = ceds_cmip7_data_file,
         loc = path_ceds_cmip7,  
         rename_sectors_cmip6 = True
     )
+    ceds_ds = rename_CEDS_data_variable_name(ceds_ds, g) # rename data variable too, for different naming VOC and Sulfur
 
     ceds_da = ceds_ds.sel(time=TIMES,
                 method="nearest",
@@ -835,8 +850,8 @@ for g in GASES:
         filename_base = f"ceds_vs_scenario_comparison_{g}_{TIMES[0].strftime('%Y%m%d')}"
         fig.savefig(plots_path / f"{filename_base}.png", 
                     dpi=300, bbox_inches='tight')
-        fig.savefig(plots_path / f"{filename_base}.pdf", 
-                    bbox_inches='tight')
+        # fig.savefig(plots_path / f"{filename_base}.pdf", 
+        #             bbox_inches='tight')
         plt.show()  
     
     if 'timeseries' in PLOTS:
@@ -904,3 +919,5 @@ for g in GASES:
                 print(f"Error plotting multi-sector {place} {g}: {e}")
                 continue
 
+
+# %%
