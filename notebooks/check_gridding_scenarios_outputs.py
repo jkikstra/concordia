@@ -76,7 +76,9 @@ lock = SerializableLock()
 # Visualisations to perform:
 # * (global) direct timeseries plotting, write out as PDFs
 # * (global) plot CEDS-history, GFED-history, and scenarios
-# * (latitudinal) plot CEDS-history, GFED-history, and scenarios, for multiple time slices 
+# * (latitudinal) plot CEDS-history, GFED-history, and scenarios, for multiple time slices
+# * (gridpoint) pick a few gridpoints, or group of gridpoints, and plot them from 1980 until 2050
+# * (gridpoint) make a map of per-gridpoint differences for 2023 with CEDS
 # * ...
 #
 
@@ -85,36 +87,44 @@ lock = SerializableLock()
 # # Paths, definitions
 
 # %%
-GRIDDING_VERSION = "config_cmip7_v0_3_REMIND"
+GRIDDING_VERSION = "config_cmip7_v0_2" # jarmo 10.08.2025 (first go, with hist 022)
+GRIDDING_VERSION = "config_cmip7_v0_2_newhistory_remind" # jarmo 10.08.2025 (second go, with updated hist)
+GRIDDING_VERSION = "config_cmip7_v0_2_WSTfix_remind" # jarmo 21.08.2025 (third go, with updated hist, with fixed Waste)
 #GRIDDING_VERSION = "config_cmip7_v0_3_GCAM"
 
 # Scenarios pre-gridding
-# scenario_data_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_testing/input/scenarios/"
-scenario_data_location = "/home/hoegner/Projects/CMIP7/input/scenarios/"
-harmonized_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{GRIDDING_VERSION}")
-grid_file_location = "/home/hoegner/Projects/CMIP7/input/gridding/"
+scenario_data_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_2/input/scenarios/August 08 submission/" # harmonized in emissions_harmonization_historical
+# scenario_data_location = "/home/hoegner/Projects/CMIP7/input/scenarios/"
+# harmonized_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{GRIDDING_VERSION}")
+harmonized_data_location = Path(f"C:/Users/kikstra/documents/GitHub/concordia/results/{GRIDDING_VERSION}") # (re-) harmonized by concordia 
+# grid_file_location = "/home/hoegner/Projects/CMIP7/input/gridding/"
+grid_file_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_2/input/gridding/"
 
 # gridded emissions
 # CMIP7
-#cmip7_data_location = Path("C:/Users/kikstra/Documents/GitHub/concordia/results/config_cmip7_v0_2_testing_ukesm_remind-ah")
-cmip7_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{GRIDDING_VERSION}")
+# cmip7_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{GRIDDING_VERSION}")
+cmip7_data_location = Path(f"C:/Users/kikstra/documents/GitHub/concordia/results/{GRIDDING_VERSION}") # gridding output
 
 # CMIP6, for comparison
-#cmip6_data_location = Path("C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/ESGF/Example NetCDF files CMIP6")
-cmip6_data_location = Path("/home/hoegner/Projects/CMIP7/checks/Example NetCDF files CMIP6")
+# cmip6_data_location = Path("/home/hoegner/Projects/CMIP7/checks/Example NetCDF files CMIP6")
+cmip6_data_location = Path("C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/ESGF/Example NetCDF files CMIP6")
 
-plots_path = "/home/hoegner/Projects/CMIP7/checks/plots/gridding/pre-post/"
+# plots_path = "/home/hoegner/Projects/CMIP7/checks/plots/gridding/pre-post/"
+plots_path = cmip7_data_location / "plots"
+plots_path.mkdir(exist_ok=True, parents=True)
 
 # %%
 SECTORS_ANTHRO = [
     '**International Shipping', 
-    '**Agriculture',
+    '**Agriculture', # note: is set to zero in the gridding, for co2
     '**Energy Sector', 
     '**Industrial Sector',
     '**Residential Commercial Other',
     '**Solvents Production and Application',
     '**Transportation Sector',
-    '**Waste'
+    '**Waste',
+    '**Other non-Land CDR',
+    '**BECCS'
 ]
 SECTORS_AIR = [
     '**Aircraft'
@@ -135,7 +145,7 @@ sector_dict = {
 }
 
 # %%
-MODEL_SELECTION = "REMIND-MAgPIE 3.5-4.10"
+MODEL_SELECTION = "REMIND-MAgPIE 3.5-4.11"
 SCENARIO_SELECTION = "SSP1 - Very Low Emissions"
 #MODEL_SELECTION = "GCAM 7.1 scenarioMIP"
 #SCENARIO_SELECTION = "SSP3 - High Emissions"
@@ -743,6 +753,22 @@ scen_ds_cmip6 = read_nc_file(
     reorder_list = list(scen_ds.data_vars),
     rename_sectors_cmip6 = True
 )
+
+# %% [markdown]
+# ## CEDS History (CMIP7)
+
+# %%
+ceds_data_file = "CO2-em-anthro_input4MIPs_emissions_ScenarioMIP_IAMC-MESSAGE-GLOBIOM-ssp245-1-1_gn_201501-210012.nc"
+
+ceds_ds_cmip6 = read_nc_file(
+    f = ceds_data_file,
+    loc = cmip6_data_location,
+    reorder_list = list(scen_ds.data_vars),
+    rename_sectors_cmip6 = True
+)
+
+# %%
+ceds_ds_cmip6
 
 # %% [markdown]
 # # Do checks
