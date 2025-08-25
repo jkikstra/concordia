@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.4
+#       jupytext_version: 1.16.7
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -29,7 +29,7 @@ import altair as alt
 alt.renderers.enable('default')
 import seaborn as sns
 
-from concordia.cmip7 import utils as cmip7_utils
+from concordia.cmip7 import utils_rpy2 as cmip7_utils
 
 IAMC_COLS = ["model", "scenario", "region", "variable", "unit"] 
 
@@ -221,7 +221,7 @@ ceds_ds = read_nc_file(
     rename_sectors_cmip6 = True
 )
 
-# %% 
+# %%
 # plot function
 
 

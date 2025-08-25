@@ -1,11 +1,14 @@
+# %%
 from __future__ import annotations
 
+# %%
 import datetime
 import ftplib
 import logging
 from collections.abc import Sequence
 from typing import Any
 
+# %%
 import cf_xarray  # noqa
 import dateutil
 import numpy as np
@@ -18,16 +21,30 @@ from cattrs import structure, transform_error
 from pandas_indexing import concat, isin, semijoin
 from tqdm.auto import tqdm
 
+# %%
+# rpy2: Python <-> R bridge; needed for rewriting CEDS files in the same format
+import rpy2.robjects as ro
+from rpy2.robjects import default_converter
+from rpy2.robjects.conversion import localconverter
+from rpy2.robjects import numpy2ri
+
+# %%
+r = ro.r
+
+# %%
 from ..settings import FtpSettings
 
 
+# %%
 logger = logging.getLogger(__name__)
 
-#' TODO: check all these variable names and renamings
-#' - e.g., "Residential Commercial Other"
-#' - e.g., "Residential Commercial Other"
+# %% [markdown]
+# ' TODO: check all these variable names and renamings
+# ' - e.g., "Residential Commercial Other"
+# ' - e.g., "Residential Commercial Other"
 
 
+# %%
 SECTOR_RENAMES = {
     "Energy Sector": "Energy",
     "Industrial Sector": "Industrial",
@@ -35,6 +52,7 @@ SECTOR_RENAMES = {
     "Residential Commercial Other": "Residential, Commercial, Other",
 }
 
+# %%
 SECTOR_ORDERING_DEFAULT = {
     "em_anthro": [
         "Agriculture",
@@ -54,6 +72,7 @@ SECTOR_ORDERING_DEFAULT = {
     ],
 }
 
+# %%
 SECTOR_ORDERING_GAS = {
     "CO2_em_anthro": [
         "Agriculture",
@@ -75,6 +94,7 @@ SECTOR_ORDERING_GAS = {
     ]
 }
 
+# %%
 ATTRS = {
     "lat": {
         "units": "degrees_north",
@@ -104,6 +124,7 @@ ATTRS = {
     },
 }
 
+# %%
 DATA_HANDLES = {
     "em_anthro": "anthropogenic",
     "em_AIR_anthro": "aircraft",
@@ -111,6 +132,7 @@ DATA_HANDLES = {
     "em_removal": "cdr",
 }
 
+# %%
 DS_ATTRS = dict(
     Conventions="CF-1.6",
     activity_id="input4MIPs",
@@ -138,9 +160,11 @@ DS_ATTRS = dict(
     end_date="210012",
 )
 
+# %%
 ALKALINITY_ADDITION_LONGNAME = "Alkalinity Addition as part of OAE"
 
 
+# %%
 def convert_to_datetime(ds: xr.Dataset) -> xr.Dataset:
     ds = ds.stack(time=("year", "month"))
     dates = pd.DatetimeIndex(
@@ -165,10 +189,12 @@ def convert_to_datetime(ds: xr.Dataset) -> xr.Dataset:
     )
 
 
+# %%
 def clean_coords(ds):
     return ds.squeeze(drop=True)
 
 
+# %%
 def add_bounds(ds, bounds=["lat", "lon", "time", "level"]):
     bounds = list(set(bounds) & set(ds.coords))
     ds = ds.cf.add_bounds(bounds, output_dim="bound")
@@ -180,6 +206,7 @@ def add_bounds(ds, bounds=["lat", "lon", "time", "level"]):
     return ds
 
 
+# %%
 def rename_sectors(ds, renames: dict):
     if "sector" not in ds.indexes:
         return ds
@@ -189,6 +216,7 @@ def rename_sectors(ds, renames: dict):
     )
 
 
+# %%
 def ensure_sector_ordering(ds, sector_ordering: Sequence | None):
     if sector_ordering is None:
         return ds
@@ -196,6 +224,7 @@ def ensure_sector_ordering(ds, sector_ordering: Sequence | None):
     return ds.reindex(sector=sector_ordering)
 
 
+# %%
 def add_sector_mapping(ds, keep_sector_names=True):
     if "sector" not in ds.indexes:
         return ds
@@ -211,6 +240,7 @@ def add_sector_mapping(ds, keep_sector_names=True):
     return ds
 
 
+# %%
 def set_sector_encoding(ds):
     if "sector" not in ds.indexes:
         return ds
@@ -221,6 +251,7 @@ def set_sector_encoding(ds):
     return ds
 
 
+# %%
 def update_attrs(ds, attrs):
     for k, v in attrs.items():
         if k in ds:
@@ -228,6 +259,7 @@ def update_attrs(ds, attrs):
     return ds
 
 
+# %%
 def clean_var(ds, name, gas, handle):
     long_name = (
         f"{gas} {handle} emissions"
@@ -238,6 +270,7 @@ def clean_var(ds, name, gas, handle):
     return ds
 
 
+# %%
 def set_var_encoding(ds, name):
     da = ds[name]
     da.encoding.update(
@@ -251,6 +284,7 @@ def set_var_encoding(ds, name):
     return ds
 
 
+# %%
 def ds_attrs(name, model, scenario, version, date):
     gas, rest = name.split("_", 1)
     handle = DATA_HANDLES[rest]
@@ -272,6 +306,7 @@ def ds_attrs(name, model, scenario, version, date):
     return attrs
 
 
+# %%
 class DressUp:
     def __init__(self, version) -> None:
         self.version = version
@@ -303,6 +338,7 @@ class DressUp:
         )
 
 
+# %%
 def ftp_upload(cfg: FtpSettings | dict[str, Any], local_path, remote_path):
     paths = list(local_path.iterdir())
 
@@ -365,6 +401,7 @@ def ftp_upload(cfg: FtpSettings | dict[str, Any], local_path, remote_path):
         ftp.close()
 
 
+# %%
 @define
 class Variants:
     gas: str
@@ -415,8 +452,10 @@ class Variants:
         return self.rename_suffix(data, f" ({self.suffix})", f"|{self.suffix}", on=on)
 
 
-### Define some useful functions
+# %% [markdown]
+# ## Define some useful functions
 
+# %%
 # Load IAMC data
 def load_data(file_path):
     """
@@ -441,6 +480,7 @@ def load_data(file_path):
 
     return iamc_to_lowercase(df)
 
+# %%
 # IAMC data to lower case
 def iamc_to_lowercase(df):
     """
@@ -458,6 +498,7 @@ def iamc_to_lowercase(df):
     return df
 
 
+# %%
 def sort_long_iamc_dataframe(df):
     """
     Sorts a long IAMC dataframe by model, scenario, region, variable, and year.
@@ -474,6 +515,7 @@ def sort_long_iamc_dataframe(df):
         raise ValueError(f"Missing required columns for sorting: {missing_cols}")
     return df.sort_values(by=sort_order).reset_index(drop=True)
 
+# %%
 def sort_iamc_dataframe(df, format="long"):
 
     if (format == "long"):
@@ -482,6 +524,7 @@ def sort_iamc_dataframe(df, format="long"):
         raise Exception("Formats other than 'long' not yet implemented.") 
 
 
+# %%
 def iamc_wide_to_long(df, iamc_cols=["model", "scenario", "variable", "region", "unit"]):
     """
     Converts IAMC data from wide to long format.
@@ -527,6 +570,7 @@ def iamc_wide_to_long(df, iamc_cols=["model", "scenario", "variable", "region", 
 
     return long_df
 
+# %%
 # Filter functions
 def filter_scenario(df, scenarios):
     """
@@ -543,6 +587,7 @@ def filter_scenario(df, scenarios):
         return df[df['scenario'].isin(scenarios)]
     return df[df['scenario'] == scenarios]
 
+# %%
 def filter_region(df, regions):
     """
     Filters dataframe by regions.
@@ -558,6 +603,7 @@ def filter_region(df, regions):
         return df[df['region'].isin(regions)]
     return df[df['region'] == regions]
 
+# %%
 def filter_variable(df, variables):
     """
     Filters dataframe by variables.
@@ -573,6 +619,7 @@ def filter_variable(df, variables):
         return df[df['variable'].isin(variables)]
     return df[df['variable'] == variables]
 
+# %%
 def filter_region_contains(df, substrings):
     """
     Filters dataframe by regions containing specific substrings.
@@ -588,6 +635,7 @@ def filter_region_contains(df, substrings):
         return df[df['region'].str.contains('|'.join(substrings), case=False, na=False)]
     return df[df['region'].str.contains(substrings, case=False, na=False)]
 
+# %%
 def filter_emissions_data(df):
     """
     Filters dataframe for variables starting with "Emissions".
@@ -600,15 +648,18 @@ def filter_emissions_data(df):
     """
     return df[df['variable'].str.startswith("Emissions")]
 
+# %%
 # remove data with year > 2100; assumes a dataframe in long format 
 def remove_data_after(df, yr = 2100):
     return df[df['year'] <= yr]
 
+# %%
 # Rename one variable explicitly
 def rename_one_variable(df, old_string, new_string):
     df['variable'] = df['variable'].replace({old_string: new_string})
     return df
 
+# %%
 # Renaming variables
 def rename_variable(df, rename_dict):
     """
@@ -624,10 +675,12 @@ def rename_variable(df, rename_dict):
     df['variable'] = df['variable'].replace(rename_dict)
     return df
 
+# %%
 # Custom function to select columns and drop duplicates
 def select_and_distinct(dataframe, columns):
     return dataframe.loc[:, columns].drop_duplicates()
 
+# %%
 # Filter regions for CMIP7 data
 def filter_regions_only_world_and_model_native(df, cmip7_iam_list=None):
     if cmip7_iam_list is None:
@@ -638,6 +691,7 @@ def filter_regions_only_world_and_model_native(df, cmip7_iam_list=None):
 
     return pd.concat([world_df, model_native_df], axis=0)
 
+# %%
 # Reformatting; identify species in a separate column
 def reformat_IAMDataframe_with_species_column(df, start_string="Emissions|", end_string=None):
     """
@@ -668,6 +722,7 @@ def reformat_IAMDataframe_with_species_column(df, start_string="Emissions|", end
     
     return df
 
+# %%
 # Sum values of selected variables
 def sum_selected_variables(df, selected_variables, new_variable_name, group_cols=["model", "scenario", "region", "unit", "year"]):
     """
@@ -699,6 +754,7 @@ def sum_selected_variables(df, selected_variables, new_variable_name, group_cols
     summed["variable"] = new_variable_name
     return pd.concat([df, summed], axis=0)
 
+# %%
 # Sectoral adjustments
 def process_transportation_variables(
     df,
@@ -730,6 +786,7 @@ def process_transportation_variables(
     df = pd.concat([df[df["variable"] != trp_var], transportation], axis=0)
     return df
 
+# %%
 def process_industrial_sector_variables(df, industry_variable_list=None, group_cols=["model", "scenario", "region", "unit", "year"]):
     if industry_variable_list is None:
         industry_variable_list = [
@@ -748,6 +805,7 @@ def process_industrial_sector_variables(df, industry_variable_list=None, group_c
     )
     return df
 
+# %%
 # Pipeline
 def process_data(df, group_cols=["model", "scenario", "region", "unit", "year"]):
     """
@@ -765,6 +823,7 @@ def process_data(df, group_cols=["model", "scenario", "region", "unit", "year"])
     df = process_industrial_sector_variables(df, group_cols=group_cols)
     return df
 
+# %%
 # Save processed data
 def save_data(df, output_path):
     """
@@ -783,7 +842,8 @@ def save_data(df, output_path):
         df.to_excel(output_path, index=False)
     else:
         raise ValueError("Unsupported file format. Use .csv or .xlsx.")
-    
+
+# %%
 # create a comparison
 # Approach:
 #     Canonical Form for Comparison:
@@ -838,6 +898,7 @@ def compare_units(name_df1, df1, name_df2, df2, quiet = True):
 
     return matching_data
 
+# %%
 def check_na_in_columns(df):
     """
     Check all columns in the DataFrame for NA values.
@@ -854,6 +915,7 @@ def check_na_in_columns(df):
         print("No NA values found in any column.")
 
 
+# %%
 def guess_ssp(df):
     ssp_guesses = (
     df.index.pix.project(["model", "scenario"])
@@ -865,6 +927,7 @@ def guess_ssp(df):
     return ssp_guesses
 
 
+# %%
 def join_gdp_based_on_ssp(scenarios_with_ssp_mapping, gdp_per_ssp):
     gdp_for_each_scenario = semijoin(
             gdp_per_ssp,
@@ -875,6 +938,7 @@ def join_gdp_based_on_ssp(scenarios_with_ssp_mapping, gdp_per_ssp):
     return gdp_for_each_scenario
 
 
+# %%
 def read_r_variable(file, float_dtype: str = "float32"):
     file = Path(file)
     print(f"Reading in {file}\n")
@@ -896,6 +960,7 @@ def read_r_variable(file, float_dtype: str = "float32"):
 
     return np.asarray(value, dtype=float_dtype)[::-1]
 
+# %%
 def read_r_to_da(file, template, flipud=True, dtype="float32"):
     """
     Read an R .rds/.RData variable and return an xarray.DataArray
@@ -915,6 +980,7 @@ def read_r_to_da(file, template, flipud=True, dtype="float32"):
     )
     return da
 
+# %%
 def save_da_as_rd(
     da: xr.DataArray,
     out_path: str | Path,
@@ -958,6 +1024,7 @@ def save_da_as_rd(
         r(f"save({object_name}, file={repr(str(out_path))})")
 
 
+# %% [markdown]
 # # -------- Example usage --------
 # Assuming 'da' is your DataArray (lat: 360, lon: 720)
 # and you want the re-read key to be 'CO_2022_WST'
