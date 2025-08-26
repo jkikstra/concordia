@@ -125,6 +125,14 @@ for f in seasonality_files_for_future:
     ds.to_netcdf(out, format="NETCDF4", mode="w")
 
     var = ds[name]
+    
+    seasonality_weights = var / var.sum(dim=("lat", "lon"))
+    mask_zeros = seasonality_weights == 0
+    n_zeros = mask_zeros.sum().item()
+    
+    print(seasonality_weights.sum(dim=("lat", "lon")))
+    print(n_zeros)
+    
     out_png = figure_path / f.with_suffix(".png").name
 
     fig, axes = plt.subplots(
