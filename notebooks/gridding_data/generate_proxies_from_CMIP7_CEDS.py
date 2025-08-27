@@ -32,26 +32,12 @@ from concordia.cmip7 import utils as cmip7_utils
 # ## prepare setup
 
 # %%
-IAMC_COLS = ["model", "scenario", "region", "variable", "unit"] 
-
-# %%
 lock = SerializableLock()
 
 # %%
-GRIDDING_VERSION = "config_cmip7_v0_2" # jarmo 10.08.2025 (first go, with hist 022)
-GRIDDING_VERSION = "config_cmip7_v0_2_newhistory_remind" # jarmo 10.08.2025 (second go, with updated hist)
-GRIDDING_VERSION = "config_cmip7_v0_2_WSTfix_remind" # jarmo 21.08.2025 (third go, with updated hist, with fixed Waste)
-
-# Scenarios pre-gridding
-# scenario_data_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_2/input/scenarios/August 08 submission/" # harmonized in emissions_harmonization_historical
-# scenario_data_location = "/home/hoegner/Projects/CMIP7/input/scenarios/"
-# harmonized_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{GRIDDING_VERSION}")
-# harmonized_data_location = Path(f"C:/Users/kikstra/documents/GitHub/concordia/results/{GRIDDING_VERSION}") # (re-) harmonized by concordia 
 grid_file_location = "/home/hoegner/Projects/CMIP7/input/gridding/"
 # grid_file_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_2/input/gridding/"
 
-# gridded emissions
-# CMIP7 CEDS
 ceds_data_location = Path(grid_file_location,  "CEDS_CMIP7")
 old_proxies_location = Path(grid_file_location, "proxy_rasters")
 new_proxies_location = Path(grid_file_location, "proxy_rasters_ceds")
@@ -63,11 +49,11 @@ new_proxies_location.mkdir(parents=True, exist_ok=True)
 # %%
 ## import previous proxy raster for comparison
 
-xr.open_dataset(
+example_proxy = xr.open_dataset(
         Path(old_proxies_location, "anthro_VOC.nc"),
         engine="netcdf4",
         lock=lock
-    )
+    ).sector
 
 # %% [markdown]
 # ## generate proxy rasters
@@ -92,8 +78,7 @@ sector_mapping = {
     3: "TRA",
     4: "RCO",
     5: "SLV",
-    6: "WST",
-    7: "SHP"
+    6: "WST"
 }
 
 # %%
@@ -111,20 +96,14 @@ for file in ceds_data_location.glob("*.nc"):
         lock=lock
     )
 
-    # add gas dimension
-    ds = ds.expand_dims(dim={"gas": [f"{species}"]})
-    
     # drop variables we don't need and rename the one we need
     ds = ds.drop_vars(["lat_bnds", "lon_bnds", "time_bnds", "sector_bnds"]).rename({f"{species}_em_anthro": "emissions"})
+
+    # drop SHP sector, this has to be written into its own proxy file
+    ds = ds.drop_sel(sector=7)
     
-    # split time into year and month
-    ds = ds.assign_coords(year=("time", ds["time"].dt.year.data), month=("time", ds["time"].dt.month.data)).groupby(["year", "month"]).mean()
-
-    # select 2023 data and project it onto future years
-    ds = ds.sel(year=2023).expand_dims({"year": years})
-
-    # rename sectors and reorder dimensions
-    ds = ds.assign_coords(sector=ds["sector"].to_series().replace(sector_mapping).values).transpose("lat", "lon", "gas", "sector", "year", "month")
+    # add gas dimension
+    ds = ds.expand_dims(dim={"gas": [f"{species}"]})
     
     # rename NMVOC to VOC    
     if species == "NMVOC":
@@ -135,30 +114,70 @@ for file in ceds_data_location.glob("*.nc"):
     if species == "SO2":
         ds = ds.assign_coords(gas=["Sulfur"])
         species = "Sulfur"
-           
-    # save proxy file, overwrite True
-    
+
+    # split time into year and month
+    ds = ds.assign_coords(year=("time", ds["time"].dt.year.data), month=("time", ds["time"].dt.month.data)).groupby(["year", "month"]).mean()
+
+    # select 2023 data and project it onto future years
+    ds = ds.sel(year=2023).expand_dims({"year": years})
+
+    # rename sectors and reorder dimensions
+    ds = ds.assign_coords(sector=ds["sector"].to_series().replace(sector_mapping).values)
+
+    ds_reordered = xr.Dataset(
+    {var: (("lat", "lon", "gas", "sector", "year", "month"), ds[var].transpose("lat", "lon", "gas", "sector", "year", "month").values)
+     for var in ds.data_vars},
+    coords={dim: ds[dim] for dim in ["lat", "lon", "gas", "sector", "year", "month"]}
+    ).chunk({"month": 12})
+
+    outfile = new_proxies_location / f"anthro_{species}.nc"
+    if outfile.exists():
+        outfile.unlink()
+
     with ProgressBar():
-        ds.to_netcdf(new_proxies_location / f"anthro_{species}.nc", 
-                     mode="w", 
-                     compute=True ) 
+        ds_reordered.to_netcdf(outfile, mode="w", compute=True)
 
 # %% [markdown]
 # ## check one of the new proxy rasters
 
 # %%
 proxy = xr.open_dataset(
-        Path(new_proxies_location, "anthro_Sulfur.nc"),
+        Path(new_proxies_location, "anthro_BC.nc"),
         engine="netcdf4",
         lock=lock
     )
 
 ceds = xr.open_dataset(
-        Path(ceds_data_location, "SO2-em-anthro_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn_200001-202312.nc"),
+        Path(ceds_data_location, "OC-em-anthro_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn_200001-202312.nc"),
+        engine="netcdf4",
+        lock=lock
+    )
+
+indexraster = xr.open_dataset(
+        Path(grid_file_location, "ssp_comb_indexraster.nc"),
+        engine="netcdf4",
+        lock=lock
+    )
+
+countrymask = xr.open_dataset(
+        Path(grid_file_location, "ssp_comb_countrymask.nc"),
         engine="netcdf4",
         lock=lock
     )
 
 # %%
+# assert that dimensions of our new proxy files equal the dimensions of the example proxy file
+for dim in example_proxy.dims:
+    assert example_proxy.indexes[dim].equals(proxy.indexes[dim]), f"Mismatch in {dim}"
 
 # %%
+proxy
+
+# %%
+ceds
+
+# %%
+indexraster
+
+# %%
+countrymask
