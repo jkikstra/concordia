@@ -39,6 +39,7 @@ grid_file_location = "/home/hoegner/Projects/CMIP7/input/gridding/"
 # grid_file_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_2/input/gridding/"
 
 ceds_data_location = Path(grid_file_location,  "CEDS_CMIP7")
+ceds_air_data_location = Path(grid_file_location,  "CEDS_CMIP7_AIR")
 old_proxies_location = Path(grid_file_location, "proxy_rasters")
 new_proxies_location = Path(grid_file_location, "proxy_rasters_ceds")
 new_proxies_location.mkdir(parents=True, exist_ok=True)
@@ -50,10 +51,10 @@ new_proxies_location.mkdir(parents=True, exist_ok=True)
 ## import previous proxy raster for comparison
 
 example_proxy = xr.open_dataset(
-        Path(old_proxies_location, "anthro_VOC.nc"),
+        Path(old_proxies_location, "aircraft_BC.nc"),
         engine="netcdf4",
         lock=lock
-    ).sector
+    )
 
 # %% [markdown]
 # ## generate proxy rasters
@@ -98,7 +99,7 @@ for file in ceds_data_location.glob("*.nc"):
     ds = xr.open_dataset(
         file,
         engine="netcdf4",
-        chunks={"time": 12},
+        chunks={},
         lock=lock
     )
 
@@ -140,8 +141,13 @@ for file in ceds_data_location.glob("*.nc"):
     if outfile.exists():
         outfile.unlink()
 
+    encoding = {
+        var: {"zlib": True, "complevel": 4, "dtype": "float32"}
+        for var in ds_reordered.data_vars
+    }
+    
     with ProgressBar():
-        ds_reordered.to_netcdf(outfile, mode="w", compute=True)
+        ds_reordered.to_netcdf(outfile, mode="w", encoding=encoding, compute=True)
 
 # %%
 # SHIPPING proxies
@@ -156,7 +162,7 @@ for file in ceds_data_location.glob("*.nc"):
     ds = xr.open_dataset(
         file,
         engine="netcdf4",
-        chunks={"time": 12},
+        chunks={},
         lock=lock
     )
 
@@ -199,9 +205,75 @@ for file in ceds_data_location.glob("*.nc"):
     outfile = new_proxies_location / f"shipping_{species}.nc"
     if outfile.exists():
         outfile.unlink()
+        
+    encoding = {
+        var: {"zlib": True, "complevel": 4, "dtype": "float32"}
+        for var in ds_reordered.data_vars
+    }
 
     with ProgressBar():
-        ds_reordered.to_netcdf(outfile, mode="w", compute=True)
+        ds_reordered.to_netcdf(outfile, mode="w", encoding=encoding, compute=True)
+
+# %%
+# AIRCRAFT proxies
+
+# loop through all CEDS em-AIR-anthro from input4MIP files
+for file in ceds_air_data_location.glob("*.nc"):
+
+    # extract species information from filename
+    species = file.stem.split("-")[0]
+
+    # import file 
+    ds = xr.open_dataset(
+        file,
+        engine="netcdf4",
+        chunks={},
+        lock=lock
+    )
+    
+    # drop variables we don't need and rename the one we need
+    ds = ds.drop_vars(["lat_bnds", "lon_bnds", "time_bnds"]).rename({f"{species}_em_AIR_anthro": "emissions"})
+
+    # add gas dimension
+    ds = ds.expand_dims(dim={"gas": [f"{species}"]})
+
+    # add sector dimension
+    ds = ds.expand_dims(dim={"sector": ["AIR"]})
+    
+    # rename NMVOC to VOC    
+    if species == "NMVOC":
+        ds = ds.assign_coords(gas=["VOC"])
+        species = "VOC"
+        
+    # rename SO2 to Sulfur
+    if species == "SO2":
+        ds = ds.assign_coords(gas=["Sulfur"])
+        species = "Sulfur"
+    
+    # split time into year and month
+    ds = ds.assign_coords(year=("time", ds["time"].dt.year.data), month=("time", ds["time"].dt.month.data)).groupby(["year", "month"]).mean()
+
+    # select 2023 data and project it onto future years
+    ds = ds.sel(year=2023).expand_dims({"year": years})
+
+    # reorder dimensions
+    ds_reordered = xr.Dataset(
+    {var: (("lat", "lon", "level", "gas", "sector", "year", "month"), ds[var].transpose("lat", "lon", "level", "gas", "sector", "year", "month").values)
+     for var in ds.data_vars},
+    coords={dim: ds[dim] for dim in ["lat", "lon", "level", "gas", "sector", "year", "month"]}
+    ).chunk({"month": 12})
+
+    outfile = new_proxies_location / f"aircraft_{species}.nc"
+    if outfile.exists():
+        outfile.unlink()
+        
+    encoding = {
+        var: {"zlib": True, "complevel": 4, "dtype": "float32"}
+        for var in ds_reordered.data_vars
+    }
+    
+    with ProgressBar():
+        ds_reordered.to_netcdf(outfile, mode="w", encoding=encoding)
 
 # %% [markdown]
 # ## check one of the new proxy rasters
