@@ -45,29 +45,7 @@ new_proxies_location = Path(grid_file_location, "proxy_rasters_ceds")
 new_proxies_location.mkdir(parents=True, exist_ok=True)
 
 # %% [markdown]
-# ## example file
-
-# %%
-## import previous proxy raster for comparison
-
-example_proxy = xr.open_dataset(
-        Path(old_proxies_location, "aircraft_BC.nc"),
-        engine="netcdf4",
-        lock=lock
-    )
-
-# %% [markdown]
 # ## generate proxy rasters
-
-# %% [markdown]
-# to do:
-# - [x] add species information as gas coordinate
-# - [x] discard bounds (lat_bnds, lon_bnds, sector_bnds, time_bnds)
-# - [x] translate BC_em_anthro variable into emissions variable
-# - [x] split time into year and month; expand year to the years we want (this is just duplicating data)
-# - [x] dictionary that translates sector information
-# - [x] reorder coordinates
-# - [ ] rewrite attributes?
 
 # %%
 years = [2023, 2024, 2025, 2030, 2035, 2040, 2045, 2050, 2055, 2060, 2065, 2070, 2075, 2080, 2085, 2090, 2095, 2100]
@@ -274,48 +252,3 @@ for file in ceds_air_data_location.glob("*.nc"):
     
     with ProgressBar():
         ds_reordered.to_netcdf(outfile, mode="w", encoding=encoding)
-
-# %% [markdown]
-# ## check one of the new proxy rasters
-
-# %%
-proxy = xr.open_dataset(
-        Path(new_proxies_location, "shipping_N2O.nc"),
-        engine="netcdf4",
-        lock=lock
-    )
-
-ceds = xr.open_dataset(
-        Path(ceds_data_location, "OC-em-anthro_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn_200001-202312.nc"),
-        engine="netcdf4",
-        lock=lock
-    )
-
-indexraster = xr.open_dataset(
-        Path(grid_file_location, "ssp_comb_indexraster.nc"),
-        engine="netcdf4",
-        lock=lock
-    )
-
-countrymask = xr.open_dataset(
-        Path(grid_file_location, "ssp_comb_countrymask.nc"),
-        engine="netcdf4",
-        lock=lock
-    )
-
-# %%
-# assert that dimensions of our new proxy files equal the dimensions of the example proxy file
-for dim in example_proxy.dims:
-    assert example_proxy.indexes[dim].equals(proxy.indexes[dim]), f"Mismatch in {dim}"
-
-# %%
-proxy
-
-# %%
-ceds
-
-# %%
-indexraster
-
-# %%
-countrymask
