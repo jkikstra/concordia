@@ -29,7 +29,9 @@ import altair as alt
 alt.renderers.enable('default')
 import seaborn as sns
 
-from concordia.cmip7 import utils_rpy2 as cmip7_utils
+import cartopy.crs as ccrs
+
+# from concordia.cmip7 import utils as cmip7_utils
 
 IAMC_COLS = ["model", "scenario", "region", "variable", "unit"] 
 
