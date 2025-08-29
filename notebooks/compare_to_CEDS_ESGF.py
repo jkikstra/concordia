@@ -93,7 +93,7 @@ GRIDDING_VERSION = "config_cmip7_v0_2_WSTfix_remind" # jarmo 21.08.2025 (third g
 path_scen_cmip7 = Path(f"C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v0_2/{GRIDDING_VERSION}") # gridding output
 
 # CEDS (CMIP7)
-path_ceds_cmip7 = Path(f"C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/ESGF/CEDS/CMIP7") 
+path_ceds_cmip7 = Path(f"C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/ESGF/CEDS/CMIP7_anthro") 
 
 # where to save plots of this script  
 plots_path = path_scen_cmip7 / "plots"
@@ -303,8 +303,9 @@ def plot_maps_species_sectors(ds,
     plt.show()
 
 
-def plot_ceds_vs_scenario_comparison(ceds_da, scen_da, gas, sectors, time_slice, 
-                                   figsize_per_panel=(4, 3), proj=ccrs.Robinson()):
+def plot_ceds_vs_scenario_comparison(ceds_da, scen_da, gas, sectors, time_slice,
+                                     figsize_per_panel=(4, 3), proj=ccrs.Robinson(),
+                                     colour_scale_max_percentile = 98):
     """
     Plot comparison between CEDS and scenario data in 4 columns:
     1. CEDS data
@@ -390,7 +391,7 @@ def plot_ceds_vs_scenario_comparison(ceds_da, scen_da, gas, sectors, time_slice,
             # --> think about also using shifted_white_colormap() for 2 and 3 (maybe even for 0 and 1?)
             if col in [0, 1]:
                 vmin_auto = float(np.percentile(ceds_values.values[~np.isnan(ceds_values.values)], 2)) # generally should be zero (except for negative emissions)
-                vmax_auto = float(np.percentile(ceds_values.values[~np.isnan(ceds_values.values)], 98))
+                vmax_auto = float(np.percentile(ceds_values.values[~np.isnan(ceds_values.values)], colour_scale_max_percentile)) # normally 98 to ensure that point-sources are not dominating the (linear) colour scale
                 print(f"Column {col}: linear vmin={vmin_auto:.2e}, vmax={vmax_auto:.2e}")
                 norm = colors.Normalize(vmin=vmin_auto, vmax=vmax_auto)  # Simple linear normalization from 0 to max
             elif col == 2:
@@ -861,6 +862,7 @@ for g in GASES:
             'Beijing': (39.9042, 116.4074),
             'Geneva': (46.2044, 6.1432),
             'Delhi': (28.6139, 77.2090),
+            'Spain': (40.4637, 3.7492), # central spain, close to Madrid
             # 'New_York': (40.7128, -74.0060),
             # 'London': (51.5074, -0.1278),
             # 'Tokyo': (35.6762, 139.6503),
