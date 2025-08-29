@@ -43,7 +43,8 @@ import os
 # %%
 from concordia.settings import Settings
 
-from concordia.cmip7.utils import read_r_variable, read_r_to_da, save_da_as_rd
+from concordia.cmip7.utils import read_r_variable, read_r_to_da
+from concordia.cmip7.utils_rpy2 import save_da_as_rd
 
 # %%
 def get_settings(base_path: Path, 
