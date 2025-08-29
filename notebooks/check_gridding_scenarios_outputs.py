@@ -90,26 +90,30 @@ lock = SerializableLock()
 GRIDDING_VERSION = "config_cmip7_v0_2" # jarmo 10.08.2025 (first go, with hist 022)
 GRIDDING_VERSION = "config_cmip7_v0_2_newhistory_remind" # jarmo 10.08.2025 (second go, with updated hist)
 GRIDDING_VERSION = "config_cmip7_v0_2_WSTfix_remind" # jarmo 21.08.2025 (third go, with updated hist, with fixed Waste)
-#GRIDDING_VERSION = "config_cmip7_v0_3_GCAM"
+GRIDDING_VERSION = "config_cmip7_v0_2_CEDS_proxies" # annika 27.08.2025 (with proxies derived from CEDS directly for anthro)
+GRIDDING_VERSION = "config_cmip7_v0_2_CEDS_proxies_new_AIR" # annika 28.08.2025 (now also for aircraft)
+GRIDDING_VERSION = "config_cmip7_v0_2_CEDS_proxies_compressed" # annika 28.08.2025 (including encoding for compression)
 
 # Scenarios pre-gridding
-scenario_data_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_2/input/scenarios/August 08 submission/" # harmonized in emissions_harmonization_historical
-# scenario_data_location = "/home/hoegner/Projects/CMIP7/input/scenarios/"
-# harmonized_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{GRIDDING_VERSION}")
-harmonized_data_location = Path(f"C:/Users/kikstra/documents/GitHub/concordia/results/{GRIDDING_VERSION}") # (re-) harmonized by concordia 
-# grid_file_location = "/home/hoegner/Projects/CMIP7/input/gridding/"
-grid_file_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_2/input/gridding/"
+# scenario_data_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_2/input/scenarios/August 08 submission/" # harmonized in emissions_harmonization_historical
+scenario_data_location = "/home/hoegner/Projects/CMIP7/input/scenarios/"
+
+harmonized_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{GRIDDING_VERSION}")
+#harmonized_data_location = Path(f"C:/Users/kikstra/documents/GitHub/concordia/results/{GRIDDING_VERSION}") # (re-) harmonized by concordia
 
 # gridded emissions
-# CMIP7
-# cmip7_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{GRIDDING_VERSION}")
-cmip7_data_location = Path(f"C:/Users/kikstra/documents/GitHub/concordia/results/{GRIDDING_VERSION}") # gridding output
+# gridding input files
+grid_file_location = "/home/hoegner/Projects/CMIP7/input/gridding/"
+# grid_file_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_2/input/gridding/"
+
+# CMIP7 gridded emissions
+cmip7_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{GRIDDING_VERSION}")
+# cmip7_data_location = Path(f"C:/Users/kikstra/documents/GitHub/concordia/results/{GRIDDING_VERSION}") # gridding output
 
 # CMIP6, for comparison
-# cmip6_data_location = Path("/home/hoegner/Projects/CMIP7/checks/Example NetCDF files CMIP6")
-cmip6_data_location = Path("C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/ESGF/Example NetCDF files CMIP6")
+cmip6_data_location = Path("/home/hoegner/Projects/CMIP7/checks/Example NetCDF files CMIP6")
+# cmip6_data_location = Path("C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/ESGF/Example NetCDF files CMIP6")
 
-# plots_path = "/home/hoegner/Projects/CMIP7/checks/plots/gridding/pre-post/"
 plots_path = cmip7_data_location / "plots"
 plots_path.mkdir(exist_ok=True, parents=True)
 
@@ -503,6 +507,20 @@ scenario_data = cmip7_utils.load_data(
 scenario_data = cmip7_utils.filter_scenario(scenario_data, scenarios=SCENARIO_SELECTION)
 # reformat as multi-index in IAMC format
 scenario_data = scenario_data.set_index(IAMC_COLS)
+
+# %%
+# Boolean mask for all units starting with "kt" and ending with "/yr"
+mask = scenario_data.index.get_level_values("unit").str.match(r"kt.*?/yr")
+
+# Multiply those rows ×1000
+scenario_data.loc[mask] = scenario_data.loc[mask] / 1000
+
+# Update the index labels (kt to Mt)
+scenario_data.index = scenario_data.index.set_levels(
+    scenario_data.index.levels[scenario_data.index.names.index("unit")].str.replace(r"^kt", "Mt", regex=True),
+    level="unit"
+)
+
 scenario_data
 
 # %%
@@ -629,9 +647,24 @@ harmonized_data["variable"] = harmonized_data["variable"].str.split('|').apply(l
 
 # %%
 harmonized_data = harmonized_data.set_index(IAMC_COLS)
+
+# %%
+# Boolean mask for all units starting with "kt" and ending with "/yr"
+mask = harmonized_data.index.get_level_values("unit").str.match(r"kt.*?/yr")
+
+# Multiply those rows ×1000
+harmonized_data.loc[mask] = harmonized_data.loc[mask] / 1000
+
+# Update the index labels (kt to Mt)
+harmonized_data.index = harmonized_data.index.set_levels(
+    harmonized_data.index.levels[harmonized_data.index.names.index("unit")].str.replace(r"^kt", "Mt", regex=True),
+    level="unit"
+)
+
 harmonized_data
 
 # %%
+# species/sector combinations missing after harmonisation
 set(list(scenario_data.index.get_level_values("variable").unique())) - set(list(harmonized_data.index.get_level_values("variable").unique()))
 
 # %%
@@ -789,23 +822,23 @@ total_emissions_ts_cmip6 = ds_to_annual_emissions_total(scen_ds_cmip6, var_name=
 
 
 # %%
-fig, axs = plt.subplots(2, 2, figsize=(15, 10), sharex=True)
+#fig, axs = plt.subplots(2, 2, figsize=(15, 10), sharex=True)
 
-plot_one_emissions_timeseries(total_emissions_ts, ax=axs[0, 0],
-    title="Total Emissions (Scenario CMIP7)")
-plot_sectors_emissions_timeseries(sectoral_emissions_ts, ax=axs[0, 1],
-    title="Sectoral Emissions (Scenario CMIP7)")
+#plot_one_emissions_timeseries(total_emissions_ts, ax=axs[0, 0],
+#    title="Total Emissions (Scenario CMIP7)")
+#plot_sectors_emissions_timeseries(sectoral_emissions_ts, ax=axs[0, 1],
+#    title="Sectoral Emissions (Scenario CMIP7)")
 
-plot_one_emissions_timeseries(total_emissions_ts_cmip6, ax=axs[1, 0],
-    title="Total Emissions (CMIP6)")
-plot_sectors_emissions_timeseries(sectoral_emissions_ts_cmip6, ax=axs[1, 1],
-    title="Sectoral Emissions (CMIP6)")
+#plot_one_emissions_timeseries(total_emissions_ts_cmip6, ax=axs[1, 0],
+#    title="Total Emissions (CMIP6)")
+#plot_sectors_emissions_timeseries(sectoral_emissions_ts_cmip6, ax=axs[1, 1],
+#    title="Sectoral Emissions (CMIP6)")
 
-fig.suptitle("Emissions Time Series Comparison", fontsize=16)
+#fig.suptitle("Emissions Time Series Comparison", fontsize=16)
 
-plt.tight_layout(rect=[0, 0, 1, 0.96])
-plt.savefig(Path(plots_path, f"comparison_with_CMIP6_MESSAGE_ssp245_{MODEL_SELECTION_GRIDDED}_{SCENARIO_SELECTION_GRIDDED}.png"))
-plt.show()
+#plt.tight_layout(rect=[0, 0, 1, 0.96])
+#plt.savefig(Path(plots_path, f"comparison_with_CMIP6_MESSAGE_ssp245_{MODEL_SELECTION_GRIDDED}_{SCENARIO_SELECTION_GRIDDED}.png"))
+#plt.show()
 
 
 # %%
@@ -846,10 +879,10 @@ gridded_data = reshape_for_plot(aggregated_gridded_emissions)
 combined = pix.concat([scenario_data, harmonised_data, gridded_data], axis=0, ignore_index=True)
 
 for sec in sectors:
-
+    
     to_plot = combined[combined["variable"].str.contains(f"{sec}")].dropna()
     to_plot["time"] = pd.to_datetime(to_plot["time"], errors="coerce")
-
+    
     g = sns.relplot(
         data=to_plot,
         x="time",
