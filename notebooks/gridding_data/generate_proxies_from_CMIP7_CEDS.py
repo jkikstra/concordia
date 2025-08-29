@@ -35,11 +35,13 @@ from concordia.cmip7 import utils as cmip7_utils
 lock = SerializableLock()
 
 # %%
-grid_file_location = "/home/hoegner/Projects/CMIP7/input/gridding/"
-# grid_file_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_2/input/gridding/"
+# grid_file_location = "/home/hoegner/Projects/CMIP7/input/gridding/"
+grid_file_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_2/input/gridding/"
 
-ceds_data_location = Path(grid_file_location,  "CEDS_CMIP7")
-ceds_air_data_location = Path(grid_file_location,  "CEDS_CMIP7_AIR")
+# ceds_data_location = Path(grid_file_location,  "CEDS_CMIP7")
+# ceds_air_data_location = Path(grid_file_location,  "CEDS_CMIP7_AIR")
+ceds_data_location = Path(grid_file_location, "ESGF", "CEDS", "CMIP7_anthro")
+ceds_air_data_location = Path(grid_file_location, "ESGF", "CEDS", "CMIP7_AIR")
 old_proxies_location = Path(grid_file_location, "proxy_rasters")
 new_proxies_location = Path(grid_file_location, "proxy_rasters_ceds")
 new_proxies_location.mkdir(parents=True, exist_ok=True)
