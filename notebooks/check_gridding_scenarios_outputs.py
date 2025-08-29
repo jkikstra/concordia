@@ -38,49 +38,14 @@ IAMC_COLS = ["model", "scenario", "region", "variable", "unit"]
 lock = SerializableLock()
 
 # %% [markdown]
-# **Observations**
-# (_Last update: 04/08/2028_)
+# SUMMARY
 #
-# Notes: 
-# * Check units of NC file; some scalar difference with IAMC-standard output. I assume it is in kg/m2/s ? --> DONE
-#
-# To be changed:
-# * International shipping: produces unexpected & unwanted 2015/2020 numbers, and zeroes for 2023, 2024, 2025 --> DONE
-#
-# Checked to be correct:
-# * Order-of-magnitude - new scenario vs CMIP6 scenario | anthro | CO2
-
-# %% [markdown]
-# **Ideas:**
-#
-# What data to test:
-# * loop over:
-#   * all scenarios 
-#   * all species
-#   * all sectors
-# * compare to:
-#   * CEDS CMIP7 ESGF data
-#   * CMIP6 scenario data
-#
-# Tests to perform:
-#
-# _Automated_:
-# * add up global annual total; compare to harmonized input data; should be the same
-# * compare base year numbers with CEDS ESGF numbers; should be the same for the year 2023 (anthro; check by sector; check by total)
-#     * potentially simpler earlier version: 'order-of-magnitude test' record the order of magnitude of all CEDS files, and check that our starting point data is same order of magnitude
-# * latitudinal plot: summarise along longitude, and check those values against 
-#
-# _Other_:
-# * compare outputs of Annika & Jarmo; both run individually on their laptops
-#
-# Visualisations to perform:
-# * (global) direct timeseries plotting, write out as PDFs
-# * (global) plot CEDS-history, GFED-history, and scenarios
-# * (latitudinal) plot CEDS-history, GFED-history, and scenarios, for multiple time slices
-# * (gridpoint) pick a few gridpoints, or group of gridpoints, and plot them from 1980 until 2050
-# * (gridpoint) make a map of per-gridpoint differences for 2023 with CEDS
-# * ...
-#
+# loops over all species and sectors for ANTHRO, AIRCRAFT, OPENBURNING separately,
+# reaggregates the gridded emissions to global totals,
+# produces plots of timeseries for each, comparing: 
+# - global emissions scenario data (harmonised with github.com/iiasa/emissions_harmonization_historical
+# - global emissions output from concordia workflow (re-harmonised; should be identical with scenario data)
+# - gridded emissions
 
 
 # %% [markdown]
@@ -109,10 +74,6 @@ grid_file_location = "/home/hoegner/Projects/CMIP7/input/gridding/"
 # CMIP7 gridded emissions
 cmip7_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{GRIDDING_VERSION}")
 # cmip7_data_location = Path(f"C:/Users/kikstra/documents/GitHub/concordia/results/{GRIDDING_VERSION}") # gridding output
-
-# CMIP6, for comparison
-cmip6_data_location = Path("/home/hoegner/Projects/CMIP7/checks/Example NetCDF files CMIP6")
-# cmip6_data_location = Path("C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/ESGF/Example NetCDF files CMIP6")
 
 plots_path = cmip7_data_location / "plots"
 plots_path.mkdir(exist_ok=True, parents=True)
@@ -164,31 +125,7 @@ SCENARIO_SELECTION_GRIDDED = SCENARIO_SELECTION.replace(" ", "-")
 
 
 # %%
-def ds_reformat_cmip6_to_cmip7(ds):
-    cmip6_sectors = { 
-        0: "Agriculture", 
-        1: "Energy",
-        2: "Industrial",
-        3: "Transportation",
-        4: "Residential, Commercial, Other",
-        5: "Solvents Production and Application", 
-        6: "Waste", 
-        7: "International Shipping",
-        8: "Negative CO2 Emissions"
-    }
-    
-    # scen_ds_cmip6
-    sector_vals  = ds['sector'].values
-    # Replace with string labels
-    sector_labels = np.array([cmip6_sectors[i] for i in sector_vals], dtype=object)
-    # Assign new sector coordinate with object dtype
-    scen_ds_cmip6_named = ds.assign_coords(sector=("sector", sector_labels))
-
-    return scen_ds_cmip6_named
-
-
-# %%
-def read_nc_file(f, loc, reorder_list=None, rename_sectors_cmip6=None, chunks={"time": 1}):
+def read_nc_file(f, loc, reorder_list=None, chunks={"time": 1}):
     ds = xr.open_dataset(
         loc / f,
         engine="netcdf4",
@@ -198,9 +135,6 @@ def read_nc_file(f, loc, reorder_list=None, rename_sectors_cmip6=None, chunks={"
     
     if reorder_list is not None:
         ds = ds[reorder_list]
-    
-    if rename_sectors_cmip6:
-        ds = ds_reformat_cmip6_to_cmip7(ds)
     
     return ds
 
@@ -424,71 +358,6 @@ def reshape_for_plot(df):
         value_name="values"
     )
     return df_long
-    
-def plot_one_emissions_timeseries(ts,
-                                  title: str = "Annual Global Anthropogenic CO₂ Emissions",
-                                  xlabel: str = "Year",
-                                  ylabel: str = "CO₂ Emissions [mass flux]",
-                                  ax=None):
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(10, 6))
-
-    ts.plot(ax=ax, marker='o')
-    
-    ax.set_title(title)
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    ax.grid(True)
-
-
-def plot_sectors_emissions_timeseries(ts,
-                                      title: str = "Annual Global Anthropogenic CO₂ Emissions",
-                                      xlabel: str = "Year",
-                                      ylabel: str = "CO₂ Emissions [mass flux]",
-                                      ax=None):
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(10, 6))
-
-    for sector in ts.sector.values:
-        ax.plot(ts.year, ts.sel(sector=sector), label=str(sector))
-    
-    ax.set_title(title)
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    ax.legend(title="Sector", bbox_to_anchor=(1.05, 1), loc='upper left')
-    ax.grid(True)
-
-
-def plot_sectors_emissions_timeseries_area_DRAFT2(ts,
-                                  title: str = "Annual Global Anthropogenic CO₂ Emissions",
-                                  xlabel: str = "Year",
-                                  ylabel: str = "CO₂ Emissions [mass flux]",
-                                  figsize: tuple = (10,6)):
-    # Convert to pandas DataFrame for plotting
-    df = ts.to_pandas()  # index: year, columns: sector
-
-    # in case accidentally (index: sector, columns: year), transpose 
-    if df.index.name == "sector":
-        df = df.transpose()
-        # df.index.name = "year"
-        # df.columns.name = "sector"
-
-    # in long format
-    df_long = df.reset_index().melt(id_vars="year", var_name="sector", value_name="emissions")
-
-    # Plot with Altair
-    chart = alt.Chart(df_long).mark_area().encode(
-        x="year:O",
-        y="emissions:Q",
-        color="sector:N",
-        tooltip=["year", "sector", "emissions"]
-    ).properties(
-        title=title,
-        width=800,
-        height=400
-    ).interactive()
-
-    return chart
 
 
 # %% [markdown]
@@ -766,86 +635,6 @@ for species in species_list:
     full.extend([anthro, air, openburning])
 
 harmonized_data_with_sectors = pix.concat(full)
-
-# %% [markdown]
-# ## CO2 example 1 scenario (CMIP7)
-
-# %%
-# loaded above
-scen_ds.attrs
-
-# %% [markdown]
-# ## CO2 example 1 scenario (CMIP6)
-
-# %%
-cmip6_data_file = "CO2-em-anthro_input4MIPs_emissions_ScenarioMIP_IAMC-MESSAGE-GLOBIOM-ssp245-1-1_gn_201501-210012.nc"
-
-scen_ds_cmip6 = read_nc_file(
-    f = cmip6_data_file,
-    loc = cmip6_data_location,
-    reorder_list = list(scen_ds.data_vars),
-    rename_sectors_cmip6 = True
-)
-
-# %% [markdown]
-# ## CEDS History (CMIP7)
-
-# %%
-ceds_data_file = "CO2-em-anthro_input4MIPs_emissions_ScenarioMIP_IAMC-MESSAGE-GLOBIOM-ssp245-1-1_gn_201501-210012.nc"
-
-ceds_ds_cmip6 = read_nc_file(
-    f = ceds_data_file,
-    loc = cmip6_data_location,
-    reorder_list = list(scen_ds.data_vars),
-    rename_sectors_cmip6 = True
-)
-
-# %%
-ceds_ds_cmip6
-
-# %% [markdown]
-# # Do checks
-
-# %% [markdown]
-# ### Some rough code for 1 scenario checking in very simple dataframes
-
-# %%
-# simple pandas-dataframe based checks & plots
-
-# cmip7 dfs
-sectoral_emissions_ts = ds_to_annual_emissions_total(scen_ds, var_name="CO2_em_anthro", cell_area=cell_area, keep_sectors=True)
-total_emissions_ts = ds_to_annual_emissions_total(scen_ds, var_name="CO2_em_anthro", cell_area=cell_area, keep_sectors=False)
-
-# cmip6 dfs
-sectoral_emissions_ts_cmip6 = ds_to_annual_emissions_total(scen_ds_cmip6, var_name="CO2_em_anthro", cell_area=cell_area, keep_sectors=True).transpose() # to make it year,sector (instead of sector,year)
-total_emissions_ts_cmip6 = ds_to_annual_emissions_total(scen_ds_cmip6, var_name="CO2_em_anthro", cell_area=cell_area, keep_sectors=False)
-
-
-# %%
-#fig, axs = plt.subplots(2, 2, figsize=(15, 10), sharex=True)
-
-#plot_one_emissions_timeseries(total_emissions_ts, ax=axs[0, 0],
-#    title="Total Emissions (Scenario CMIP7)")
-#plot_sectors_emissions_timeseries(sectoral_emissions_ts, ax=axs[0, 1],
-#    title="Sectoral Emissions (Scenario CMIP7)")
-
-#plot_one_emissions_timeseries(total_emissions_ts_cmip6, ax=axs[1, 0],
-#    title="Total Emissions (CMIP6)")
-#plot_sectors_emissions_timeseries(sectoral_emissions_ts_cmip6, ax=axs[1, 1],
-#    title="Sectoral Emissions (CMIP6)")
-
-#fig.suptitle("Emissions Time Series Comparison", fontsize=16)
-
-#plt.tight_layout(rect=[0, 0, 1, 0.96])
-#plt.savefig(Path(plots_path, f"comparison_with_CMIP6_MESSAGE_ssp245_{MODEL_SELECTION_GRIDDED}_{SCENARIO_SELECTION_GRIDDED}.png"))
-#plt.show()
-
-
-# %%
-#plot_sectors_emissions_timeseries_area_DRAFT2(sectoral_emissions_ts)
-
-# %%
-#plot_sectors_emissions_timeseries_area_DRAFT2(sectoral_emissions_ts_cmip6)
 
 # %% [markdown]
 # # Compare CMIP7 gridded emissions with harmonised scenario emissions 
