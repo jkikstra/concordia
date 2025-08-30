@@ -45,6 +45,8 @@ SECTOR_ORDERING_DEFAULT = {
         "Solvents Production and Application",
         "Waste",
         "International Shipping",
+        "Other non-Land CDR",
+        "BECCS",
     ],
     "em_openburning": [
         "Agricultural Waste Burning",
@@ -64,6 +66,8 @@ SECTOR_ORDERING_GAS = {
         "Solvents Production and Application",
         "Waste",
         "International Shipping",
+        "Other non-Land CDR",
+        "BECCS",
         # "Deforestation and other LUC",
         # "OAE Calcination Emissions",
         # "CDR Afforestation",
