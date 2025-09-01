@@ -68,11 +68,19 @@ SETTINGS_FILE = "config_cmip7_v0_2.yaml"
 HISTORY_FILE = "cmip7_history_countrylevel_250721.csv"
 
 # %%
+sectors = {
+    "Energy" : "Energy Sector",
+    "Industrial" : "Industrial Sector",
+    "Residential, Commercial, Other" : "Residential Commercial Other",
+    "Transportation" : "Transportation Sector"
+}
+
+# %%
 history = pd.read_csv(
     Path(history_path, HISTORY_FILE), index_col=[0, 1, 2, 3, 4]
 ).dropna(axis=1)
 
-history
+history.loc[pix.ismatch(region="ind", model="CEDS_v_2025_03_18")].index.get_level_values("variable")
 
 # %%
 countrymap_path = Path(grid_file_location)
@@ -180,6 +188,8 @@ for file in tqdm(gridded_files, desc="Files"):
 # %%
 df_all = pd.concat(dfs)
 df_all = df_all.reset_index()
+
+df_all["sector"] = df_all["sector"].replace(sectors)
 df_all["variable"] = "Emissions|" + df_all["gas"] + "|" + df_all["sector"]
 df_all["unit"] = "Mt " + df_all["gas"] + "/yr"
 df_all["2023"] = df_all[2023]
