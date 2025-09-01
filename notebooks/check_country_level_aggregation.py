@@ -33,6 +33,9 @@ from tqdm import tqdm
 # %%
 lock = SerializableLock()
 
+# %% [markdown]
+# ## paths and dicts
+
 # %%
 GRIDDING_VERSION = "config_cmip7_v0_2" # jarmo 10.08.2025 (first go, with hist 022)
 GRIDDING_VERSION = "config_cmip7_v0_2_newhistory_remind" # jarmo 10.08.2025 (second go, with updated hist)
@@ -61,6 +64,8 @@ cmip7_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{GRIDDING_VE
 plots_path = cmip7_data_location / "plots"
 plots_path.mkdir(exist_ok=True, parents=True)
 
+outfile = Path(cmip7_data_location, "comparison_with_historical_country_level.csv")
+
 # %%
 HARMONIZATION_VERSION = "config_cmip7_v0_2_CEDS_proxies_compressed"
 SETTINGS_FILE = "config_cmip7_v0_2.yaml"
@@ -73,6 +78,9 @@ sectors = {
     "Residential, Commercial, Other" : "Residential Commercial Other",
     "Transportation" : "Transportation Sector"
 }
+
+# %% [markdown]
+# ## import files
 
 # %%
 history = pd.read_csv(
@@ -88,24 +96,23 @@ mask = xr.open_dataset(
 )
 
 # %%
-mask
-
- # %%
- mask.sel(iso="chn")["__xarray_dataarray_variable__"]
-
-# %%
 iso_list = np.unique(mask["iso"])
 
 # %%
+areacella = xr.open_dataset(Path(grid_file_location, "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc"))
+cell_area = areacella["areacella"]
+
+# %% [markdown]
+# ## test plot of mask
+
+# %%
+# for test plot
+
 ds = xr.open_dataset(Path(cmip7_data_location, "BC-em-anthro_input4MIPs_emissions_CMIP7_IIASA-REMIND-MAgPIE-3.5-4.11-SSP1---Very-Low-Emissions_gn_202301-210012.nc"))
 
 # %%
-da_masked = ds["BC_em_anthro"].where(mask.sel(iso="chn")["__xarray_dataarray_variable__"], other=0)
-
-# %%
-da_to_plot = da_masked.isel(time=1).sel(sector="Industrial")
-
-# %%
+# da_masked = ds["BC_em_anthro"].where(mask.sel(iso="chn")["__xarray_dataarray_variable__"], other=0)
+# da_to_plot = da_masked.isel(time=1).sel(sector="Industrial")
 da_to_plot =  mask.sel(iso="aus")["__xarray_dataarray_variable__"]
 
 fig, ax = plt.subplots(subplot_kw={"projection": ccrs.PlateCarree()}, figsize=(12,6))
@@ -114,7 +121,10 @@ da_to_plot.plot.pcolormesh(
     ax=ax,
     transform=ccrs.PlateCarree(),
     cmap="viridis",
-    add_colorbar=True
+    add_colorbar=True,
+    cbar_kwargs={
+        "shrink": 0.8
+    }
 )
 
 ax.add_feature(cfeature.BORDERS, linewidth=0.8)
@@ -122,10 +132,9 @@ ax.add_feature(cfeature.COASTLINE, linewidth=0.8)
 
 plt.show()
 
-# %%
-areacella = xr.open_dataset(Path(grid_file_location, "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc"))
-cell_area = areacella["areacella"]
 
+# %% [markdown]
+# ## main function
 
 # %%
 def ds_to_annual_emissions_total(gridded_data, var_name, cell_area, keep_sectors=True):
@@ -174,42 +183,8 @@ def ds_to_annual_emissions_total(gridded_data, var_name, cell_area, keep_sectors
     return da_Mt_y
 
 
-# %%
-gridded_files = glob.glob(os.path.join(cmip7_data_location, "*-em-anthro_*.nc"))
-
-dfs = []
-
-for file in tqdm(gridded_files, desc="Files"):
-    print(f"Processing {file}...")
-
-    ds = xr.open_dataset(file, chunks={"time": 12})
-    ds = ds.sel(time=ds["time"].dt.year == 2023)
-    
-    varname = list(ds.data_vars)[0]
-
-    with ProgressBar():
-        for iso in iso_list:
-            print(iso)
-            
-            da_masked = ds[varname].where(mask.sel(iso=iso)["__xarray_dataarray_variable__"], other=0)
-            ds_country = da_masked.to_dataset(name=varname)
-    
-            da_Mt_y = ds_to_annual_emissions_total(
-                ds_country, varname, cell_area, keep_sectors=True
-            ).compute()
-    
-            df_country = da_Mt_y.to_dataframe(name=varname).reset_index()
-            df_country = df_country.assign(
-                region=iso,
-                unit="Mt/year",
-                gas=varname.split("_")[0]
-            )
-            df_country = df_country.pivot_table(
-                index=["region", "sector", "unit", "gas"],
-                columns="year",
-                values=varname).sort_index().sort_index(axis=1)
-            
-            dfs.append(df_country)
+# %% [markdown]
+# ## country level aggregation loop
 
 # %%
 gridded_files = glob.glob(os.path.join(cmip7_data_location, "*-em-anthro_*.nc"))
@@ -245,6 +220,9 @@ combined = xr.concat(dfs_lazy, dim="region")
 with ProgressBar():
     combined = combined.compute()
 
+# %% [markdown]
+# ## post-processing and renaming
+
 # %%
 df_all = combined.to_dataframe().reset_index()
 varname = df_all.columns[-1]
@@ -276,6 +254,9 @@ gridded
 # %%
 hist = history["2023"].reset_index().drop(columns=["scenario", "model"]).set_index(["region","variable","unit"])
 
+# %% [markdown]
+# ## comparison with historical CEDS data, already aggregated to country level
+
 # %%
 gridded = gridded.rename(columns={gridded.columns[0]: "reaggregated_2023"})
 hist = hist.rename(columns={hist.columns[0]: "historical_2023"})
@@ -286,13 +267,12 @@ df_compare = gridded.join(hist, how="inner")
 # compute difference
 df_compare["difference (hist-reagg)"] = df_compare["historical_2023"] - df_compare["reaggregated_2023"]
 df_compare["ratio (hist/reagg)"] = df_compare["historical_2023"] / df_compare["reaggregated_2023"]
-df_compare["percent (of hist)"] = abs((df_compare["difference (hist-reagg)"] / df_compare["historical_2023"]) *100)
-
+df_compare["percent (of hist)"] = abs(df_compare["difference (hist-reagg)"] / df_compare["historical_2023"].replace(0, np.nan) * 100)
 df_compare.reset_index(inplace=True)
 
 # %%
 df_compare = df_compare[~df_compare["variable"].str.endswith("|International Shipping")]
-df_compare
+df_compare.to_csv(outfile)
 
 # %%
 df_compare[df_compare["region"]=="ind"]
