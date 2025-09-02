@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.7
+#       jupytext_version: 1.16.4
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -30,6 +30,20 @@ alt.renderers.enable('default')
 import seaborn as sns
 
 import cartopy.crs as ccrs
+from matplotlib import colors
+
+from itertools import product
+import cftime
+import numpy as np
+
+import matplotlib.pyplot as plt
+import cartopy.crs as ccrs
+import numpy as np
+import cartopy.feature as cfeature # for country borders
+
+from matplotlib import colors
+import matplotlib.cm as cm
+
 
 # from concordia.cmip7 import utils as cmip7_utils
 
@@ -90,9 +104,13 @@ lock = SerializableLock()
 
 # %%
 # Gridded scenario output
-GRIDDING_VERSION = "config_cmip7_v0_2_WSTfix_remind" # jarmo 21.08.2025 (third go, with updated hist, with fixed Waste)
+# GRIDDING_VERSION = "config_cmip7_v0_2_WSTfix_remind" # jarmo 21.08.2025 (third go, with updated hist, with fixed Waste)
+# #GRIDDING_VERSION = "config_cmip7_v0_3_GCAM"
+# path_scen_cmip7 = Path(f"C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v0_2/{GRIDDING_VERSION}") # gridding output
+GRIDDING_VERSION = "config_cmip7_v0_2_CEDSnc_remind" # jarmo 31.08.2025 (fourth go, based on Annika's CEDS-ESGF fixes, but with CDR)
+# GRIDDING_VERSION = "config_cmip7_v0_2_CEDSnc_remind_only_CO2" # jarmo 30.08.2025 (fourth go, but with CDR)
 #GRIDDING_VERSION = "config_cmip7_v0_3_GCAM"
-path_scen_cmip7 = Path(f"C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v0_2/{GRIDDING_VERSION}") # gridding output
+path_scen_cmip7 = Path(f"C:/Users/kikstra/Documents/GitHub/concordia/results/{GRIDDING_VERSION}") # gridding output
 
 # CEDS (CMIP7)
 path_ceds_cmip7 = Path(f"C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/ESGF/CEDS/CMIP7_anthro") 
@@ -205,8 +223,12 @@ def df_to_wide_timeseries(da):
 # ## Aggregation to global total and unit conversion
 
 # %%
+# sample variable
+var = "CO2-em-anthro"
+
+# %%
 # load a CMIP7 scenario sample file
-scen_cmip7_data_file = f"CO-em-anthro_input4MIPs_emissions_CMIP7_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
+scen_cmip7_data_file = f"{var}_input4MIPs_emissions_CMIP7_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
 
 scen_ds = read_nc_file(
     f = scen_cmip7_data_file,
@@ -215,7 +237,7 @@ scen_ds = read_nc_file(
 
 # %%
 # load a CMIP7 CEDS sample file
-ceds_cmip7_data_file = "CO-em-anthro_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn_200001-202312.nc"
+ceds_cmip7_data_file = f"{var}_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn_200001-202312.nc"
 
 ceds_ds = read_nc_file(
     f = ceds_cmip7_data_file,
@@ -235,79 +257,18 @@ def shifted_white_colormap(cmap_name="GnBu", vmin=None, vmax=None, vcenter=0):
     midpoint_index = 128  # halfway in 256-color map
     new_cmap[midpoint_index] = [1, 1, 1, 1]  # RGBA for white
 
+    # Handle case where all values are zero (vmin=vmax=vcenter=0)
+    if vmin == vmax == vcenter == 0:
+        vmin, vmax = -1, 1  # Set default range when all zeros
+    
     return colors.ListedColormap(new_cmap), colors.TwoSlopeNorm(vmin=vmin, vcenter=vcenter, vmax=vmax)
-
-def plot_maps_species_sectors(ds, 
-                              species, 
-                              sectors, 
-                              times,
-                              ncols=3, proj=ccrs.Robinson()): 
-
-    nrows = len(species)*len(times)
-    ncols = len(sectors)
-
-    fig, axes = plt.subplots(
-        nrows=nrows,
-        ncols=ncols,
-        figsize=(6 * ncols, 4.5 * nrows),
-        subplot_kw={"projection": ccrs.Robinson()}
-    )
-
-    # Flatten axes safely
-    if isinstance(axes, np.ndarray):
-        axes = axes.flatten() # make indexing easier
-    else:
-        axes = [axes]
-
-    for i, (time, gas, sector) in enumerate(product(times, species, sectors)):
-        # ds = xr.open_dataset(
-        #     basepath / f"{gas}-em-anthro_input4MIPs_emissions_CMIP7_IIASA-REMIND-MAgPIE-3.5-4.11-SSP1---Very-Low-Emissions_gn_202301-210012.nc"
-        # )
-
-        # ADD HERE THE (i) read in AND (ii) select FOR (a) CEDS and (b) SCEN
-
-        
-        da = (
-            ds.sel(sector=sector)
-            .sel(time=time, method="nearest")
-            .squeeze()  # or whatever your variable is
-        )
-        da = da[f'{gas}_em_anthro'].squeeze()
-
-
-        # Use TwoSlopeNorm centered at 0 and custom cmap
-        vmin = float(da.min())
-        vmax = float(da.max())
-        cmap, norm = shifted_white_colormap(
-            # "GnBu",
-            "coolwarm",
-            # "bwr",
-            # "seismic",
-            vmin=vmin, vmax=vmax)
-
-        # Plot directly with xarray's .plot.pcolormesh
-        da.plot.pcolormesh(
-            ax=axes[i],
-            transform=ccrs.PlateCarree(),
-            # cmap="GnBu",
-            cmap=cmap,
-            robust=True,
-            cbar_kwargs={"orientation": "horizontal", "shrink": 0.65},
-        )
-        axes[i].set_title(f"{gas}, sector: {sector}, time: {time}")
-        axes[i].coastlines()
-
-    # Remove any unused axes
-    for j in range(i + 1, len(axes)):
-        fig.delaxes(axes[j])
-
-    plt.tight_layout()
-    plt.show()
 
 
 def plot_ceds_vs_scenario_comparison(ceds_da, scen_da, gas, sectors, time_slice,
                                      figsize_per_panel=(4, 3), proj=ccrs.Robinson(),
-                                     colour_scale_max_percentile = 98):
+                                     colour_scale_max_percentile = 98,
+                                     empty_treatment="fill_zeroes" # alternative: "skip"
+                                     ):
     """
     Plot comparison between CEDS and scenario data in 4 columns:
     1. CEDS data
@@ -365,19 +326,53 @@ def plot_ceds_vs_scenario_comparison(ceds_da, scen_da, gas, sectors, time_slice,
                   'Percentage Difference (%)']
     
     for row, sector in enumerate(sectors):
+        # Check if sector exists in both datasets
+        sector_in_ceds = sector in ceds_da.sector.values
+        sector_in_scen = sector in scen_da.sector.values
+
+        if sector in ['Other non-Land CDR', 'BECCS'] and gas != "CO2":
+            continue
+        
+        if empty_treatment=="skip":
+            # Skip missing sectors (uncomment to use)
+            if not sector_in_ceds or not sector_in_scen:
+                print(f"Skipping sector '{sector}' - missing in {'CEDS' if not sector_in_ceds else 'scenario'} data")
+                # Skip this row by plotting empty axes
+                for col in range(ncols):
+                    ax = axes[row, col]
+                    ax.set_visible(False)
+                continue
+        
         # Find the closest time index manually to avoid monotonic index issues
         time_diff = np.abs(ceds_da.time - time_slice)
         closest_time_idx = time_diff.argmin().item()
         
-        # Select data for this sector using integer indexing
-        ceds_sector = ceds_da.sel(sector=sector).isel(time=closest_time_idx).squeeze()
-        scen_sector = scen_da.sel(sector=sector).isel(time=closest_time_idx).squeeze()
-        diff_sector = diff_da.sel(sector=sector).isel(time=closest_time_idx).squeeze()
+        if empty_treatment=="fill_zeroes":
+            # Option 2: Fill missing sectors with zeros (default)
+            if sector_in_ceds:
+                ceds_sector = ceds_da.sel(sector=sector).isel(time=closest_time_idx).squeeze()
+            else:
+                print(f"Warning: Sector '{sector}' not found in CEDS data, using zeros")
+                # Create zero array with same spatial dimensions as other data
+                template_sector = ceds_da.isel(sector=0, time=closest_time_idx).squeeze()
+                ceds_sector = xr.zeros_like(template_sector)
+                
+            if sector_in_scen:
+                scen_sector = scen_da.sel(sector=sector).isel(time=closest_time_idx).squeeze()
+            else:
+                print(f"Warning: Sector '{sector}' not found in scenario data, using zeros")
+                # Create zero array with same spatial dimensions as other data
+                template_sector = scen_da.isel(sector=0, time=closest_time_idx).squeeze()
+                scen_sector = xr.zeros_like(template_sector)
+            
+        # Calculate difference (will handle zero arrays correctly)
+        diff_sector = ceds_sector - scen_sector
         
         # Get the actual data arrays
-        ceds_values = ceds_sector[f'{gas}_em_anthro']
-        scen_values = scen_sector[f'{gas}_em_anthro']  
-        diff_values = diff_sector[f'{gas}_em_anthro']
+        var_name = f'{gas}_em_anthro'
+        ceds_values = ceds_sector[var_name] if var_name in ceds_sector else ceds_sector[list(ceds_sector.data_vars)[0]]
+        scen_values = scen_sector[var_name] if var_name in scen_sector else scen_sector[list(scen_sector.data_vars)[0]]  
+        diff_values = diff_sector[var_name] if var_name in diff_sector else diff_sector[list(diff_sector.data_vars)[0]]
         
         # Calculate percentage difference, handling division by zero
         pct_diff = xr.where(ceds_values != 0, (diff_values / ceds_values) * 100, 0)
@@ -392,14 +387,40 @@ def plot_ceds_vs_scenario_comparison(ceds_da, scen_da, gas, sectors, time_slice,
             # Set colormap normalization
             # --> think about also using shifted_white_colormap() for 2 and 3 (maybe even for 0 and 1?)
             if col in [0, 1]:
-                vmin_auto = float(np.percentile(ceds_values.values[~np.isnan(ceds_values.values)], 2)) # generally should be zero (except for negative emissions)
-                vmax_auto = float(np.percentile(ceds_values.values[~np.isnan(ceds_values.values)], colour_scale_max_percentile)) # normally 98 to ensure that point-sources are not dominating the (linear) colour scale
+                # Get valid (non-NaN) values for percentile calculation
+                valid_ceds_values = ceds_values.values[~np.isnan(ceds_values.values)]
+                
+                # Handle case where no valid values exist
+                if len(valid_ceds_values) == 0:
+                    vmin_auto, vmax_auto = 0.0, 1.0
+                else:
+                    vmin_auto = float(np.percentile(valid_ceds_values, 2)) # generally should be zero (except for negative emissions)
+                    vmax_auto = float(np.percentile(valid_ceds_values, colour_scale_max_percentile)) # normally 98 to ensure that point-sources are not dominating the (linear) colour scale
+                
                 print(f"Column {col}: linear vmin={vmin_auto:.2e}, vmax={vmax_auto:.2e}")
-                norm = colors.Normalize(vmin=vmin_auto, vmax=vmax_auto)  # Simple linear normalization from 0 to max
+                
+                # Handle case where all values are zero
+                if vmax_auto == vmin_auto:  # All values are the same (likely zero)
+                    norm = colors.Normalize(vmin=0, vmax=1)  # Default range when all zeros
+                else:
+                    norm = colors.Normalize(vmin=vmin_auto, vmax=vmax_auto)  # Simple linear normalization from min to max
             elif col == 2:
-                vmax = float(np.percentile(ceds_values.values[~np.isnan(data.values)], 98)) # use CEDS min/max for colourbar
+                # Get valid (non-NaN) values for percentile calculation
+                valid_ceds_values = ceds_values.values[~np.isnan(ceds_values.values)]
+                
+                # Handle case where no valid values exist
+                if len(valid_ceds_values) == 0:
+                    vmax = 1.0
+                else:
+                    vmax = float(np.percentile(valid_ceds_values, 98)) # use CEDS min/max for colourbar
+                
                 # vmin, vmax = float(data.min()), float(data.max())
-                norm = colors.TwoSlopeNorm(vmin=-vmax, vcenter=0, vmax=vmax) # set colourbar to maximum value of CEDS
+                
+                # Handle case where all values are zero
+                if vmax == 0:
+                    norm = colors.TwoSlopeNorm(vmin=-1, vcenter=0, vmax=1) # set default range when all zeros
+                else:
+                    norm = colors.TwoSlopeNorm(vmin=-vmax, vcenter=0, vmax=vmax) # set colourbar to maximum value of CEDS
             elif col == 3:  # Percentage difference - center at 0
                 # abs_max = max(abs(float(data.min())), abs(float(data.max())))
                 abs_max = 100 # cap out the colour bar at 50%
@@ -714,39 +735,21 @@ def plot_place_multisector_combined_timeseries(ceds_ds, scen_ds,
 
 
 
+
+
 # %% [markdown]
-# ### Make 2023 plots like: {DONE}
-# - 3 columns: CEDS, CMIP7 scen, diff
-#   * per sector
-#   * per gas
-# - 3 columns: 2023, 2050, 2100 {TBD}
-#   * per sector
-#   * per gas
-# ### Make timeseries plots like:
-# - beijing 
-#   * closest gridcell
-#   * average of gridcells
-# - geneva
+# ### Comparison with CEDS: maps and timeseries, per sector, per species
+
 
 
 # %%
-# Loop
-import cftime
-import numpy as np
-
-import matplotlib.pyplot as plt
-import cartopy.crs as ccrs
-import numpy as np
-import cartopy.feature as cfeature # for country borders
-
-from itertools import product
-from matplotlib import colors
-import matplotlib.cm as cm
+# Loop (1) 
 
 GASES = [
     "BC", 
     "CO", 
-    "CO2", "NOx", "OC", 
+    "CO2", 
+    "NOx", "OC", 
     "Sulfur",
     "CH4","N2O", "NH3", 
     "VOC"
@@ -768,31 +771,34 @@ def rename_CEDS_data_variable_name(ds, gas):
     return ds.rename({f"{file_gas}_em_anthro": f"{gas}_em_anthro"})
     
 SECTORS = [
-    # "Agriculture",
+    "Agriculture",
     "Energy",
     "Industrial",
     "Transportation",
     "Residential, Commercial, Other",
-    # "Solvents production and application",
+    "Solvents production and application",
     "Waste",
-    "International Shipping"
+    "International Shipping",
+    "Other non-Land CDR",
+    "BECCS"
 ]
 # times = [cftime.DatetimeNoLeap(2023, mon, 16) for mon in range(1, 13)]
 TIMES = [
     # cftime.DatetimeNoLeap(2023, 1, 16),
     # cftime.DatetimeNoLeap(2023, 2, 15),
+    cftime.DatetimeNoLeap(2023, 6, 15),
     cftime.DatetimeNoLeap(2023, 12, 16)
 ]
 
 PLOTS = [
     'maps',
-    # 'timeseries'
+    'timeseries'
 ]
 
 for g in GASES:
     
     # load and organise data
-    # load a CMIP7 scenario sample file
+    # load a CMIP7 scenario file
     scen_cmip7_data_file = f"{g}-em-anthro_input4MIPs_emissions_CMIP7_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
 
     scen_ds = read_nc_file(
@@ -800,7 +806,7 @@ for g in GASES:
         loc = path_scen_cmip7
     )
 
-    # load a CMIP7 CEDS sample file
+    # load a CMIP7 CEDS file
     file_gas_ceds = get_file_gas_name_CEDS(g) # for different naming VOC and Sulfur
     ceds_cmip7_data_file = f"{file_gas_ceds}-em-anthro_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn_200001-202312.nc"
 
@@ -847,7 +853,8 @@ for g in GASES:
             gas=g,
             sectors=SECTORS,
             time_slice=TIMES[0],  # Use first time slice, in case more are specified
-            figsize_per_panel=(4, 3)
+            figsize_per_panel=(4, 3),
+            # colour_scale_max_percentile=100
         )
         
         # Save the plot in both PNG and PDF formats
@@ -926,3 +933,163 @@ for g in GASES:
 
 
 # %%
+# Functions for just CMIP7 data, without comparison to CEDS
+
+def plot_maps_species_times(ds, 
+                              species,
+                              sector_file, 
+                              times,
+                              ncols=3, proj=ccrs.Robinson(),
+                              aircraft_level=0.305
+                              ): 
+
+    nrows = len(times)
+    ncols = len(species) if isinstance(species, list) else 1
+    
+    # Handle single species case
+    if isinstance(species, str):
+        species = [species]
+
+    fig, axes = plt.subplots(
+        nrows=nrows,
+        ncols=ncols,
+        figsize=(8 * ncols, 4.5 * nrows),
+        subplot_kw={"projection": proj}
+    )
+
+    # Flatten axes safely
+    if isinstance(axes, np.ndarray):
+        axes = axes.flatten() # make indexing easier
+    else:
+        axes = [axes]
+
+    for i, (time, gas) in enumerate(product(times, species)):
+        
+        # Sum over all sectors
+        if sector_file!="AIR-anthro":
+            da = (
+                ds
+                .sel(time=time, method="nearest")
+                .sum(dim="sector")  # Sum over all sectors
+                .squeeze()  
+            )
+            v = sector_file
+        else:
+            da = (
+                ds 
+                .sel(time=time, method="nearest")
+                # .sel(level=aircraft_level)
+                .sum(dim="level")
+                .squeeze()  
+            )
+            v = "AIR_anthro" # for the variable name this is necessary
+            
+        da = da[f'{gas}_em_{v}'].squeeze()
+
+        # Use TwoSlopeNorm centered at 0 and custom cmap
+        vmin = float(da.min())
+        vmax = float(da.max())
+        # if vmin >= 0:
+        if vmin >= -1e-8:
+            cmap = "GnBu"
+            norm = None
+            rob = True
+        else:
+            print(f"Negative values (lowest: {vmin}) in the data for {gas}-{sector_file}")
+            cmap, norm = shifted_white_colormap(
+                "coolwarm",
+                vmin=vmin, vmax=vmax
+            )
+            rob = False
+
+        # Plot directly with xarray's .plot.pcolormesh
+        da.plot.pcolormesh(
+            ax=axes[i],
+            transform=ccrs.PlateCarree(),
+            cmap=cmap,
+            norm=norm,
+            robust=rob,
+            cbar_kwargs={"orientation": "horizontal", "shrink": 0.65},
+        )
+        axes[i].set_title(f"{gas}, time: {time}, file: {sector_file}")
+        axes[i].coastlines()
+        axes[i].add_feature(cfeature.BORDERS, linewidth=0.3, alpha=0.5)
+
+    # Remove any unused axes
+    for j in range(i + 1, len(axes)):
+        fig.delaxes(axes[j])
+
+    plt.tight_layout()
+    return fig  # Return the figure for saving
+
+
+
+# %%
+# Loop (2): plot totals 
+
+GASES = [
+    "BC", 
+    "CO", 
+    "CO2", 
+    "NOx", 
+    "OC", 
+    "Sulfur",
+    "CH4",
+    "N2O", 
+    "NH3", 
+    "VOC"
+    ]
+
+# times = [cftime.DatetimeNoLeap(2023, mon, 16) for mon in range(1, 13)]
+TIMES = [
+    # cftime.DatetimeNoLeap(2023, 1, 16),
+    # cftime.DatetimeNoLeap(2023, 2, 15),
+    # cftime.DatetimeNoLeap(2023, 6, 15),
+    cftime.DatetimeNoLeap(2023, 12, 16),
+    cftime.DatetimeNoLeap(2050, 12, 16),
+    cftime.DatetimeNoLeap(2100, 12, 16)
+]
+
+PLOTS = [
+    # 'maps-all-species', # not yet implemented; 1 species per file...
+    'maps-per-species'
+]
+
+# Separte plots for each gas:
+if 'maps-per-species' in PLOTS:
+    for g in GASES:
+        # load a CMIP7 scenario file
+
+        for sector_file in [
+            'anthro',
+            'AIR-anthro',
+            'openburning',
+        ]:
+            if ((g=="N2O") and (sector_file!="anthro")):
+                print(f"{g}-em-{sector_file} not available")
+                continue
+            if ((g=="CO2") and (sector_file=="openburning")):
+                print(f"{g}-em-{sector_file} not available")
+                continue
+
+            scen_cmip7_data_file = f"{g}-em-{sector_file}_input4MIPs_emissions_CMIP7_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
+
+            scen_ds = read_nc_file(
+                f = scen_cmip7_data_file,
+                loc = path_scen_cmip7
+            )
+
+            fig = plot_maps_species_times(ds=scen_ds,
+                                    species=g,
+                                    sector_file=sector_file,
+                                    times=TIMES)
+            
+            # Save the figure
+            filename = f"total_emissions_map_{g}_em_{sector_file}_{MODEL_SELECTION_GRIDDED}_{SCENARIO_SELECTION_GRIDDED}.png"
+            fig.savefig(plots_path / filename, dpi=300, 
+                        bbox_inches='tight')
+            print(f"Saved: {filename}")
+
+            # close figure to free memory
+            plt.close(fig)
+    
