@@ -35,7 +35,7 @@ from matplotlib import colors
 
 import cartopy.crs as ccrs
 
-from matplotlib.animation import FuncAnimation
+from matplotlib.animation import FuncAnimation, PillowWriter
 
 # from concordia.cmip7 import utils as cmip7_utils
 
@@ -54,8 +54,8 @@ lock = SerializableLock()
 # GRIDDING_VERSION = "config_cmip7_v0_2_WSTfix_remind" # jarmo 21.08.2025 (third go, with updated hist, with fixed Waste)
 # #GRIDDING_VERSION = "config_cmip7_v0_3_GCAM"
 # path_scen_cmip7 = Path(f"C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v0_2/{GRIDDING_VERSION}") # gridding output
-GRIDDING_VERSION = "config_cmip7_v0_2_CEDSnc_remind" # jarmo 29.08.2025 (fourth go, based on Annika's CEDS-ESGF fixes)
-GRIDDING_VERSION = "config_cmip7_v0_2_CEDSnc_remind_only_CO2" # jarmo 30.08.2025 (fourth go, but with CDR)
+GRIDDING_VERSION = "config_cmip7_v0_2_CEDSnc_remind" # jarmo 31.08.2025 (v0.2 to share)
+# GRIDDING_VERSION = "config_cmip7_v0_2_CEDSnc_remind_only_CO2" # jarmo 30.08.2025 (fourth go, but with CDR)
 #GRIDDING_VERSION = "config_cmip7_v0_3_GCAM"
 path_scen_cmip7 = Path(f"C:/Users/kikstra/Documents/GitHub/concordia/results/{GRIDDING_VERSION}") # gridding output
 
@@ -141,13 +141,6 @@ scen_ds
 # %% [markdown]
 # ## Emissions grid gifs 
 
-# %%
-# what to plot
-sector = "BECCS"
-gas = "CO2"
-times = scen_ds.time
-ds = scen_ds
-out_path = plots_path
 
 # %%
 # run the plot
@@ -160,17 +153,27 @@ def plot_gif_gas_sector(
         out_path,
         show = False
 ): 
+    # Check if sector exists in the dataset
+    if sector not in ds.sector.values:
+        print(f"Sector '{sector}' does not exist for gas '{gas}'. Available sectors: {list(ds.sector.values)}")
+        return
 
     # Select the data for all frames first (keeps vmin/vmax consistent across frames)
+    print(f"LOADING: sector '{sector}', gas '{gas}'.")
     da_all = (
         ds.sel(sector=sector)
         .sel(time=times, method="nearest")[f"{gas}_em_anthro"]
         .squeeze()
     )
 
+    # Check if all values are NaN
+    if np.isnan(da_all.values).all():
+        print(f"All values are NaN for gas '{gas}', sector '{sector}'. Skipping animation.")
+        return
+
     # Color scale fixed across frames (takes some time to calculate the min and max)
     vmin = float(np.percentile(da_all.values[~np.isnan(da_all.values)], 2)) # generally should be zero (except for negative emissions)
-    vmax = float(np.percentile(da_all.values[~np.isnan(da_all.values)], 98)) # normally 98 to ensure that point-sources are not dominating the (linear) colour scale
+    vmax = float(np.percentile(da_all.values[~np.isnan(da_all.values)], 99)) # normally 98 to ensure that point-sources are not dominating the (linear) colour scale, but can be higher if a lot of data is small
     norm = colors.Normalize(vmin=vmin, vmax=vmax)
 
     # Figure + axis (same style)
@@ -207,18 +210,38 @@ def plot_gif_gas_sector(
 
     # Update function
     def update(i):
-        frame = da_all.isel(time=i)
+        # handle both normal frames and pause frames
+        if i < len(times):
+            frame = da_all.isel(time=i)
+        else:  # repeat the last frame
+            frame = da_all.isel(time=-1)
+
         im.set_array(np.ravel(frame.values))
-        t_str = time_index[i].strftime("%Y-%m-%d") if hasattr(time_index[i], "strftime") else str(time_index[i])[:10]
+        t_index = min(i, len(times)-1)
+        t_str = time_index[t_index].strftime("%Y-%m-%d") \
+            if hasattr(time_index[t_index], "strftime") else str(time_index[t_index])[:10]
         title.set_text(f"{gas}, sector: {sector}, time: {t_str}")
         return (im,)
 
+    
+    # GIF speed specifications
+    base_fps = 10
+    speed = 1
+    fps = int(base_fps * speed)
+    pause = 5 # pause at the end of GIF (in seconds)
+    pause_frames = pause * fps
+    writer = PillowWriter(fps=fps)
+
     # Animate
-    anim = FuncAnimation(fig, update, frames=len(times), interval=300, blit=False)
+    anim = FuncAnimation(fig, update, frames=len(times) + pause_frames, interval=300, blit=False)
+
 
     # Save as GIF (requires Pillow)
-    anim.save(out_path / f"{gas}-{sector}_emissions_animation.gif",
-            writer="pillow", dpi=150)
+    out_file_path = out_path / f"{gas}-{sector}_emissions_animation.gif"
+    print(f"WRITING (start): '{out_file_path}'.")
+    anim.save(out_file_path,
+              writer=writer, dpi=150)
+    print(f"WRITING (finished): '{out_file_path}'.")
     # # or MP4:
     # anim.save(Path("C:/Users/kikstra/Documents/GitHub/concordia/results/config_cmip7_v0_2_CEDSnc_remind_only_CO2/plots") / f"{gas}-{sector}_emissions_animation.mp4",
     #           writer="ffmpeg", dpi=120, bitrate=3000)
@@ -233,8 +256,27 @@ def plot_gif_gas_sector(
 # %%
 # Run the plot
 
-for s in ["Energy", "Industrial", "International Shipping", "Other non-Land CDR"]:
-    for g in ["CO2"]:
+for s in [
+        "Energy", "Industrial", "International Shipping", 
+        "Residential, Commercial, Other", 
+        "Solvents Production and Application",
+        "Transportation", 
+        "Waste",
+        "Other non-Land CDR", 
+        "BECCS"
+        ]:
+    for g in [
+        "CO2", 
+        "Sulfur"
+        ]:
+
+        var = f"{g}-em-anthro"
+        scen_cmip7_data_file = f"{var}_input4MIPs_emissions_CMIP7_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
+        scen_ds = read_nc_file(
+            f = scen_cmip7_data_file,
+            loc = path_scen_cmip7
+        )
+
         plot_gif_gas_sector(
             ds = scen_ds,
             sector = s,
