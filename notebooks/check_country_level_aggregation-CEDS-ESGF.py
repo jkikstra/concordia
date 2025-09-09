@@ -64,7 +64,7 @@ cmip7_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{GRIDDING_VE
 plots_path = cmip7_data_location / "plots"
 plots_path.mkdir(exist_ok=True, parents=True)
 
-outfile = Path(cmip7_data_location, "comparison_with_historical_country_level.csv")
+outfile = Path(grid_file_location, "comparison_CEDS_aggregated_with_reaggregated_gridded_CEDS.csv")
 
 # %%
 HARMONIZATION_VERSION = "config_cmip7_v0_2_CEDS_proxies_compressed"
@@ -73,10 +73,14 @@ HISTORY_FILE = "cmip7_history_countrylevel_250721.csv"
 
 # %%
 sectors = {
-    "Energy" : "Energy Sector",
-    "Industrial" : "Industrial Sector",
-    "Residential, Commercial, Other" : "Residential Commercial Other",
-    "Transportation" : "Transportation Sector"
+    0: "Agriculture",
+    1: "Energy Sector",
+    2: "Industrial Sector",
+    3: "Transportation Sector",
+    4: "Residential Commercial Other",
+    5: "Solvents Production and Application",
+    6: "Waste",
+    7: "International Shipping"
 }
 
 # %% [markdown]
@@ -89,7 +93,7 @@ history = pd.read_csv(
 
 # %%
 countrymap_path = Path(grid_file_location)
-f = "ssp_comb_countrymask_corrected.nc"
+f = "ssp_comb_countrymask.nc"
 mask = xr.open_dataset(
     countrymap_path / f,
     engine="netcdf4",
@@ -157,7 +161,7 @@ def ds_to_annual_emissions_total(gridded_data, var_name, cell_area, keep_sectors
 # ## country level aggregation loop
 
 # %%
-gridded_files = glob.glob(os.path.join(cmip7_data_location, "*-em-anthro_*.nc"))
+gridded_files = glob.glob(os.path.join(path_ceds_cmip7, "*.nc"))
 
 dfs_lazy = []
 
@@ -206,8 +210,12 @@ df_all = df_all.pivot_table(
 df_all = df_all.reset_index()
 
 # %%
+df_all["gas"]
+
+# %%
 # and a bunch of reformulations to match iamc format
 
+df_all["gas"] = df_all["gas"].replace({"NMVOC": "VOC"})
 df_all["sector"] = df_all["sector"].replace(sectors)
 df_all["variable"] = "Emissions|" + df_all["gas"] + "|" + df_all["sector"]
 df_all["unit"] = "Mt " + df_all["gas"] + "/yr"
@@ -245,14 +253,28 @@ df_compare = df_compare[~df_compare["variable"].str.endswith("|International Shi
 df_compare.to_csv(outfile)
 
 # %%
-plt.hist(df_compare["difference (hist-reagg)"], bins=100, edgecolor="black")
-plt.xlabel("Value")
-plt.ylabel("Frequency")
-plt.title("Histogram of difference (hist-reagg)")
-plt.show()
+df_compare
 
 # %%
-for sector, group in df_compare.groupby("variable"):
+global_reaggregated = df_compare.groupby(["unit"])["reaggregated_2023"].sum().reset_index()
+
+# %%
+global_historical = df_compare.groupby(["unit"])["historical_2023"].sum().reset_index()
+
+# %%
+global_both = pd.merge(global_historical, global_reaggregated, on=["unit"])
+global_both["difference (hist-reagg)"] = global_both["historical_2023"] - global_both["reaggregated_2023"]
+global_both["ratio"] = global_both["reaggregated_2023"] / global_both["historical_2023"]
+global_both["percent (of hist)"] = abs(global_both["difference (hist-reagg)"] / global_both["historical_2023"].replace(0, np.nan) * 100)
+
+global_both
+
+# %%
+df_filtered = df_compare[~df_compare["variable"].str.contains("CO2")]
+df_filtered = df_filtered[~df_filtered["variable"].str.contains("N2O")]
+
+# %%
+for sector, group in df_filtered.groupby("variable"):
     group["difference (hist-reagg)"].hist(bins=25, alpha=0.5, label=sector)
 
 plt.xlabel("Absolute difference")
@@ -262,7 +284,4 @@ plt.grid(False)
 plt.show()
 
 # %%
-df_compare[df_compare["region"]=="ind"]
-
-# %%
-df_compare.dropna().sort_values(by = "percent (of hist)", ascending = False).head(30)
+df_compare.dropna().sort_values(by = "difference (hist-reagg)", ascending = True).head(30)
