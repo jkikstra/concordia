@@ -253,7 +253,7 @@ df_compare = df_compare[~df_compare["variable"].str.endswith("|International Shi
 df_compare.to_csv(outfile)
 
 # %%
-df_compare
+df_compare[df_compare["region"]=="mmr"]
 
 # %%
 global_reaggregated = df_compare.groupby(["unit"])["reaggregated_2023"].sum().reset_index()
@@ -284,4 +284,4 @@ plt.grid(False)
 plt.show()
 
 # %%
-df_compare.dropna().sort_values(by = "difference (hist-reagg)", ascending = True).head(30)
+df_compare.dropna().sort_values(by = "ratio (hist/reagg)", ascending = True).head(30)

@@ -48,6 +48,23 @@ lock = SerializableLock()
 # - gridded emissions
 
 
+# %% [raw]
+# df1 = df_compare
+# df2 = df_gridded
+#
+# def normalize(df):
+#     df = df.copy()
+#     df = df.reset_index(drop=True)         # drop index
+#     df.columns = df.columns.str.strip()    # strip col whitespace
+#     for c in df.columns:
+#         if df[c].dtype == "object":
+#             df[c] = df[c].astype(str).str.strip()   # remove spaces
+#     return df
+#
+# df1_norm = normalize(df1)
+# df2_norm = normalize(df2)
+#
+
 # %% [markdown]
 # # Paths, definitions
 
@@ -58,23 +75,23 @@ GRIDDING_VERSION = "config_cmip7_v0_2_WSTfix_remind" # jarmo 21.08.2025 (third g
 GRIDDING_VERSION = "config_cmip7_v0_2_CEDS_proxies" # annika 27.08.2025 (with proxies derived from CEDS directly for anthro)
 GRIDDING_VERSION = "config_cmip7_v0_2_CEDS_proxies_new_AIR" # annika 28.08.2025 (now also for aircraft)
 GRIDDING_VERSION = "config_cmip7_v0_2_CEDS_proxies_compressed" # annika 28.08.2025 (including encoding for compression)
-GRIDDING_VERSION = "config_cmip7_v0_2_CEDSnc_remind" # Jarmo 31.08.2025 (replicating Annika's work above, with CDR sectors kept in output)
+GRIDDING_VERSION = "config_cmip7_v0_2_newhistory_remind" # with updated CDR utils
 
 # Scenarios pre-gridding
-scenario_data_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_2/input/scenarios/August 08 submission/" # harmonized in emissions_harmonization_historical
-# scenario_data_location = "/home/hoegner/Projects/CMIP7/input/scenarios/"
+# scenario_data_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_2/input/scenarios/August 08 submission/" # harmonized in emissions_harmonization_historical
+scenario_data_location = "/home/hoegner/Projects/CMIP7/input/scenarios/"
 
-# harmonized_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{GRIDDING_VERSION}")
-harmonized_data_location = Path(f"C:/Users/kikstra/documents/GitHub/concordia/results/{GRIDDING_VERSION}") # (re-) harmonized by concordia
+harmonized_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{GRIDDING_VERSION}")
+#harmonized_data_location = Path(f"C:/Users/kikstra/documents/GitHub/concordia/results/{GRIDDING_VERSION}") # (re-) harmonized by concordia
 
 # gridded emissions
 # gridding input files
-# grid_file_location = "/home/hoegner/Projects/CMIP7/input/gridding/"
-grid_file_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_2/input/gridding/"
+grid_file_location = "/home/hoegner/Projects/CMIP7/input/gridding/"
+# grid_file_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_2/input/gridding/"
 
 # CMIP7 gridded emissions
-# cmip7_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{GRIDDING_VERSION}")
-cmip7_data_location = Path(f"C:/Users/kikstra/documents/GitHub/concordia/results/{GRIDDING_VERSION}") # gridding output
+cmip7_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{GRIDDING_VERSION}")
+# cmip7_data_location = Path(f"C:/Users/kikstra/documents/GitHub/concordia/results/{GRIDDING_VERSION}") # gridding output
 
 plots_path = cmip7_data_location / "plots"
 plots_path.mkdir(exist_ok=True, parents=True)

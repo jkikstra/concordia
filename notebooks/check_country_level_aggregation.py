@@ -252,13 +252,18 @@ plt.title("Histogram of difference (hist-reagg)")
 plt.show()
 
 # %%
-for sector, group in df_compare.groupby("variable"):
-    group["difference (hist-reagg)"].hist(bins=25, alpha=0.5, label=sector)
+df_filtered = df_compare[(df_compare["unit"]!="kt N2O/yr") & (df_compare["unit"]!="Mt CO2/yr")]
+df_filtered = df_filtered[df_filtered["difference (hist-reagg)"]!=0]
+
+for sector, group in df_filtered.groupby("unit"):
+    group["difference (hist-reagg)"].hist(bins=100, alpha=0.5, label=sector)
 
 plt.xlabel("Absolute difference")
 plt.ylabel("Count")
-plt.title("Histogram of differences by variable")
+plt.ylim(0,200)
+plt.title("Histogram of differences by species")
 plt.grid(False)
+plt.legend()
 plt.show()
 
 # %%
