@@ -23,6 +23,15 @@
 # to check/confirm this
 
 
+# %% [markdown]
+# ### Steps happening in this notebook, which starts from the PNNL server .Rd files
+# 1. Read in CEDS .Rd files (proxies per country)
+# 2. Read in mapping of sectors where necessary
+# 3. Read in country-level (only implemented for waste) population-fallback data
+# 4. Read in seasonslity files (.x)
+# 5. Combine into proxies (not country-normalised, which happens during gridding)
+#
+
 # %%
 import itertools
 from functools import lru_cache
