@@ -43,6 +43,7 @@ GRIDDING_VERSION = "config_cmip7_v0_2_WSTfix_remind" # jarmo 21.08.2025 (third g
 GRIDDING_VERSION = "config_cmip7_v0_2_CEDS_proxies" # annika 27.08.2025 (with proxies derived from CEDS directly for anthro)
 GRIDDING_VERSION = "config_cmip7_v0_2_CEDS_proxies_new_AIR" # annika 28.08.2025 (now also for aircraft)
 GRIDDING_VERSION = "config_cmip7_v0_2_CEDS_proxies_compressed" # annika 28.08.2025 (including encoding for compression)
+GRIDDING_VERSION = "config_cmip7_v0_2_corrected_indexraster" # annika 12.09.2025 (with corrected indexraster)
 
 # history path
 history_path = Path("/home/hoegner/Projects/CMIP7/input/historical")
@@ -89,7 +90,7 @@ history = pd.read_csv(
 
 # %%
 countrymap_path = Path(grid_file_location)
-f = "ssp_comb_countrymask_corrected.nc"
+f = "ssp_comb_countrymask.nc"
 mask = xr.open_dataset(
     countrymap_path / f,
     engine="netcdf4",
