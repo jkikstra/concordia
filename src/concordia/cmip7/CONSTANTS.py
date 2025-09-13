@@ -1,0 +1,1 @@
+CONFIG = "config_cmip7_v0_2.yaml"
