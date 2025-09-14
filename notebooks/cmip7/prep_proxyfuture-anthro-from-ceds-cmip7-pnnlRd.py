@@ -62,7 +62,7 @@ except (FileNotFoundError, NameError):
 # %%
 sector_mapping = {
     "anthro": ["AGR", "ENE", "IND", "TRA", "RCO", "SLV", "WST"],
-    "aircraft": ["AIR"],
+    "aircraft": ["AIR"], # does not currently work
     "shipping": ["SHP"],
 }
 
@@ -751,7 +751,7 @@ settings.proxy_path
 
 # %%
 if __name__ == "__main__":
-    # full_process("anthro")
+    full_process("anthro")
     # full_process("aircraft") # FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Users\\kikstra\\IIASA\\ECE.prog - Documents\\Projects\\CMIP7\\IAM Data Processing\\concordia_cmip7_v0_2\\input\\gridding\\ceds_input\\seasonality\\AIR_BC_2000_seasonality.nc'; because we have "AIR_BC_2000_seasonality.nc" but `# we can only read netcdfs for air` ?
     full_process("shipping")
 
