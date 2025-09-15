@@ -7,8 +7,11 @@
 
 
 # %% [markdown]
-# ### Steps happening in this notebook, which starts from the PNNL server .Rd files
-# 1. ...
+# ### Steps happening in this notebook, which starts from download BB4CMIP7 files from ESGF
+# 1. Information on how to download this data 
+# 1. single-sector files (peat, awb, grassland)
+# 1. multiple-sector files (forest burning)
+# 1. VOC-speciation
 
 
 
@@ -20,7 +23,7 @@
 # emissions: "D:\ESGF\DRES-CMIP-BB4CMIP7-2-1\atmos\mon\BC\gn\v20250612\BC_input4MIPs_emissions_CMIP_DRES-CMIP-BB4CMIP7-2-1_gn_190001-202312.nc"
 # percentages: "D:\ESGF\DRES-CMIP-BB4CMIP7-2-1\atmos\mon\BCpercentageTEMF\gn\v20250612\BCpercentageTEMF_input4MIPs_emissions_CMIP_DRES-CMIP-BB4CMIP7-2-1_gn_175001-202312.nc"
 
-from concordia.cmip7.CONSTANTS import GASES, CONFIG
+from concordia.cmip7.CONSTANTS import GASES, GASES_ESGF_BB4CMIP, CONFIG
 
 # %%
 # check later if we need all these imports 
@@ -35,6 +38,7 @@ import dask
 from dask import delayed, compute
 from dask.diagnostics import ProgressBar
 from dask.utils import SerializableLock
+from typing import Optional
 import seaborn as sns
 
 from concordia.cmip7 import utils as cmip7_utils
@@ -79,8 +83,10 @@ sector_mapping_singlesector = {
     "PEAT": "PEAT",
     "SAVA": "GRSB"
 }
-
-
+gas_mapping = {
+    "SO2": "Sulfur",
+    "NMVOCbulk": "VOC"
+}
 
 perc_combinations_forest = [f"{g}percentage{sec}" for g in GASES for sec in gfed_sectors_forest]
 perc_combinations_singlesector = [f"{g}percentage{sec}" for g in GASES for sec in gfed_sectors_singlesector]
@@ -96,6 +102,8 @@ print(len(totals_file_paths) + len(perc_file_paths_singlesector))
 # what data to output
 grid_file_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_3/input/gridding/"
 new_proxies_location = Path(grid_file_location, "proxy_rasters")
+# ensure output directory exists
+new_proxies_location.mkdir(parents=True, exist_ok=True)
 
 years = [2023, 2024, 2025, 2030, 2035, 2040, 2045, 2050, 2055, 2060, 2065, 2070, 2075, 2080, 2085, 2090, 2095, 2100]
 
@@ -167,11 +175,15 @@ template_file = (
 template = xr.open_dataset(template_file)
 
 
+# %% [markdown]
+# STANDARD 1-sector proxies (without VOC speciation; not forest)
+
 # %%
 # STANDARD 1-sector proxies (without VOC speciation; not forest)
 
 # TODO: [ ] mean across years
-# TODO: [~] regrid to 0.5 degree
+# TODO: [ ] multi-sector summation (fine as separate loop)
+# TODO: [x] regrid to 0.5 degree
 
 # Create target grid for 0.5 degree resolution
 # target_lat = np.arange(-89.75, 90, 0.5)  # 0.5 degree grid from -89.75 to 89.75
@@ -187,33 +199,27 @@ from dask import config as dask_config
 # start_time = "2019-01-01"
 # end_time = "2023-12-31"
 
-
-for g in GASES:
-# for g in ['BC']:
-    
-    # import file 
-    try:
-        ds_total = xr.open_dataset(
-            get_bb4cmip7_location_totals(g),
-            engine="h5netcdf",
-            chunks={"time": 12},
-            lock=lock
-        # ).sel(time=slice(start_time, end_time))
-        ).sel(time=time_filter_totals)
-    except Exception:
-        ds_total = xr.open_dataset(
-            get_bb4cmip7_location_totals(g),
-            engine="netcdf4",
-            chunks={"time": 12},
-            lock=lock
-        # ).sel(time=slice(start_time, end_time))
-        ).sel(time=time_filter_totals)
-
-    # drop variables we don't need and rename the one we need
-    ds_total = ds_total.drop_vars(["lat_bnds", "lon_bnds", "time_bnds"]).rename({f"{g}": "emissions"})
-
-    for s in gfed_sectors_singlesector:
-        # open with fallback engine if first attempt fails (some files behave better with netcdf4)
+# %%
+def load_bb4cmip(g, type, time_slice, s: str = None):
+    if type == "total":
+        try:
+            ds_total = xr.open_dataset(
+                get_bb4cmip7_location_totals(g),
+                engine="h5netcdf",
+                chunks={"time": 12},
+                lock=lock
+            # ).sel(time=slice(start_time, end_time))
+            ).sel(time=time_slice)
+        except Exception:
+            ds_total = xr.open_dataset(
+                get_bb4cmip7_location_totals(g),
+                engine="netcdf4",
+                chunks={"time": 12},
+                lock=lock
+            # ).sel(time=slice(start_time, end_time))
+            ).sel(time=time_slice)
+        return ds_total
+    if type == "percentage":
         try:
             ds_perc = xr.open_dataset(
                 get_bb4cmip7_location_percentage(f"{g}percentage{s}"),
@@ -230,24 +236,72 @@ for g in GASES:
                 lock=lock
             # ).sel(time=slice(start_time, end_time))
             ).sel(time=time_filter_perc)
+        return ds_perc
         
+
+
+# %%
+def formatting_to_cmip7_scenario_proxy(
+        ds,
+        g,
+        s: Optional[str] = None,
+        gas_mapping=gas_mapping,
+        years: list[int] = years,
+        sector_override: Optional[str] = None,
+        sector_mapping_singlesector=sector_mapping_singlesector
+):
+    ## do additional formatting (like CEDS workflow)
+    # Map ESGF gas names to internal format if mapping exists
+    if g in gas_mapping:
+        internal_gas = gas_mapping[g]
+    else:
+        internal_gas = g
+
+    # add gas dimension with internal gas name
+    ds = ds.expand_dims(dim={"gas": [f"{internal_gas}"]})
+    
+    # split time into year and month
+    ds = ds.assign_coords(year=("time", ds["time"].dt.year.data),
+                            month=("time", ds["time"].dt.month.data)).groupby(["year", "month"]).mean()
+
+    # select 2023 data and project it onto future years
+    ds = ds.sel(year=2023).expand_dims({"year": years})
+    # TODO: replace the line above with an average. 
+
+    # add sector dimension
+    if sector_override is None:
+        ds = ds.expand_dims(dim={"sector": [sector_mapping_singlesector[s]] })
+    else:
+        s = sector_override
+        ds = ds.expand_dims(dim={"sector": [s] })
+    
+    # reorder
+    ds_reordered = ds.transpose("lat", "lon", "gas", "sector", "year", "month").chunk({"month": 12})
+
+    # unify chunks for dask
+    ds_reordered = ds_reordered.unify_chunks().astype("float32")
+
+    # give path for outfile
+    outfile = new_proxies_location / f"openburning_{internal_gas}_{s}_2023.nc"
+    
+    return ds_reordered, outfile
+
+# %%
+# run single-sector
+for g in GASES_ESGF_BB4CMIP:
+# for g in ['BC']:
+# for g in ["SO2", "NMVOCbulk"]:
+    
+    # import file 
+    ds_total = load_bb4cmip(g, type="total", time_slice=time_filter_totals).drop_vars(
         # drop variables we don't need and rename the one we need
-        ds_perc = ds_perc.drop_vars(["lat_bnds", "lon_bnds", "time_bnds"]).rename({f"{g}percentage{s}": "percentage"})
+        ["lat_bnds", "lon_bnds", "time_bnds"]).rename({f"{g}": "emissions"}
+    )
 
-        # # load inputs to memory in a single-threaded context to avoid HDF read errors
-        # with dask_config.set(scheduler="single-threaded"):
-        #     total_emissions = ds_total["emissions"].load()
-        #     percentage = ds_perc["percentage"].load()
-
-        # # release file handles early
-        # try:
-        #     ds_total.close()
-        # except Exception:
-        #     pass
-        # try:
-        #     ds_perc.close()
-        # except Exception:
-        #     pass
+    for s in gfed_sectors_singlesector:
+        ds_perc = load_bb4cmip(g ,type="percentage", time_slice=time_filter_perc, s=s).drop_vars(
+            # drop variables we don't need and rename the one we need
+            ["lat_bnds", "lon_bnds", "time_bnds"]).rename({f"{g}percentage{s}": "percentage"})
 
         # do multiplication (now backed by NumPy arrays, detached from file IO)
         ds_bb = xr.Dataset({
@@ -263,33 +317,12 @@ for g in GASES:
             lat=template["lat"], lon=template["lon"], method='linear'
         )
 
+        # formatting
+        ds_reordered, outfile = formatting_to_cmip7_scenario_proxy(
+            ds=ds_bb, g=g, gas_mapping=gas_mapping, s=s
+        )
 
-        ## do additional formatting (like CEDS workflow)
-
-        # add gas dimension
-        ds_bb = ds_bb.expand_dims(dim={"gas": [f"{g}"]})
-        
-        # split time into year and month
-        ds_bb = ds_bb.assign_coords(year=("time", ds_bb["time"].dt.year.data), 
-                              month=("time", ds_bb["time"].dt.month.data)).groupby(["year", "month"]).mean()
-
-        # select 2023 data and project it onto future years
-        ds_bb = ds_bb.sel(year=2023).expand_dims({"year": years})
-
-        # add sector dimension
-        ds_bb = ds_bb.expand_dims(dim={"sector": [sector_mapping_singlesector[s]] })
-        
-        # reorder
-        ds_reordered = ds_bb.transpose("lat", "lon", "gas", "sector", "year", "month").chunk({"month": 12})
-
-        # unify chunks for dask
-        ds_reordered = ds_reordered.unify_chunks().astype("float32")
-
-
-        # ensure output directory exists
-        new_proxies_location.mkdir(parents=True, exist_ok=True)
-
-        outfile = new_proxies_location / f"openburning_{g}_{s}_2023.nc"
+        # saving
         if outfile.exists():
             outfile.unlink()
 
@@ -303,7 +336,59 @@ for g in GASES:
 
 
 
-# %% 
+# %% [markdown]
+# STANDARD multiple-sector proxies (without VOC speciation; only forest)
+
+# %%
+# run multiple-sector proxies (without VOC speciation; only forest)
+for g in GASES_ESGF_BB4CMIP:
+# for g in ['BC']:
+# for g in ["SO2", "NMVOCbulk"]:
+    
+    # import file 
+    ds_total = load_bb4cmip(g, type="total", time_slice=time_filter_totals).drop_vars(
+        # drop variables we don't need and rename the one we need
+        ["lat_bnds", "lon_bnds", "time_bnds"]).rename({f"{g}": "emissions"}
+    )
+
+    # load the multiple forest sectors
+    ds_perc1 = load_bb4cmip(g ,type="percentage", time_slice=time_filter_perc, s=gfed_sectors_forest[0]).drop_vars(
+        ["lat_bnds", "lon_bnds", "time_bnds"]).rename({f"{g}percentage{gfed_sectors_forest[0]}": "percentage"})
+    ds_perc2 = load_bb4cmip(g ,type="percentage", time_slice=time_filter_perc, s=gfed_sectors_forest[1]).drop_vars(
+        ["lat_bnds", "lon_bnds", "time_bnds"]).rename({f"{g}percentage{gfed_sectors_forest[1]}": "percentage"})
+    ds_perc3 = load_bb4cmip(g ,type="percentage", time_slice=time_filter_perc, s=gfed_sectors_forest[2]).drop_vars(
+        ["lat_bnds", "lon_bnds", "time_bnds"]).rename({f"{g}percentage{gfed_sectors_forest[2]}": "percentage"})
+
+    # do multiplication (now backed by NumPy arrays, detached from file IO)
+    ds_bb = xr.Dataset({
+        "emissions": ds_total["emissions"] * (ds_perc1["percentage"]+ds_perc2["percentage"]+ds_perc3["percentage"]) / 100
+    })
+
+    # regrid to 0.5 degree after multiplication (first rename variable names to be like the CEDS template data)
+    print(f"Regridding from {ds_bb.latitude.size}x{ds_bb.longitude.size} to {len(target_lat)}x{len(target_lon)}")
+    ds_bb = ds_bb.rename(
+        {"latitude":"lat","longitude":"lon"}
+    ).interp(
+        lat=template["lat"], lon=template["lon"], method='linear'
+    )
+
+    # formatting
+    ds_reordered, outfile = formatting_to_cmip7_scenario_proxy(
+        ds=ds_bb, g=g, gas_mapping=gas_mapping, sector_override=forest_fires_name
+    )
+
+    # saving
+    if outfile.exists():
+        outfile.unlink()
+
+    encoding = {
+        var: {"zlib": True, "complevel": 4}
+        for var in ds_reordered.data_vars
+    }
+
+    with ProgressBar():
+        ds_reordered.to_netcdf(outfile, mode="w", engine="h5netcdf", encoding=encoding)
 
 
 
+# %%
