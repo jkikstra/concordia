@@ -356,8 +356,8 @@ for y in [
     # single years
     2019,2020,2021,2022,2023
 ]:
-    # for g in GASES_ESGF_BB4CMIP:
-    for g in ['BC']:
+    for g in GASES_ESGF_BB4CMIP:
+    # for g in ['BC']:
     # for g in ["SO2", "NMVOCbulk"]:
         
         # import file
@@ -388,8 +388,8 @@ for y in [
             ds_bb = ds_bb.rename(
                 {"latitude":"lat","longitude":"lon"}
             ).interp(
-                lat=template["lat"], lon=template["lon"], method='linear'
-            )
+                lat=target_lat, lon=target_lon, method='linear'
+            ) # TODO: read a bit more on aggregation methods.
 
             # formatting, including averaging if we do not select just one single year
             ds_reordered, outfile = formatting_to_cmip7_scenario_proxy(
@@ -421,8 +421,8 @@ for y in [
     # single years
     2019,2020,2021,2022,2023
 ]:
-    # for g in GASES_ESGF_BB4CMIP:
-    for g in ['BC']:
+    for g in GASES_ESGF_BB4CMIP:
+    # for g in ['BC']:
     # for g in ["SO2", "NMVOCbulk"]:
         
         if not isinstance(y, int):
@@ -455,7 +455,7 @@ for y in [
         ds_bb = ds_bb.rename(
             {"latitude":"lat","longitude":"lon"}
         ).interp(
-            lat=template["lat"], lon=template["lon"], method='linear'
+            lat=target_lat, lon=target_lon, method='linear'
         )
 
         # formatting, including averaging if we do not select just one single year
