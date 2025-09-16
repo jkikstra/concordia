@@ -71,7 +71,7 @@ Other checking scripts that do not always need to be run:
 Instead of creating the CEDS-anthro proxies from the ESGF-located .nc files, it is also possible to construct proxies from intermediary .Rd files provided by the PNNL/JGCRI/CGS team on [their server](https://rcdtn1.pnl.gov/data/CEDS/Jarmo_files/). 
 
 In that case, you would want to skip the `` notebook, and instead run:
-1. `prep_proxyinput-download-pnnl.py`: download proxy data from PNNL's server
+1. `prep_proxyinput-download-anthro-pnnl.py`: download proxy data from PNNL's server
 2. `prep_proxyfuture-anthro-from-ceds-cmip7-pnnlRd.py`: make the proxies based on files from PNNL's server (**N.B.** this does not currently work for aircraft. It only works for anthro and shipping, and it does not create particularly good grids for anthro due to mistakes in the input data.)
 
 
