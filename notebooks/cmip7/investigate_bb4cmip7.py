@@ -47,7 +47,7 @@ for species in GASES:
         for file in bb_proxy_location.glob("*.nc"):
 
             # check if filename has BC in it, if so: perform the rest of the loop, if not continue without the rest of the loop
-            if species not in file.name:
+            if f"_{species}_" not in file.name:
                 print(f"Skipping file (no {species}): {file.name}")
                 continue
             if burning_sector not in file.name:
