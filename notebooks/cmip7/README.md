@@ -33,25 +33,27 @@ Run first:
 
 After that, prepare the proxy files for future years:
 1. `prep_proxyfuture-anthro-from-ceds-cmip7-esgf.py`: prepares proxies for (land-based) anthropogenic emissions, shipping, and aircraft
-1. `prep_proxyfuture-openburning-from-dres-cmip7-esgf.py`: prepares proxies for openburning emissions (**N.B. NOT YET READY, CURRENTLY AN EMPTY SCRIPT. BASE IT ON `prep_proxyfuture-anthro-from-ceds-cmip7-esgf.py`**)
+1. `prep_proxyfuture-openburning-from-dres-cmip7-esgf.py`: prepares proxies for openburning emissions
 1. `prep_proxyfuture-cdr-from-rescue.py`: prepares proxies for CDR
 
 **TODO:**
-1. Make `prep_proxyfuture-openburning-from-dres-cmip7-esgf.py`
-1. Make `prep_proxyfuture-openburning-supplemental-VOCspeciation-from-dres-cmip7-esgf.py`
-1. Make `prep_proxyfuture-anthro-supplemental-VOCspeciation-from-ceds-cmip7-esgf.py`
+- [ ] Make `prep_proxyfuture-openburning-supplemental-VOCspeciation-from-dres-cmip7-esgf.py`
+- [ ] Make `prep_proxyfuture-anthro-supplemental-VOCspeciation-from-ceds-cmip7-esgf.py`
 
 
 ### Workflow
 
 1. `workflow-cmip7-fast-track.py`
 
+**TODO:**
+- [ ] update `workflow-cmip7-fast-track.py` to start the scenario data in 2022 (need to extend the scenario data with one year of history data)
+
 ### Post-processing
 
 **TODO:**
-1. Make `workflow-postprocess_harmonize-output-grids-to-cmip7-ceds-esgf.py...`: a script that "glues together" our scenarios and the CEDS ESGF files, for the harmonization year (2023).
-1. Make `workflow-postprocess_add-missing-years-cmip7-ceds-esgf.py`: makes the year 2022 for ceds; just copy the 2022 files from CEDS, and add them to our scenario files in the same format as our scenario files.
-1. Make `workflow-postprocess_add-missing-years-cmip7-bb4cmip7-esgf.py`: makes the year 2022 for bb4cmip7; **N.B. consider whether this also needs a "force-fix": make also 2021 and see whether we are wrong there or not**
+- [ ] Make `workflow-postprocess_harmonize-output-grids-to-cmip7-ceds-esgf.py...`: a script that "glues together" our scenarios and the CEDS ESGF files, for the harmonization year (2023).
+- [ ] Make `workflow-postprocess_add-missing-years-cmip7-ceds-esgf.py`: makes the year 2022 for ceds; just copy the 2022 files from CEDS, and add them to our scenario files in the same format as our scenario files.
+- [ ] Make `workflow-postprocess_add-missing-years-cmip7-bb4cmip7-esgf.py`: makes the year 2022 for bb4cmip7; **N.B. consider whether this also needs a "force-fix": make also 2021 and see whether we are wrong there or not**
 
 ### Checking and plotting
 
