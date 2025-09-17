@@ -27,6 +27,92 @@ import cartopy.crs as ccrs
 
 IAMC_COLS = ["model", "scenario", "region", "variable", "unit"] 
 
+# %% [markdown]
+# # Visual checks on CMIP7 new proxies
+
+# %%
+from concordia.cmip7.utils_plotting import plot_map, plot_maps, plot_maps_seasonal
+from concordia.cmip7.CONSTANTS import GASES
+
+# %%
+bb_proxy_location = Path("C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_3/input/gridding/proxy_rasters")
+
+for species in GASES:
+    for burning_sector in ["SAVA", "PEAT", "AGRI", "FRTB"]:
+        # Initialize empty dataset
+        combined_ds = None
+        var = "emissions"
+
+        # Loop over different files
+        for file in bb_proxy_location.glob("*.nc"):
+
+            # check if filename has BC in it, if so: perform the rest of the loop, if not continue without the rest of the loop
+            if f"_{species}_" not in file.name:
+                print(f"Skipping file (no {species}): {file.name}")
+                continue
+            if burning_sector not in file.name:
+                print(f"Skipping file (no {burning_sector} burning): {file.name}")
+                continue
+
+            print(f"Processing file: {file.name}")
+            
+            # Read in each file
+            ds = xr.open_dataset(file)
+            
+            # Extract proxy name from filename (remove extension and prefixes)
+            proxy_name = file.stem
+            # Clean up common prefixes if needed
+            if proxy_name.startswith("openburning_"):
+                proxy_name = proxy_name.replace("openburning_", "")
+            
+            # Replace the sector coordinate with proxy_name
+            # First, assign the new value to the sector coordinate
+            ds = ds.assign_coords(sector=[proxy_name])
+
+            plot_maps_seasonal(
+                        ds,
+                        sectors=None,
+                        variable="emissions",
+                        year=2023,
+                        title=f"{species} {burning_sector} Emissions: {proxy_name}",
+                        save_as="pdf-png",
+                        filename=file.parent / (file.stem)
+                    )
+            
+            # Add to combined dataset
+            if combined_ds is None:
+                combined_ds = ds
+            else:
+                # Concatenate along the sector dimension
+                try:
+                    combined_ds = xr.concat([combined_ds, ds], dim="sector")
+                except Exception as e:
+                    print(f"Error concatenating {file.name}: {e}")
+                    continue
+
+        # Display the combined dataset
+        if combined_ds is not None:
+            print(f"Combined dataset with {len(combined_ds.sector)} sectors:")
+            print(combined_ds)
+            print(f"Sector names: {list(combined_ds.sector.values)}")
+        else:
+            print("No .nc files found in the directory")
+        
+        # plot compete dataset
+        plot_maps_seasonal(
+                    combined_ds,
+                    sectors=list(combined_ds.sector.values),
+                    variable="emissions",
+                    ncols=4,
+                    year=2023, # we have all scenario years, pick one.
+                    title=f"{species} {burning_sector} Emissions: {file.stem}",
+                    save_as="pdf-png",
+                    filename=file.parent / (f"openburning_{species}_{burning_sector}_alloptions")
+                )
+
+
+# %% [markdown]
+# # Investigate 5-year smoothed BB4MCIP7 data directly
 
 # %% [markdown]
 # Download data from ESGF, Jarmo has them stored on his SanDisk drive and on H: drive
@@ -88,14 +174,11 @@ IAMC_COLS = ["model", "scenario", "region", "variable", "unit"]
 
 
 # %%
-def read_nc_file(f, loc, reorder_list=None, rename_sectors_cmip6=None):
+def read_nc_file(f, loc, reorder_list=None):
     ds = xr.open_dataset(loc / f)
 
     if reorder_list is not None:
         ds = ds[reorder_list]
-    
-    if rename_sectors_cmip6:
-        ds = ds_reformat_cmip6_to_cmip7(ds)
     
     return ds
 

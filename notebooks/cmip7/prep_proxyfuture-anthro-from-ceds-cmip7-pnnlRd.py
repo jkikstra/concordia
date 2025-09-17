@@ -2,26 +2,15 @@
 # %% [markdown]
 # # Overview
 #
-# Gridding proxies are provided on a yearly-basis in `input/gridding/proxy-CEDS9`.
-# Summing total values leads to <<1 values, indicating that unit transformations may be
-# included. It is not clear if this is the kt-to-`<unit>` or Mt-to-`<unit>` transform.
-#
-# Seasonality (distribution by month) is provided in `input/gridding/seasonality-CEDS9`.
-# Summing across months yields values of 1 in each grid cell.
-#
-# Country raster masks are provided in `input/gridding/mask`. Masks are provided at
-# fraciton of country in grid cells.
-#
-# A blanket mask of negative CO2 values for energy are provided in
-# `input/gridding/negCO2`. These masks are raw data and need to be assigned to lat/lon
-# values. These are listed in the file `input/gridding/country_location_index_05.csv`,
-# which I downloaded from the `emissions_downscaling` repository
-#
-# # Warnings
-#
-# It seems that latitude bands are reversed which I have addressed here, but it is good
-# to check/confirm this
+# This workflow starts from the rescue script "notebooks/rescue/gridding_data/generate_ceds_proxy_netcdfs.py" 
 
+# ## Steps happening in this notebook, which starts from the PNNL server .Rd files
+# 1. Read in CEDS .Rd files (proxies per country)
+# 2. Read in mapping of sectors where necessary
+# 3. Read in country-level (only implemented for waste) population-fallback data
+# 4. Read in seasonality files (.x)
+# 5. Combine into proxies (not country-normalised, which happens during gridding)
+#
 
 # %%
 import itertools
@@ -46,45 +35,40 @@ from concordia.settings import Settings
 from concordia.cmip7.utils import read_r_variable, read_r_to_da
 from concordia.cmip7.utils_rpy2 import save_da_as_rd
 
-# %%
-def get_settings(base_path: Path, 
-                 file = "config_cmip7_v0_2.yaml"):
-    settings = Settings.from_config(
-        file, 
-        base_path=base_path,
-        version=None
-    )
-    return settings
+# %% 
+import concordia.cmip7.utils_futureproxy_ceds_bb4cmip as uprox
+from concordia.cmip7.utils_futureproxy_ceds_bb4cmip import dim_order
+from concordia.cmip7.CONSTANTS import CONFIG
 
+# %%
+config_file_name = CONFIG
+
+# %%
 try:
     # when running the script from a terminal or otherwise
-    notebook_dir = Path(__file__).resolve().parent
-    settings = get_settings(base_path=notebook_dir)
+    cmip7_dir = Path(__file__).resolve()
+    settings = uprox.get_settings(base_path=cmip7_dir, file = config_file_name)
 except (FileNotFoundError, NameError):
     try:
         # when running the script from a terminal or otherwise
-        notebook_dir = Path(__file__).resolve().parent.parent
-        settings = get_settings(base_path=notebook_dir)
+        cmip7_dir = Path(__file__).resolve().parent
+        settings = uprox.get_settings(base_path=cmip7_dir, file = config_file_name)
     except (FileNotFoundError, NameError):
         # Fallback for interactive/Jupyter mode, where 'file location' does not exist
-        notebook_dir = Path().resolve().parent  # one up
-        settings = get_settings(base_path=notebook_dir)
+        cmip7_dir = Path().resolve()  # one up
+        settings = uprox.get_settings(base_path=cmip7_dir, file = config_file_name)
 
-
-# %%
-dim_order = ["gas", "sector", "level", "year", "month", "lat", "lon"]
 
 # %%
 sector_mapping = {
     "anthro": ["AGR", "ENE", "IND", "TRA", "RCO", "SLV", "WST"],
-    "openburning": ["AWB", "FRTB", "GRSB", "PEAT"],
-    "aircraft": ["AIR"],  # NB: proxy issues here, need to address in hackathon
-    "shipping": ["SHP"],  # NB: this was not split out originally, but 1) we have proxy issues; 2) we will be redoing this in this project
+    "aircraft": ["AIR"], # does not currently work
+    "shipping": ["SHP"],
 }
 
 # %%
 all_sectors = [sector for sublist in sector_mapping.values() for sector in sublist]
-openburning_sectors = list(sector_mapping.values())[1]
+all_sectors
 
 # %%
 template_file = (
@@ -100,8 +84,6 @@ template = xr.open_dataset(template_file)
 
 # %%
 ceds_input_gridding_path = settings.gridding_path / "ceds_input"
-
-# %%
 ceds_input_gridding_path
 
 # %% [markdown]
@@ -110,7 +92,7 @@ ceds_input_gridding_path
 # %%
 # # intermediary to aggregate final sector
 # could also derive this from the CEDS_gridding_sectors.csv
-sector_map = {
+intermediary_to_final_sector_map = {
     "ELEC": "ENE",
     "ETRN": "ENE",
     "FFFI": "ENE",
@@ -125,12 +107,12 @@ sector_map = {
     "TANK": "SHP"
 }
 
-def ceds_format_to_cmip7_format(df):
-    df = df.rename(columns={"em": "gas"})
-    df["gas"] = df["gas"].replace({"NMVOC": "VOC"})
-    df["sector"] = df["sector"].replace(sector_map)
+# def ceds_format_to_cmip7_format(df):
+#     df = df.rename(columns={"em": "gas"})
+#     df["gas"] = df["gas"].replace({"NMVOC": "VOC"})
+#     df["sector"] = df["sector"].replace(intermediary_to_final_sector_map)
 
-    return df
+#     return df
 
 # %%
 # # fallback method
@@ -148,7 +130,7 @@ def ceds_format_to_cmip7_format(df):
 # For that, we would also need to (double?) clarify whether or not we need to do something with the point-source emissions.
 # So, instead, we for now do:
 # 1.1. reading in the fallback method country-sector mapping information (same)
-# 1.2. do the 'sector_map' already here, effectively saying that "IF ANY OF THE UNDERLYING PROXIES IS MISSING FOR THIS COUNTRY" we use the fallback method
+# 1.2. do the 'intermediary_to_final_sector_map' already here, effectively saying that "IF ANY OF THE UNDERLYING PROXIES IS MISSING FOR THIS COUNTRY" we use the fallback method
 # 2. reading in the final-sector proxy data
 # 3. replacing zeroes with population density data IF the country-sector is in the MODIFIED country-sector mapping information
 
@@ -170,7 +152,7 @@ fallback_information_intermed_sector = pd.concat(
 fallback_information_intermed_sector = fallback_information_intermed_sector.rename(columns={"em": "gas"})
 fallback_information_intermed_sector["gas"] = fallback_information_intermed_sector["gas"].replace({"NMVOC": "VOC"})
 # Apply sector map
-fallback_information_intermed_sector["sector"] = fallback_information_intermed_sector["sector"].replace(sector_map)
+fallback_information_intermed_sector["sector"] = fallback_information_intermed_sector["sector"].replace(intermediary_to_final_sector_map)
 # Drop duplicates
 fallback_information_intermed_sector = fallback_information_intermed_sector.drop_duplicates(subset=['gas','sector','iso3'])
 
@@ -194,11 +176,11 @@ year_files = year_files.rename(columns={"em": "gas", "proxy_file": "file", "prox
 year_files["gas"] = year_files["gas"].replace({"NMVOC": "VOC"})
 
 # Apply sector map
-year_files["sector"] = year_files["sector"].replace(sector_map)
+year_files["sector"] = year_files["sector"].replace(intermediary_to_final_sector_map)
 
 # also rename proxy files the aggregate sectors are pointing to
 file_temp = year_files["file"].str.split("_", n=2, expand=True)
-file_temp[2] = file_temp[2].replace(sector_map)
+file_temp[2] = file_temp[2].replace(intermediary_to_final_sector_map)
 year_files["file"] = file_temp[0] + "_" + file_temp[1] + "_" + file_temp[2]
 # and drop duplicates that arise, because we map subsectors to the same aggregates
 year_files = year_files.drop_duplicates(subset=["gas", "sector", "file"])
@@ -224,7 +206,7 @@ latest_year = year_files.loc[year_files.groupby(["gas", "sector"])["year"].idxma
 
 # %%
 # check that we've got all sectors that we expect, for now without the openburning ones
-assert set(latest_year["sector"].unique()) == set(all_sectors) - set(openburning_sectors)
+assert set(latest_year["sector"].unique()) == set(all_sectors) 
 
 # %% [markdown]
 # #### deal with missing proxy files
@@ -383,7 +365,7 @@ assert not df_files["file_season"].isnull().any()
 
 # %%
 # check again that we've got all sectors that we expect, for now without the openburning ones
-assert set(df_files["sector"].unique()) == set(all_sectors) - set(openburning_sectors)
+assert set(df_files["sector"].unique()) == set(all_sectors)
 
 # %%
 assert df_files["file_year"].str.endswith(".Rd").all(), "Not all file year paths end with '.Rd'"
@@ -393,152 +375,6 @@ assert df_files["file_season"].str.endswith(".Rd").all(), "Not all file season p
 assert df_files["file_year"].apply(lambda x: isinstance(x, Path)).all(), "Not all entries in 'file year' are Path objects"
 assert df_files["file_season"].apply(lambda x: isinstance(x, Path)).all(), "Not all entries in 'file season' are Path objects"
 
-
-# %% [markdown]
-# ## create country mask and index raster
-
-# %%
-# ## Compiling a single country mask file
-#
-# See [process in original repo](https://github.com/iiasa/emissions_downscaling/blob/79dc01346dd841b0cff82f83df31706d6995c94c/code/parameters/gridding_functions.R#L98):
-#
-# ```
-# proxy_cropped <- proxy[ start_row : end_row, start_col : end_col ]
-# ```
-#
-# **In R, array indexes start at 1**
-#
-#
-# ```
-# temperatures <- c(12.9, 13.2, 15.0, 19.2, 21.4, 24.5, 29.5, 24.2, 20.5, 14.5, 10.2, 9.8)
-#
-# temperatures[2:4]
-# >>> 13.2, 15.0, 19.2
-# ```
-#
-# **Rows are latitudes, Columns are longitudes**
-def mask_to_ary(row):
-    a = pyreadr.read_r(row.file)[f"{row.iso}_mask"]
-    lat = template.lat[::-1][row.start_row - 1 : row.end_row]
-    lon = template.lon[row.start_col - 1 : row.end_col]
-    da = xr.DataArray(
-        np.asarray(a, dtype="float32"), coords={"lat": lat, "lon": lon}
-    ).reindex(lat=template.lat, lon=template.lon, fill_value=0)
-
-    return da
-
-
-# %%
-# ## Generating Country Mask Raster
-#
-# This function reads in all country masks which are provided as Rdata files and
-# translates them to xarray arrays and combines them into a single netcdf file.
-def gen_mask():
-    print("Generating Mask Raster")
-    files = ceds_input_gridding_path.glob("mask/*.Rd")
-    df = pd.DataFrame(
-        [[f.stem.split("_")[0], f] for f in files],
-        columns=["iso", "file"],
-    )
-    idxs = pd.read_csv(ceds_input_gridding_path / "country_location_index_05.csv")
-    data = pd.merge(df, idxs, on="iso")
-    mask = xr.concat([mask_to_ary(s) for i, s in data.iterrows()], data.iso)
-    return mask
-
-
-# %%
-# only really need this if we include alkalinity
-def add_eez_to_mask(mask):
-    print("Rasterize and add eez to mask raster")
-    rasterize = pt.Rasterize(
-        shape=(mask.sizes["lat"], mask.sizes["lon"]),
-        coords={"lat": mask.coords["lat"], "lon": mask.coords["lon"]},
-    )
-    rasterize.read_shpf(
-        pio.read_dataframe(
-            settings.gridding_path / "eez_v12.gpkg",
-            where="ISO_TER1 IS NOT NULL and POL_TYPE='200NM'",
-        )
-        .dissolve(by="ISO_TER1")
-        .reset_index(names=["iso"]),
-        idxkey="iso",
-    )
-    eez = rasterize.rasterize(strategy="weighted", normalize_weights=False).astype(
-        mask.dtype
-    )
-
-    eez = eez.assign_coords(iso=eez.indexes["iso"].str.lower()).reindex_like(
-        mask, fill_value=0.0
-    )
-
-    new_mask = mask + eez
-    totals = new_mask.sum("iso")
-    return (new_mask / totals).where(totals, 0)
-
-
-# %%
-def recombine_mask(mask, include_world=True):
-    country_combinations = settings.country_combinations
-    for comb, (iso1, iso2) in country_combinations.items():
-        mask = xr.concat(
-            [
-                mask,
-                (
-                    mask.sel(iso=iso1).fillna(0) + mask.sel(iso=iso2).fillna(0)
-                ).assign_coords({"iso": comb}),
-            ],
-            dim="iso",
-        )
-    comb_mask = mask.drop_sel(iso=list(itertools.chain(*country_combinations.values())))
-    if include_world:
-        comb_mask = xr.concat(
-            [
-                comb_mask,
-                comb_mask.sum(dim="iso").assign_coords({"iso": "World"}),
-            ],
-            dim="iso",
-        )
-    return comb_mask
-    # comb_mask.to_netcdf(settings.gridding_path / "ssp_comb_iso_mask.nc")
-
-
-# %%
-def mask_to_indexraster(mask):
-    indexraster = pt.IndexRaster.from_weighted_raster(mask.rename(iso="country"))
-    return indexraster
-
-
-# %%
-def gen_indexraster():
-    mask = gen_mask()
-    mask.to_netcdf(settings.gridding_path / "ssp_comb_countrymask.nc")
-    mask = add_eez_to_mask(mask)
-    mask = recombine_mask(mask, include_world=False)
-    indexraster = mask_to_indexraster(mask)
-    indexraster.to_netcdf(settings.gridding_path / "ssp_comb_indexraster.nc")
-
-
-# %% [markdown]
-# ## Fix CEDS anthro WST
-
-
-# %%
-# Test reading in a CEDS .Rd file, and writing it out again in the same format, without changing anything.
-
-# in_test = settings.gridding_path / "ceds_input" / "non-point_source_proxy_final_sector" / "CO_2022_WST.Rd"
-# out_test = settings.gridding_path / "ceds_input" / "non-point_source_proxy_final_sector" / "fixed_fallback" / "CO_2022_WST.Rd"
-
-# save_da_as_rd(xr.DataArray(read_r_variable(in_test, float_dtype="float64"), 
-#                  coords={"lat": template.lat, "lon": template.lon}, 
-#                  name="emissions"), 
-#               out_path=out_test, 
-#               object_name="CO_2022_WST", 
-#               undo_flip=True)
-
-# assert_ordereddict_equal(pyreadr.read_r(in_test), 
-#                          pyreadr.read_r(out_test))
-
-
 # %% [markdown]
 # ### Produce new proxy files mixing emissions and population
 
@@ -546,11 +382,11 @@ def gen_indexraster():
 # Data for the fixes
 
 # read template file
-template_file = (
-    settings.gridding_path
-    / "example_files" / "GCAM4-SSP4-34-SPA4-V25-Harmonized-DB-Sulfur-em-aircraft-anthro_input4MIPs_emissions_CMIP_IAMC-V1_gn_201501-210012.nc"
-)
-template = xr.open_dataset(template_file)
+# template_file = (
+#     settings.gridding_path
+#     / "example_files" / "GCAM4-SSP4-34-SPA4-V25-Harmonized-DB-Sulfur-em-aircraft-anthro_input4MIPs_emissions_CMIP_IAMC-V1_gn_201501-210012.nc"
+# )
+# template = xr.open_dataset(template_file)
 country_mask =  xr.open_dataset(settings.gridding_path / "ssp_comb_countrymask.nc").__xarray_dataarray_variable__
 
 # Code for the fixes
@@ -895,7 +731,7 @@ def full_process(sector_key):
     gases = sector_files.gas.unique()
     for gas in gases:
         da = gen_da_for_gas(gas, sector_key)
-        output_path = settings.proxy_path / f"{sector_key}_{gas}.nc"
+        output_path = settings.proxy_path / "codetests" / f"{sector_key}_{gas}.nc"
 
         # delete file if it already exists to avoid permission denied error in the override attempt
         if output_path.exists():
@@ -915,9 +751,8 @@ settings.proxy_path
 
 # %%
 if __name__ == "__main__":
-    # gen_indexraster() # currently fails for srb (kosovo)
     full_process("anthro")
-   # full_process("openburning")
-    # full_process("aircraft")
-    ## old:
+    # full_process("aircraft") # FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Users\\kikstra\\IIASA\\ECE.prog - Documents\\Projects\\CMIP7\\IAM Data Processing\\concordia_cmip7_v0_2\\input\\gridding\\ceds_input\\seasonality\\AIR_BC_2000_seasonality.nc'; because we have "AIR_BC_2000_seasonality.nc" but `# we can only read netcdfs for air` ?
     full_process("shipping")
+
+# %%

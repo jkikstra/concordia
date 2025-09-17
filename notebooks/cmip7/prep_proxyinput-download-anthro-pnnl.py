@@ -31,13 +31,20 @@ download = {
     # proxies final sectors
     "proxies": [
         "https://rcdtn1.pnl.gov/data/CEDS/Jarmo_files/non-point_source_proxy_final_sector/", # url
-        "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_testing/input/gridding/20250523/Jarmo_files/non-point_source_proxy_final_sector" # local_save_folder
+        "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_2/input/gridding/ceds_input/Jarmo_files/non-point_source_proxy_final_sector" # local_save_folder
     ],
-    # 
+    # seasonality files
     "seasonality": [
         "https://rcdtn1.pnl.gov/data/CEDS/Jarmo_files/seasonality/", # url
-        "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_testing/input/gridding/20250523/Jarmo_files/seasonality" # local_save_folder
+        "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_2/input/gridding/ceds_input/seasonality" # local_save_folder
     ],
+    # proxies intermediary sectors
+    "proxies-interemdiary": [
+        "https://rcdtn1.pnl.gov/data/CEDS/Jarmo_files/non-point_source_proxy_intermediate_sector/", # url
+        "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_2/input/gridding/ceds_input/non-point_source_proxy_intermediate_sector" # local_save_folder
+    ],
+    # point-source
+    # not sure whether we would ever need to also download and add 'point-source emissions
 }
 # To: KIKSTRA Jarmo <kikstra@iiasa.ac.at>; ssmith-pnnl.gov <ssmith@pnnl.gov>; Gidden, Matthew J <matthew.gidden@pnnl.gov>; Hoesly, Rachel M <rachel.hoesly@pnnl.gov>
 # Cc: Zebedee Nicholls <zebedee.nicholls@climate-resource.com>; HOEGNER Annika <hoegner@iiasa.ac.at>; Jonas Hörsch <jonas.hoersch@climateanalytics.org>
