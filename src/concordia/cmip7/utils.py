@@ -11,6 +11,8 @@ import dateutil
 import numpy as np
 import pandas as pd
 import xarray as xr
+from pathlib import Path
+import pyreadr
 from attrs import define
 from cattrs import structure, transform_error
 from pandas_indexing import concat, isin, semijoin
@@ -43,6 +45,8 @@ SECTOR_ORDERING_DEFAULT = {
         "Solvents Production and Application",
         "Waste",
         "International Shipping",
+        "Other non-Land CDR",
+        "BECCS",
     ],
     "em_openburning": [
         "Agricultural Waste Burning",
@@ -62,6 +66,8 @@ SECTOR_ORDERING_GAS = {
         "Solvents Production and Application",
         "Waste",
         "International Shipping",
+        "Other non-Land CDR",
+        "BECCS",
         # "Deforestation and other LUC",
         # "OAE Calcination Emissions",
         # "CDR Afforestation",
@@ -113,7 +119,7 @@ DS_ATTRS = dict(
     Conventions="CF-1.6",
     activity_id="input4MIPs",
     comment="Gridded emissions produced after harmonization and downscaling as part of the ScenarioMIP-CMIP7. See https://github.com/iiasa/emissions_harmonization_historical, https://github.com/IAMconsortium/concordia, and https://github.com/iiasa/aneris for documentation on the processes.",
-    contact="Jarmo S. Kikstra (kikstra@iiasa.ac.at) and Zebedee Nicholls",
+    contact="Jarmo S. Kikstra (kikstra@iiasa.ac.at), Annika Högner, and Zebedee Nicholls",
     data_structure="grid",
     dataset_category="emissions",
     external_variables="gridcell_area",
@@ -871,3 +877,44 @@ def join_gdp_based_on_ssp(scenarios_with_ssp_mapping, gdp_per_ssp):
             how="right",
         ).pix.project(["model", "scenario", "country"])
     return gdp_for_each_scenario
+
+
+def read_r_variable(file, float_dtype: str = "float32"):
+    file = Path(file)
+    print(f"Reading in {file}\n")
+
+    result = pyreadr.read_r(file)
+
+    # If there's more than one, you can decide how to handle it
+    if len(result) > 1:
+        print(f"Warning: More than one variable found in {file.name}, using the first one.")
+
+    # Get the first variable's name and value
+    old_var_name, value = next(iter(result.items()))
+
+    # Rename the variable to the filename
+    if old_var_name != file.stem:
+        print(f"Renaming variable '{old_var_name}' to '{file.stem}'")
+        value.name = file.stem
+
+
+    return np.asarray(value, dtype=float_dtype)[::-1]
+
+def read_r_to_da(file, template, flipud=True, dtype="float32"):
+    """
+    Read an R .rds/.RData variable and return an xarray.DataArray
+    on the same grid as `template` (expects template to have lat/lon coords).
+    """
+    res = pyreadr.read_r(str(file))
+    _, value = next(iter(res.items()))           # take first object
+    arr = np.asarray(value, dtype=dtype)
+    if flipud:                                   # typical R->Python row order fix
+        arr = arr[::-1, :]
+
+    da = xr.DataArray(
+        arr,
+        coords={"lat": template["lat"].values, "lon": template["lon"].values},
+        dims=("lat", "lon"),
+        name=Path(file).stem,
+    )
+    return da

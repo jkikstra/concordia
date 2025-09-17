@@ -27,34 +27,45 @@
 # Specify which scenario file to read in
 
 # %%
-HISTORY_FILE = "cmip7_history_0022.csv"
+# HISTORY_FILE = "cmip7_history_0022.csv"  # needed to be updated, with country-level updated emissions
+HISTORY_FILE = "cmip7_history_countrylevel_250721.csv" # has the update, but misses the 'World' region
 
 # %%
 # SCENARIO_FILE = "check_harmonisation_regions_REMIND.csv" # example (ALREADY HARMONIZED) REMIND scenario (used in v0 UKESM testing)
-SCENARIO_FILE = "harmonised-gridding_REMIND-MAgPIE 3.5-4.10.csv" # example (ALREADY HARMONIZED) REMIND scenario (used from 16.06.2026 towards v0_1 UKESM testing)
+
+
+
 
 # SCENARIO_FILE = "scenarios_scenariomip_COFFEE 1.6_SSP2 - Low Overshoot.csv" # example COFFEE scenario
 # SCENARIO_FILE = "scenarios_scenariomip_AIM 3.0_SSP2 - Low Emissions.csv" # example AIM scenario
-# SCENARIO_FILE = "scenarios_scenariomip_REMIND-MAgPIE 3.5-4.10_SSP2 - Low Emissions.csv" # example REMIND scenario
+# SCENARIO_FILE = "scenarios_scenariomip_REMIND-MAgPIE 3.5-4.10_SSP2 - Low Emissions.csv" # example REMIND scenario; now 4.11
 # SCENARIO_FILE = "scenarios_scenariomip_MESSAGEix-GLOBIOM-GAINS 2.1-M-R12_SSP2 - Low Overshoot.csv" # example MESSAGE scenario
 # SCENARIO_FILE = "scenarios_scenariomip_allmodels_2025-03-05-messagegains.csv" # TODO: update later for all models. Location for this file is specified in the yaml file read into the `settings` object later on
 
 
+# VLLO:
+SCENARIO_FILE = "harmonised-gridding_REMIND-MAgPIE 3.5-4.11.csv" # example (ALREADY HARMONIZED) REMIND scenario (used from 08.08.2025 for v0_2 
 SCENARIO_SELECTION = "SSP1 - Very Low Emissions"
+
+# H: 
+# SCENARIO_FILE = "harmonised-gridding_GCAM 7.1 scenarioMIP.csv"
+# SCENARIO_SELECTION = "SSP3 - High Emissions"
 
 # %% [markdown]
 # Specify settings
 
 # %%
 # Settings
-SETTINGS_FILE = "config_cmip7_v0_testing_ukesm_remind.yaml" 
+SETTINGS_FILE = "config_cmip7_v0_2.yaml" # iteration round 2 
 
 # versioning
 # HARMONIZATION_VERSION = "config_cmip7_v0_testing_remind"
 # HARMONIZATION_VERSION = "config_cmip7_v0_testing_aim"
 # HARMONIZATION_VERSION = "config_cmip7_v0_testing_ukesm_remind"
 # HARMONIZATION_VERSION = "config_cmip7_v0_1_testing_ukesm_remind"
-HARMONIZATION_VERSION = "config_cmip7_v0_2_testing_ukesm_remind-ah"
+
+sub_version = "_newhistory_remind"
+HARMONIZATION_VERSION = f"config_cmip7_v0_2{sub_version}"
 
 # %% [markdown]
 # ## Importing packages
@@ -80,7 +91,7 @@ import dask.dataframe as dd
 import pandas as pd
 import pycountry
 from dask.distributed import Client
-from pandas_indexing import concat, isin, ismatch, semijoin
+from pandas_indexing import concat, isin, ismatch, semijoin, assignlevel
 from pandas_indexing.units import set_openscm_registry_as_default
 from ptolemy.raster import IndexRaster
 
@@ -184,9 +195,6 @@ variabledefs = VariableDefinitions.from_csv(settings.variabledefs_path)
 settings.data_path
 
 # %%
-settings.regionmappings.items()
-
-# %%
 regionmappings = {}
 
 for m, kwargs in settings.regionmappings.items():
@@ -249,7 +257,7 @@ iam_df = iam_df.sort_index()
 # Update column type and name
 iam_df.columns = iam_df.columns.astype(int)
 iam_df.columns.name = 'year'
-# iam_df
+iam_df = iam_df.dropna(axis=1)
 
 
 # %% [markdown]
@@ -272,22 +280,65 @@ cmip7_utils.save_data(df = iam_df.reset_index(), output_path = str(Path(version_
 #
 
 # %%
-hist = (
-    pd.read_csv(settings.history_path / HISTORY_FILE)
+hist_new = (
+    pd.read_csv(settings.history_path / HISTORY_FILE) # like "cmip7_history_countrylevel_250721.csv" 
     .drop(columns=['model', 'scenario'])
     .rename(columns={"region": "country"})
 )
 
-hist = extractlevel(hist.set_index(['country', 'variable', 'unit']), variable="Emissions|{gas}|{sector}", drop=True)
+hist_new = extractlevel(hist_new.set_index(['country', 'variable', 'unit']), variable="Emissions|{gas}|{sector}", drop=True)
 
 # Reorder the MultiIndex of hist
-hist = hist.reorder_levels(['country', 'gas', 'sector', 'unit'])
-hist = hist.sort_index()
+hist_new = hist_new.reorder_levels(['country', 'gas', 'sector', 'unit'])
+hist_new = hist_new.sort_index()
 
 # Update column type and name
-hist.columns = hist.columns.astype(int)
-hist.columns.name = 'year'
-#hist
+hist_new.columns = hist_new.columns.astype(int)
+hist_new.columns.name = 'year'
+
+# History fixes:
+
+# only country-level emissions
+hist_new_nonglobal = hist_new.loc[~isin(country="global")]
+hist_new_nonglobal = hist_new_nonglobal.loc[~ismatch(sector=["**Shipping", "**Aircraft"])]# let's also make sure there's no shipping (10.08.2025: zero values present) and aircraft (10.08.2025: no data) anymore for country-level data 
+
+# keep international/bunkers emissions & rename to country='World'
+hist_new_global = hist_new.loc[isin(country="global")]
+hist_new_global_nonzero = hist_new_global[ismatch(sector=["**Shipping", "**Aircraft"])]
+hist_new_global_nonzero = hist_new_global_nonzero.rename(index=lambda v: v.replace("global", "World"))
+
+# calculate the sum of all countries for the other countries
+hist_new_nonglobal_world = assignlevel(hist_new_nonglobal.groupby(["gas", "sector", "unit"]).sum(), country="World").reorder_levels(["country","gas", "sector", "unit"])
+
+# recombine
+hist_new = pd.concat([
+    hist_new_nonglobal,
+    hist_new_global_nonzero,
+    hist_new_nonglobal_world
+])
+hist_new
+
+# %%
+# old history reading like cmip7_history_0022.csv; now becoming outdated
+# hist = (
+#     pd.read_csv(settings.history_path / HISTORY_FILE)
+#     .drop(columns=['model', 'scenario'])
+#     .rename(columns={"region": "country"})
+# )
+
+# hist = extractlevel(hist.set_index(['country', 'variable', 'unit']), variable="Emissions|{gas}|{sector}", drop=True)
+
+# # Reorder the MultiIndex of hist
+# hist = hist.reorder_levels(['country', 'gas', 'sector', 'unit'])
+# hist = hist.sort_index()
+
+# # Update column type and name
+# hist.columns = hist.columns.astype(int)
+# hist.columns.name = 'year'
+# hist
+
+# %%
+hist = hist_new
 
 # %% [markdown]
 # # Read Harmonization Overrides
@@ -300,23 +351,24 @@ settings.scenario_path
 
 # %%
 harm_overrides = pd.read_excel(
-    settings.scenario_path / "harmonization_overrides.xlsx", # placeholder for now, should be empty as already harmonized.
+    settings.scenario_path / "harmonization_overrides.xlsx", # placeholder for now, empty now as already harmonized.
     index_col=list(range(3)),
 ).method
 # harm_overrides
 
 # %%
-harm_overrides = extend_overrides(
-    harm_overrides,
-    "constant_ratio",
-    sector=[
-        f"{sec} Burning"
-        for sec in ["Agricultural Waste", "Forest", "Grassland", "Peat"]
-    ],
-    variables=variabledefs.data.index,
-    regionmappings=regionmappings,
-    model_baseyear=iam_df[settings.base_year],
-)
+# no need to reharmonise, so no rechoosing methods
+# harm_overrides = extend_overrides(
+#     harm_overrides,
+#     "constant_ratio",
+#     sector=[
+#         f"{sec} Burning"
+#         for sec in ["Agricultural Waste", "Forest", "Grassland", "Peat"]
+#     ],
+#     variables=variabledefs.data.index,
+#     regionmappings=regionmappings,
+#     model_baseyear=iam_df[settings.base_year],
+# )
 
 # %% [markdown]
 # # Prepare GDP proxy
@@ -533,6 +585,40 @@ def select_only_countries_with_all_info(df,
 
 
 # %% [markdown]
+# # Sector coverage (check historical)
+
+# %%
+hist_sectors = hist.index.get_level_values("sector").unique()
+iam_sectors = iam_df.index.get_level_values("sector").unique()
+
+missing = set(iam_sectors) - set(hist_sectors)
+print(missing)  # CDR sectors 
+
+# %% [markdown]
+# ## Add zero CDR history
+
+# %%
+co2_template = hist.loc[isin(sector="Energy Sector", gas="CO2")] # pull co2-like template
+# fill values with zero
+co2_template.loc[:] = 0
+
+# replace sector names
+beccs = co2_template.pix.assign(sector="BECCS")
+non_land_cdr = co2_template.pix.assign(sector="Other non-Land CDR")
+
+
+# %%
+# add to history
+hist = pd.concat([
+    hist,
+    beccs,
+    non_land_cdr
+])
+
+# %%
+# Check historical data coverage
+
+# %% [markdown]
 # # Set up technical bits for the workflow
 
 # %%
@@ -697,11 +783,21 @@ print(f"Countries in GDP_per_pathway: {len(gdp_countries)}")
 print(f"Countries in common: {len(hist_countries & gdp_countries)}")
 print(f"Countries downscaled: {len(downscaled_countries)}")
 
+# %%
+# Total missing data: countries in hist but not in downscaled
+in_hist_not_downscaled = hist_countries - downscaled_countries
+print("Countries in hist but not in downscaled:")
+print(sorted(in_hist_not_downscaled))
+
+missing_emissions = hist.loc[isin(country=list(in_hist_not_downscaled))].groupby(["gas","sector","unit"]).sum().loc[isin(sector='Waste'),2023]
+global_emissions = hist.loc[isin(country='World')].groupby(["gas","sector","unit"]).sum().loc[isin(sector='Waste'),2023]
+missing_emissions / global_emissions * 100 # percentage (%) of global emissions that would be missing through these countries
+
 # %% [markdown]
 # ## Alternative 1) Run full processing and create netcdf files
 #
-# Latest test with 1 scenario was 25 minutes on Jarmo's DELL laptop.
-# Output files are nearly 6GB for one scenario.
+# Latest test with 1 scenario was 50 minutes on Jarmo's DELL laptop.
+# Output files are about 11.4GB for one scenario.
 
 # %%
 cmip7_utils.DS_ATTRS
