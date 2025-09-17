@@ -34,8 +34,18 @@ IAMC_COLS = ["model", "scenario", "region", "variable", "unit"]
 from concordia.cmip7.utils_plotting import plot_map, plot_maps, plot_maps_seasonal
 from concordia.cmip7.CONSTANTS import GASES
 
+
 # %%
-bb_proxy_location = Path("C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_3/input/gridding/proxy_rasters")
+bb_proxy_location = Path("C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_esgf_v0_alpha/input/gridding/proxy_rasters")
+
+# ds = xr.open_dataset(bb_proxy_location / "openburning_BC_AGRI_2014_2023.nc")
+ds = xr.open_dataset(bb_proxy_location / "openburning_BC_SAVA_2014_2023.nc")
+
+ds
+
+
+# %%
+bb_proxy_location = Path("C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_esgf_v0_alpha/input/gridding/proxy_rasters")
 
 for species in GASES:
     for burning_sector in ["SAVA", "PEAT", "AGRI", "FRTB"]:

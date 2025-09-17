@@ -1,18 +1,19 @@
+# -*- coding: utf-8 -*-
 # ---
 # jupyter:
 #   jupytext:
 #     text_representation:
 #       extension: .py
-#       format_name: light
-#       format_version: '1.5'
-#       jupytext_version: 1.16.4
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.11.2
 #   kernelspec:
-#     display_name: Python 3 (ipykernel)
+#     display_name: concordia
 #     language: python
 #     name: python3
 # ---
 
-# +
+# %%
 import xarray as xr
 from pathlib import Path
 import matplotlib.pyplot as plt
@@ -25,12 +26,30 @@ from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib import colors
 import cartopy.crs as ccrs
 
+# %%
+from concordia.cmip7.CONSTANTS import CONFIG
+import concordia.cmip7.utils_futureproxy_ceds_bb4cmip as uprox
+VERSION = CONFIG
 
-# -
+try:
+    # when running the script from a terminal or otherwise
+    cmip7_dir = Path(__file__).resolve()
+    settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+except (FileNotFoundError, NameError):
+    try:
+        # when running the script from a terminal or otherwise
+        cmip7_dir = Path(__file__).resolve().parent
+        settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+    except (FileNotFoundError, NameError):
+        # Fallback for interactive/Jupyter mode, where 'file location' does not exist
+        cmip7_dir = Path().resolve()  # one up
+        settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
 
+# %% [markdown]
 # **Documentation:**
 # https://docs.google.com/document/d/1H9sKOkTLC1oDxEWUNurXqilkEoz3obH5J5rk5PCTXvk/edit?tab=t.ozl8f8vi3kgh#heading=h.u0e4zw58ce7s
 
+# %% [markdown]
 # **Observations**
 # (_Last update: 09/08/2025_)
 #
@@ -43,6 +62,7 @@ import cartopy.crs as ccrs
 # Checked to be correct:
 # * ...
 
+# %% [markdown]
 # **Ideas:**
 #
 # What data to test:
@@ -60,11 +80,14 @@ import cartopy.crs as ccrs
 #
 
 
+# %% [markdown]
 # # Functions
 
+# %% [markdown]
 # ## Reading in
 
 
+# %%
 def read_nc_file(f, loc, reorder_list=None):
     ds = xr.open_dataset(loc / f)
 
@@ -73,7 +96,7 @@ def read_nc_file(f, loc, reorder_list=None):
     
     return ds
 
-# +
+# %%
 def select_time_period(ds: xr.Dataset, var: str, start: str, end: str) -> xr.DataArray:
     """Select variable in the dataset and limit to time range"""
     return ds[var].sel(time=slice(start, end))
@@ -433,23 +456,27 @@ def plot_maps_sectors(ds, sectors, ncols=3, year=2100, month=1, proj=ccrs.Robins
     plt.show()
 
 
-# -
-
+# %% [markdown]
 # ## Check RESCUE proxy data
 
+# %%
 rescue_folder = Path("C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_testing/input/gridding/proxy_rasters")
 
+# %%
 rescue_ds = read_nc_file(f = "CDR_CO2.nc", 
                          loc = rescue_folder)
 
+# %%
 rescue_ds
 
+# %% [markdown]
 # ### Change the years of the proxy
 
 
+# %% [markdown]
 # #### Run update for 2023, 2024, 2025, and 5-yearly afterwards 
 
-# +
+# %%
 def ds_rename_recent_years_rescue_to_cmip7(ds):
 
     # all the above in 1 line:
@@ -518,11 +545,11 @@ def add_sector_copy(
 
     # Return updated dataset (other variables/coords unchanged)
     return ds.assign({varname: da_out})
-# -
+# %%
 
+# %%
 
-
-
+# %%
 proxy_file_sector = "CDR" # same for 'openburning' and 'aircraft'
 for gas in [
     "CO2"
@@ -536,14 +563,14 @@ for gas in [
     # ensure we have 5-yearly timesteps in the proxy
     new_ds = ds_add_missing_years_by_copying_one_year(new_ds, 
                                                       old_year_to_copy_from=2023, 
-                                                      new_years=[2024] + list(range(2025, 2101, 5)))
+                                                      new_years= [2022] + [2024] + list(range(2025, 2101, 5)))
     
     # write out
-    outpath = rescue_folder / f"renamed_{proxy_file_sector}_rescue_for_cmip7round2" / filename
+    outpath = settings.proxy_path / filename
     new_ds.to_netcdf(
             outpath,
             # encoding={da.name: settings.encoding},
         )
 
-
+# %%
 

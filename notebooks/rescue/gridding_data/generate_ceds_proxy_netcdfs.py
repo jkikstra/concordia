@@ -140,7 +140,7 @@ def mask_to_ary(row):
 # translates them to xarray arrays and combines them into a single netcdf file.
 def gen_mask():
     print("Generating Mask Raster")
-    files = ceds_input_gridding_path.glob("mask/*.Rd")
+    files = ceds_input_gridding_path.glob("iso_mask/*.Rd")
     df = pd.DataFrame(
         [[f.stem.split("_")[0], f] for f in files],
         columns=["iso", "file"],

@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.7
+#       jupytext_version: 1.16.4
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -27,8 +27,7 @@
 # Specify which scenario file to read in
 
 # %%
-# HISTORY_FILE = "cmip7_history_0022.csv"  # needed to be updated, with country-level updated emissions
-HISTORY_FILE = "cmip7_history_countrylevel_250721.csv" # has the update, but misses the 'World' region
+HISTORY_FILE = "cmip7_history_countrylevel_250721.csv" # needs to be updated for 2022/2023 extrapolation update september 2025
 
 # %%
 # SCENARIO_FILE = "check_harmonisation_regions_REMIND.csv" # example (ALREADY HARMONIZED) REMIND scenario (used in v0 UKESM testing)
@@ -44,19 +43,19 @@ HISTORY_FILE = "cmip7_history_countrylevel_250721.csv" # has the update, but mis
 
 
 # VLLO:
-SCENARIO_FILE = "harmonised-gridding_REMIND-MAgPIE 3.5-4.11.csv" # example (ALREADY HARMONIZED) REMIND scenario (used from 08.08.2025 for v0_2 
-SCENARIO_SELECTION = "SSP1 - Very Low Emissions"
+# SCENARIO_FILE = "harmonised-gridding_REMIND-MAgPIE 3.5-4.11.csv" # example (ALREADY HARMONIZED) REMIND scenario (used from 08.08.2025 for v0_2 
+# SCENARIO_SELECTION = "SSP1 - Very Low Emissions"
 
 # H: 
-# SCENARIO_FILE = "harmonised-gridding_GCAM 7.1 scenarioMIP.csv"
-# SCENARIO_SELECTION = "SSP3 - High Emissions"
+SCENARIO_FILE = "harmonised-gridding_GCAM 7.1 scenarioMIP.csv"
+SCENARIO_SELECTION = "SSP3 - High Emissions"
 
 # %% [markdown]
 # Specify settings
 
 # %%
 # Settings
-SETTINGS_FILE = "config_cmip7_v0_2.yaml" # iteration round 2 
+SETTINGS_FILE = "config_cmip7_esgf_v0_alpha.yaml" # preparing for first upload to ESGF 
 
 # versioning
 # HARMONIZATION_VERSION = "config_cmip7_v0_testing_remind"
@@ -64,8 +63,8 @@ SETTINGS_FILE = "config_cmip7_v0_2.yaml" # iteration round 2
 # HARMONIZATION_VERSION = "config_cmip7_v0_testing_ukesm_remind"
 # HARMONIZATION_VERSION = "config_cmip7_v0_1_testing_ukesm_remind"
 
-sub_version = "_newhistory_remind"
-HARMONIZATION_VERSION = f"config_cmip7_v0_2{sub_version}"
+sub_version = "_h"
+HARMONIZATION_VERSION = f"cmip7_esgf_v0_alpha{sub_version}"
 
 # %% [markdown]
 # ## Importing packages
@@ -91,7 +90,7 @@ import dask.dataframe as dd
 import pandas as pd
 import pycountry
 from dask.distributed import Client
-from pandas_indexing import concat, isin, ismatch, semijoin, assignlevel
+from pandas_indexing import concat, isin, ismatch, semijoin, assignlevel, extractlevel
 from pandas_indexing.units import set_openscm_registry_as_default
 from ptolemy.raster import IndexRaster
 
@@ -207,75 +206,6 @@ for m, kwargs in settings.regionmappings.items():
 # regionmappings
 
 # %% [markdown]
-# # IAM: Read and process IAM data
-
-# %%
-Path(settings.scenario_path, SCENARIO_FILE)
-
-# %% [markdown]
-# ### Read in (currently just 1 scenario)
-
-# %%
-# v0_1 (second UKESM round)
-# Read in already-harmonized data
-iam_df = cmip7_utils.load_data(
-    Path(settings.scenario_path, SCENARIO_FILE)
-    # Path(settings.scenario_path, "harmonised-gridding_REMIND-MAgPIE 3.5-4.10.csv")
-)
-
-# filter only one scenario  
-iam_df = cmip7_utils.filter_scenario(iam_df, scenarios=SCENARIO_SELECTION) # TODO: remove this after test code is done
-
-# iam_df[iam_df['variable']=="Emissions|CH4|Energy Sector"]
-
-# %%
-IAMC_COLS = ["model", "scenario", "region", "variable", "unit"]
-HARMONIZED_YEAR_COLS = [col for col in iam_df.columns if col.isdigit() and settings.base_year <= int(col) <= 2100]
-
-# %%
-# # v0 (first UKESM round)
-# # keep only relevant columns
-# iam_df = iam_df.drop(columns=["stage"])[(IAMC_COLS + HARMONIZED_YEAR_COLS)]
-
-# v0_1 (second UKESM round)
-# keep only relevant columns
-iam_df = iam_df[(IAMC_COLS + HARMONIZED_YEAR_COLS)]
-# iam_df
-
-# %% [markdown]
-# ### Process (using pix - formatting)
-
-# %%
-from pandas_indexing import extractlevel
-# split the 'variable' column into the 'gas' and 'sector' columns
-iam_df = extractlevel(iam_df.set_index(IAMC_COLS), variable="Emissions|{gas}|{sector}", drop=True)
-
-# Reorder the MultiIndex of iam_df
-iam_df = iam_df.reorder_levels(['model', 'scenario', 'region', 'gas', 'sector', 'unit'])
-iam_df = iam_df.sort_index()
-
-# Update column type and name
-iam_df.columns = iam_df.columns.astype(int)
-iam_df.columns.name = 'year'
-iam_df = iam_df.dropna(axis=1)
-
-
-# %% [markdown]
-# ## Save the processed IAM data
-
-# %% [markdown]
-# ### Basic checks
-
-# %%
-cmip7_utils.check_na_in_columns(iam_df)
-
-# %% [markdown]
-# ### Save in wide format
-
-# %%
-cmip7_utils.save_data(df = iam_df.reset_index(), output_path = str(Path(version_path, "scenarios_processed.csv" )))
-
-# %% [markdown]
 # # History: Read and process historical data
 #
 
@@ -316,29 +246,74 @@ hist_new = pd.concat([
     hist_new_global_nonzero,
     hist_new_nonglobal_world
 ])
-hist_new
 
-# %%
-# old history reading like cmip7_history_0022.csv; now becoming outdated
-# hist = (
-#     pd.read_csv(settings.history_path / HISTORY_FILE)
-#     .drop(columns=['model', 'scenario'])
-#     .rename(columns={"region": "country"})
-# )
-
-# hist = extractlevel(hist.set_index(['country', 'variable', 'unit']), variable="Emissions|{gas}|{sector}", drop=True)
-
-# # Reorder the MultiIndex of hist
-# hist = hist.reorder_levels(['country', 'gas', 'sector', 'unit'])
-# hist = hist.sort_index()
-
-# # Update column type and name
-# hist.columns = hist.columns.astype(int)
-# hist.columns.name = 'year'
-# hist
-
-# %%
 hist = hist_new
+hist
+
+# %% [markdown]
+# # IAM: Read and process IAM data
+
+# %%
+Path(settings.scenario_path, SCENARIO_FILE)
+
+# %% [markdown]
+# ### Read in (currently just 1 scenario)
+
+# %%
+# Read in already-harmonized data
+iam_df = cmip7_utils.load_data(
+    Path(settings.scenario_path, SCENARIO_FILE)
+)
+
+# filter only one scenario  
+iam_df = cmip7_utils.filter_scenario(iam_df, scenarios=SCENARIO_SELECTION) # TODO: remove this after test code is done
+
+# %%
+# TODO: add historical data as 2022 (for bb4cmip; for CEDS we should drop it again)
+
+# %%
+IAMC_COLS = ["model", "scenario", "region", "variable", "unit"]
+HARMONIZED_YEAR_COLS = [col for col in iam_df.columns if col.isdigit() and settings.base_year <= int(col) <= 2100]
+
+# %%
+# keep only relevant columns
+iam_df = iam_df[(IAMC_COLS + HARMONIZED_YEAR_COLS)]
+
+# %%
+iam_df
+
+# %% [markdown]
+# ### Process (using pix - formatting)
+
+# %%
+from pandas_indexing import extractlevel
+# split the 'variable' column into the 'gas' and 'sector' columns
+iam_df = extractlevel(iam_df.set_index(IAMC_COLS), variable="Emissions|{gas}|{sector}", drop=True)
+
+# Reorder the MultiIndex of iam_df
+iam_df = iam_df.reorder_levels(['model', 'scenario', 'region', 'gas', 'sector', 'unit'])
+iam_df = iam_df.sort_index()
+
+# Update column type and name
+iam_df.columns = iam_df.columns.astype(int)
+iam_df.columns.name = 'year'
+iam_df = iam_df.dropna(axis=1)
+
+
+# %% [markdown]
+# ## Save the processed IAM data
+
+# %% [markdown]
+# ### Basic checks
+
+# %%
+cmip7_utils.check_na_in_columns(iam_df)
+
+# %% [markdown]
+# ### Save in wide format
+
+# %%
+cmip7_utils.save_data(df = iam_df.reset_index(), output_path = str(Path(version_path, "scenarios_processed.csv" )))
 
 # %% [markdown]
 # # Read Harmonization Overrides
@@ -354,7 +329,7 @@ harm_overrides = pd.read_excel(
     settings.scenario_path / "harmonization_overrides.xlsx", # placeholder for now, empty now as already harmonized.
     index_col=list(range(3)),
 ).method
-# harm_overrides
+harm_overrides
 
 # %%
 # no need to reharmonise, so no rechoosing methods
@@ -380,8 +355,6 @@ harm_overrides = pd.read_excel(
 settings.scenario_path
 
 # %%
-# TODO: (bug) resolve 0 values in model scenario data for historical
-
 # New; updated SSP data from CMIP7 era (downloaded from: http://files.ece.iiasa.ac.at/ssp/downloads/ssp_basic_drivers_release_3.2.beta_full.xlsx, and then selected only the GDP|PPP variable)
 gdp_new = pd.read_csv(
         settings.scenario_path / "ssp_basic_drivers_release_3.2.beta_full_gdp.csv",
@@ -689,7 +662,7 @@ workflow = WorkflowDriver(
 
 # %%
 # save workflow info in easy-to-vet packets 
-workflow.save_info(path = Path("..", "data", "compare_wfd_inputs"), prefix=settings.version)
+workflow.save_info(path = Path("..", "..", "data", "compare_wfd_inputs"), prefix=settings.version)
 
 # %%
 # check regionmapping and scenarios

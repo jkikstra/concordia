@@ -23,23 +23,31 @@ import pyreadr
 import pyogrio as pio
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plts
+import matplotlib.pyplot as plt
 
 
 # %%
 from concordia.cmip7.utils import read_r_variable, read_r_to_da
 
-# %%
-try:
-    SETTINGS_FILE = Path(__file__).parent.parent / "config_cmip7_v0_2.yaml"
-except NameError:
-    SETTINGS_FILE = Path().resolve().parent / "config_cmip7_v0_2.yaml"
+from concordia.settings import Settings
 
 # %%
-HARMONIZATION_VERSION = ""
-settings = Settings.from_config(version=HARMONIZATION_VERSION,
+HARMONIZATION_VERSION = "cmip7_esgf_v0_alpha"
+
+CONFIG_FILE = "config_cmip7_esgf_v0_alpha.yaml"
+
+try:
+    SETTINGS_FILE = Path(__file__).parent.parent / CONFIG_FILE
+    settings = Settings.from_config(version=HARMONIZATION_VERSION,
                                 local_config_path=Path(Path.cwd(),
                                                        SETTINGS_FILE))
+except (NameError, FileNotFoundError):
+    SETTINGS_FILE = Path().resolve() / CONFIG_FILE
+    settings = Settings.from_config(version=HARMONIZATION_VERSION,
+                                local_config_path=Path(Path.cwd(),
+                                                       SETTINGS_FILE))
+
+
 
 # %%
 template_file = (
@@ -69,7 +77,7 @@ def mask_to_ary(row):
 # %%
 def gen_mask():
     print("Generating Mask Raster")
-    files = settings.gridding_path.glob("mask/*.Rd")
+    files = settings.gridding_path.glob("iso_mask/*.Rd")
     df = pd.DataFrame(
         [[f.stem.split("_")[0], f] for f in files],
         columns=["iso", "file"],
@@ -114,7 +122,7 @@ def add_eez_to_mask(mask):
     )
     rasterize.read_shpf(
         pio.read_dataframe(
-            settings.gridding_path / "non_ceds_input" / "eez_v12.gpkg",
+            settings.gridding_path / "iso_mask" / "eez_v12.gpkg",
             where="ISO_TER1 IS NOT NULL and POL_TYPE='200NM'",
         )
         .dissolve(by="ISO_TER1")
@@ -207,3 +215,5 @@ mask.to_netcdf(settings.gridding_path / "ssp_comb_countrymask.nc")
 
 # %%
 gen_indexraster(mask)
+
+# %%
