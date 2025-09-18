@@ -27,11 +27,9 @@ from dask.utils import SerializableLock
 import seaborn as sns
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+from tqdm import tqdm
 
 from concordia.cmip7 import utils as cmip7_utils
-
-#import warnings
-#warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 # %%
 lock = SerializableLock()
@@ -119,8 +117,8 @@ def calculate_diff(ceds_da, scen_da, gas, empty_treatment="fill_zeroes"):
 
     for sector in sectors:
         # skip unwanted sectors
-        if sector in ['Other non-Land CDR', 'BECCS']:
-            continue
+    #    if sector in ['Other non-Land CDR', 'BECCS']:
+    #        continue
 
         # check if sector exists in each dataset
         sector_in_ceds = sector in ceds_da.sector.values
@@ -157,9 +155,9 @@ def calculate_diff(ceds_da, scen_da, gas, empty_treatment="fill_zeroes"):
             scen_values = scen_sector[var_name]
         else:
             scen_values = scen_sector[list(scen_sector.data_vars)[0]]
-
+        
         # compute ratio safely
-        mask = scen_values != 0
+        mask = scen_values != 0.0
         ratio_sector = xr.where(mask, ceds_values / scen_values, 1.0)
         
         # ensure sector dimension exists
@@ -181,9 +179,6 @@ pct_diff23 = calculate_diff(ceds23, gridded23, "CO2")
 
 # %%
 test = pct_diff23.sel(sector="Waste").isel(time=0)
-
-# %%
-test
 
 # %%
 print(np.min(test.values))
@@ -238,22 +233,6 @@ ax.add_feature(cfeature.BORDERS, linestyle=':')
 plt.show()
 
 # %% [markdown]
-# ## broadcast to all years
-
-# %%
-# Number of times to repeat
-n_repeat = gridded.sizes["time"] // weights.sizes["time"]
-
-# Repeat weights along time
-weights_exp = xr.concat([weights] * n_repeat, dim="time")
-
-# Assign the correct cftime time coordinate
-weights_exp = weights_exp.assign_coords(time=gridded.time)
-
-# %%
-gridded
-
-# %% [markdown]
 # ## run for all files
 
 # %%
@@ -263,10 +242,99 @@ files = [
     if "anthro" in file.name and "-AIR-" not in file.name
 ]
 
+# %% [markdown]
+# with dask
+#
+# prefix, postfix = [], []
+#
+# for file in files:
+#     gas = file.name.split("-")[0]
+#     outfile = Path(weighted_data_location, file.name)
+#     print(f"creating fix for {file.name}")
+#
+#     # match reference file
+#     if gas == "VOC":
+#         gas = "NMVOC"
+#     elif gas == "Sulfur":
+#         gas = "SO2"
+#     else:
+#         gas = gas
+#     match = next(ceds_data_location.glob(f"{gas}-*.nc"))
+#     
+#     # open with dask
+#     ceds = xr.open_dataset(match, chunks={"time": 12})
+#     gridded = xr.open_dataset(file, chunks={"time": 12})
+#
+#     if "NMVOC_em_anthro" in ceds.data_vars:
+#         ceds = ceds.rename({"NMVOC_em_anthro": "VOC_em_anthro"})
+#     if "SO2_em_anthro" in ceds.data_vars:
+#         ceds = ceds.rename({"SO2_em_anthro": "Sulfur_em_anthro"})
+#
+#     # revert names for output
+#     if gas == "NMVOC":
+#         gas = "VOC"
+#     elif gas == "SO2":
+#         gas = "Sulfur"
+#     else:
+#         gas = gas
+#     
+#     var = f"{gas}_em_anthro"
+#  
+#     # rename sectors
+#     ceds = ceds.assign_coords(sector=pd.Series(ceds["sector"].values).map(sector_dict).values)
+#     reference = ceds.where(ceds.time.dt.year == 2023, drop=True)
+#     gridded_23 = gridded.where(gridded.time.dt.year == 2023, drop=True)
+#
+#     # calculate relative difference
+#     pct_diff23 = calculate_diff(reference, gridded_23, gas)
+#     weights = pct_diff23.to_dataset(name=f"{gas}_em_anthro")
+#
+#     # expand weights to all years
+#     n_repeat = gridded.sizes["time"] // weights.sizes["time"]
+#     weights_exp = xr.concat([weights] * n_repeat, dim="time")
+#     weights_exp = weights_exp.assign_coords(time=gridded.time)
+#
+#     weighted = gridded * weights_exp
+#
+#     # replace the data in weighted with the data in gridded for the sectors we don't want to be touched
+#     print(weighted.sector.values)
+#     sectors_to_keep = ['Other non-Land CDR', 'BECCS', 'International Shipping']
+#     sectors_present = [s for s in sectors_to_keep if s in weighted.sector.values]
+#     if sectors_present:
+#         weighted[var].loc[dict(sector=sectors_present)] = gridded[var].sel(sector=sectors_present)
+#
+#     # calculate sectoral global totals
+#     gridded_global = gridded[f"{gas}_em_anthro"].groupby("sector").sum(dim=("lat", "lon"))
+#     weighted_global = weighted[f"{gas}_em_anthro"].groupby("sector").sum(dim=("lat", "lon"))
+#         
+#     df1 = gridded_global.to_dataframe(name="prefix").reset_index()
+#     df1["gas"] = gas
+#     df1 = df1.melt(id_vars=["time", "sector", "gas"], var_name="version", value_name="value")
+#
+#     df2 = weighted_global.to_dataframe(name="postfix").reset_index()
+#     df2["gas"] = gas
+#     df2 = df2.melt(id_vars=["time", "sector", "gas"], var_name="version", value_name="value")
+#
+#     prefix.append(df1)
+#     postfix.append(df2)
+#
+#     outfile.unlink(missing_ok=True)
+#     
+#     encoding = {var: {"zlib": True, "complevel": 4}}
+#
+#     with ProgressBar():
+#         weighted.to_netcdf(outfile, encoding=encoding, compute=True)
+#
+# combine results
+# global_prefix = pd.concat(prefix, ignore_index=True)
+# global_postfix = pd.concat(postfix, ignore_index=True)
+
 # %%
+## without dask
+
 prefix, postfix = [], []
 
-for file in files:
+for file in tqdm(files, desc="Processing files"):
     gas = file.name.split("-")[0]
     outfile = Path(weighted_data_location, file.name)
     print(f"creating fix for {file.name}")
@@ -276,48 +344,54 @@ for file in files:
         gas = "NMVOC"
     elif gas == "Sulfur":
         gas = "SO2"
-    else:
-        gas = gas
     match = next(ceds_data_location.glob(f"{gas}-*.nc"))
-    
-    # open with dask
-    ceds = xr.open_dataset(match, chunks={"time": 12})
-    gridded = xr.open_dataset(file, chunks={"time": 12})
 
+    # open datasets (no dask)
+    ceds = xr.open_dataset(match)
+    gridded = xr.open_dataset(file)
+
+    # rename variables if needed
     if "NMVOC_em_anthro" in ceds.data_vars:
         ceds = ceds.rename({"NMVOC_em_anthro": "VOC_em_anthro"})
     if "SO2_em_anthro" in ceds.data_vars:
         ceds = ceds.rename({"SO2_em_anthro": "Sulfur_em_anthro"})
 
-    # revert names for output
+    # revert gas names for output
     if gas == "NMVOC":
         gas = "VOC"
     elif gas == "SO2":
         gas = "Sulfur"
-    else:
-        gas = gas
-        
-    print(gas)
+    
+    var = f"{gas}_em_anthro"
+
     # rename sectors
     ceds = ceds.assign_coords(sector=pd.Series(ceds["sector"].values).map(sector_dict).values)
     reference = ceds.where(ceds.time.dt.year == 2023, drop=True)
     gridded_23 = gridded.where(gridded.time.dt.year == 2023, drop=True)
 
-    # calculate relative difference
+    # calculate relative difference (vectorized)
     pct_diff23 = calculate_diff(reference, gridded_23, gas)
-    weights = pct_diff23.to_dataset(name=f"{gas}_em_anthro")
+    weights = pct_diff23.to_dataset(name=var)
 
     # expand weights to all years
     n_repeat = gridded.sizes["time"] // weights.sizes["time"]
     weights_exp = xr.concat([weights] * n_repeat, dim="time")
     weights_exp = weights_exp.assign_coords(time=gridded.time)
-    print(n_repeat)
+
+    # apply weights
     weighted = gridded * weights_exp
-        
+
+    # replace sectors we don't want weighted
+    sectors_to_keep = ['Other non-Land CDR', 'BECCS', 'International Shipping']
+    sectors_present = [s for s in sectors_to_keep if s in weighted.sector.values]
+    if sectors_present:
+        weighted[var].loc[dict(sector=sectors_present)] = gridded[var].sel(sector=sectors_present)
+
     # calculate sectoral global totals
-    gridded_global = gridded[f"{gas}_em_anthro"].groupby("sector").sum(dim=("lat", "lon"))
-    weighted_global = weighted[f"{gas}_em_anthro"].groupby("sector").sum(dim=("lat", "lon"))
-        
+    gridded_global = gridded[var].groupby("sector").sum(dim=("lat", "lon")).astype("float64")
+    weighted_global = weighted[var].groupby("sector").sum(dim=("lat", "lon")).astype("float64")
+
+    # convert to dataframes
     df1 = gridded_global.to_dataframe(name="prefix").reset_index()
     df1["gas"] = gas
     df1 = df1.melt(id_vars=["time", "sector", "gas"], var_name="version", value_name="value")
@@ -329,29 +403,58 @@ for file in files:
     prefix.append(df1)
     postfix.append(df2)
 
+    # remove old file
     outfile.unlink(missing_ok=True)
-    
-    encoding = {var: {"zlib": True, "complevel": 4} for var in weighted.data_vars}
 
-    with ProgressBar():
-        weighted.to_netcdf(outfile, encoding=encoding, compute=True)
+    # save weighted dataset (no dask)
+    encoding = {var: {"zlib": True, "complevel": 4}}
+    weighted.to_netcdf(outfile, encoding=encoding)
 
 # combine results
 global_prefix = pd.concat(prefix, ignore_index=True)
 global_postfix = pd.concat(postfix, ignore_index=True)
 
 # %%
-dfs = []
-
-for name, df in zip(gas_names, prefix):  # or postfix
-    df = df.reset_index()   # ensure time/sector are columns
-    df["gas"] = name        # add variable label
-    df = df.melt(id_vars=["time", "sector", "gas"], var_name="type", value_name="value")
-    dfs.append(df)
-
-long_df = pd.concat(dfs, ignore_index=True)
-long_df
+global_prefix["time"] = pd.to_datetime(global_prefix["time"].astype(str))
+global_postfix["time"] = pd.to_datetime(global_postfix["time"].astype(str))
 
 # %%
-global_prefix = pd.concat(prefix, ignore_index=True)
-global_prefix
+to_plot = pd.concat([global_prefix, global_postfix])
+out_csv = Path(weighted_data_location, "global_aggregates_for_checking.csv")
+to_plot.to_csv(out_csv, index=False)
+
+# %%
+sns.relplot(
+    data=to_plot,
+    kind="line",
+    x="time",
+    y="value",
+    hue="sector",
+    col="gas",
+    style="version",
+    col_wrap=3,
+    facet_kws={"sharey": False}
+)
+plt.show()
+
+# %%
+wide_df = to_plot.pivot_table(
+    index=["gas", "sector", "time"],
+    columns="version",
+    values="value"
+)
+wide_df["diff"] = wide_df["postfix"] - wide_df["prefix"]
+wide = wide_df.reset_index()
+
+# %%
+sns.relplot(
+    data=wide,
+    kind="line",
+    x="time",
+    y="diff",
+    hue="sector",
+    col="gas",
+    col_wrap=3,
+    facet_kws={"sharey": False}
+)
+plt.show()
