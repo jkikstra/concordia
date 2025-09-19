@@ -27,6 +27,7 @@ from dask.utils import SerializableLock
 import seaborn as sns
 
 from concordia.cmip7 import utils as cmip7_utils
+from concordia.cmip7.CONSTANTS import PROXY_YEARS
 
 # %% [markdown]
 # ## prepare setup
@@ -47,7 +48,7 @@ new_proxies_location.mkdir(parents=True, exist_ok=True)
 # ## generate proxy rasters
 
 # %%
-years = [2022, 2023, 2024, 2025, 2030, 2035, 2040, 2045, 2050, 2055, 2060, 2065, 2070, 2075, 2080, 2085, 2090, 2095, 2100]
+years = PROXY_YEARS
 
 sector_mapping = {
     0: "AGR",

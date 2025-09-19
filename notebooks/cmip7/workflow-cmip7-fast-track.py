@@ -27,7 +27,7 @@
 # Specify which scenario file to read in
 
 # %%
-HISTORY_FILE = "cmip7_history_countrylevel_250721.csv" # needs to be updated for 2022/2023 extrapolation update september 2025
+HISTORY_FILE = "cmip7_history_countrylevel_250918.csv"
 
 # %%
 # SCENARIO_FILE = "check_harmonisation_regions_REMIND.csv" # example (ALREADY HARMONIZED) REMIND scenario (used in v0 UKESM testing)
@@ -46,9 +46,9 @@ HISTORY_FILE = "cmip7_history_countrylevel_250721.csv" # needs to be updated for
 # SCENARIO_FILE = "harmonised-gridding_REMIND-MAgPIE 3.5-4.11.csv" # example (ALREADY HARMONIZED) REMIND scenario (used from 08.08.2025 for v0_2 
 # SCENARIO_SELECTION = "SSP1 - Very Low Emissions"
 
-# H: 
-SCENARIO_FILE = "harmonised-gridding_GCAM 7.1 scenarioMIP.csv"
-SCENARIO_SELECTION = "SSP3 - High Emissions"
+# # H: 
+# SCENARIO_FILE = "harmonised-gridding_GCAM 7.1 scenarioMIP.csv"
+# SCENARIO_SELECTION = "SSP3 - High Emissions"
 
 # %% [markdown]
 # Specify settings
@@ -62,9 +62,6 @@ SETTINGS_FILE = "config_cmip7_esgf_v0_alpha.yaml" # preparing for first upload t
 # HARMONIZATION_VERSION = "config_cmip7_v0_testing_aim"
 # HARMONIZATION_VERSION = "config_cmip7_v0_testing_ukesm_remind"
 # HARMONIZATION_VERSION = "config_cmip7_v0_1_testing_ukesm_remind"
-
-sub_version = "_h"
-HARMONIZATION_VERSION = f"cmip7_esgf_v0_alpha{sub_version}"
 
 # %% [markdown]
 # ## Importing packages
@@ -103,7 +100,14 @@ from concordia.cmip7 import utils as cmip7_utils # update to cmip7 utils (e.g. f
 from concordia.settings import Settings
 from concordia.utils import MultiLineFormatter, extend_overrides
 from concordia.workflow import WorkflowDriver
+from concordia.cmip7.CONSTANTS import return_marker_information, CMIP_ERA
 
+# %%
+# Scenario information
+HARMONIZATION_VERSION, MODEL_SELECTION, SCENARIO_SELECTION = return_marker_information(
+    m="H"
+)
+SCENARIO_FILE = "harmonised-gridding_{MODEL_SELECTION}.csv"
 
 # %% [markdown]
 # Load unit registry from openSCM for translating units (e.g., to and from CO2eq)
