@@ -63,10 +63,11 @@ After that, prepare the proxy files for future years:
 1. `prep_proxyfuture-anthro-from-ceds-cmip7-esgf.py`: prepares proxies for (land-based) anthropogenic emissions, shipping, and aircraft
 1. `prep_proxyfuture-openburning-from-dres-cmip7-esgf.py`: prepares proxies for openburning emissions
 1. `prep_proxyfuture-cdr-from-rescue.py`: prepares proxies for CDR
+1. `prep_proxyfuture-openburning-supplemental-VOCspeciation-from-dres-cmip7-esgf.py`: prepare input for VOC speciation workflow
 
 **TODO:**
 - [ ] Make `prep_proxyfuture-anthro-supplemental-VOCspeciation-from-ceds-cmip7-esgf.py`: should loop over all VOC data, filter only 2023, make them into sectors, calculate the total, and assign 'percentages' as values
-- [ ] Make `prep_proxyfuture-openburning-supplemental-VOCspeciation-from-dres-cmip7-esgf.py`
+
 
 
 ### Workflow
@@ -75,7 +76,7 @@ After that, prepare the proxy files for future years:
 
 **TODO:**
 - [ ] update `workflow-cmip7-fast-track.py` to start the scenario data in 2022 (need to extend the scenario data with one year of history data)
-- [ ] create `workflow-cmip7-fast-track-VOC-speciation.py` to create supplemental VOC speciated data
+- [~] create `workflow-cmip7-fast-track-VOC-speciation.py` to create supplemental VOC speciated data
 
 ### Post-processing
 

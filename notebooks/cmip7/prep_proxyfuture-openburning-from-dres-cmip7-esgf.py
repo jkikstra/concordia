@@ -45,7 +45,7 @@ import seaborn as sns
 from concordia.cmip7 import utils as cmip7_utils
 from concordia.settings import Settings
 import concordia.cmip7.utils_futureproxy_ceds_bb4cmip as uprox
-from concordia.cmip7.utils_futureproxy_ceds_bb4cmip import _normalize_time_slice, formatting_to_cmip7_scenario_proxy
+from concordia.cmip7.utils_futureproxy_ceds_bb4cmip import _normalize_time_slice
 
 # %%
 VERSION = CONFIG
@@ -204,6 +204,63 @@ def load_bb4cmip(g, type, time_slice, s: Optional[str] = None) -> xr.Dataset:
         return ds_perc
     raise ValueError('type must be "total" or "percentage"')
         
+
+
+# %%
+def formatting_to_cmip7_scenario_proxy(
+        ds,
+        g,
+        s: Optional[str] = None,
+        gas_mapping=gas_mapping,
+        scenario_years: list[int] = years, #
+        ysel: int | list[int] | tuple[int, ...] = 2023,
+        sector_override: Optional[str] = None,
+        sector_mapping_singlesector=sector_mapping_singlesector
+):
+    ## do additional formatting (like CEDS workflow)
+    # Map ESGF gas names to internal format if mapping exists
+    if g in gas_mapping:
+        internal_gas = gas_mapping[g]
+    else:
+        internal_gas = g
+
+    # add gas dimension with internal gas name
+    ds = ds.expand_dims(dim={"gas": [f"{internal_gas}"]})
+    
+    # split time into year and month
+    ds = ds.assign_coords(year=("time", ds["time"].dt.year.data),
+                            month=("time", ds["time"].dt.month.data)).groupby(["year", "month"]).mean()
+
+    # Take average over the different years
+    ds = ds.mean(dim="year")
+
+    # Project onto future years
+    ds = ds.expand_dims({"year": scenario_years})
+    
+
+    # add sector dimension
+    if sector_override is None:
+        ds = ds.expand_dims(dim={"sector": [sector_mapping_singlesector[s]] })
+    else:
+        s = sector_override
+        ds = ds.expand_dims(dim={"sector": [s] })
+    
+    # reorder
+    ds_reordered = ds.transpose("lat", "lon", "gas", "sector", "year", "month").chunk({"month": 12})
+
+    # unify chunks for dask
+    ds_reordered = ds_reordered.unify_chunks().astype("float32")
+
+    # Format ysel for filename if it's not an integer
+    if not isinstance(ysel, int):
+        ysel_filename = f"{min(ysel)}_{max(ysel)}"
+    else:
+        ysel_filename = ysel
+
+    # give path for outfile
+    outfile = new_proxies_location / f"openburning_{internal_gas}_{s}_{ysel_filename}.nc"
+    
+    return ds_reordered, outfile
 
 # %%
 # run single-sector
