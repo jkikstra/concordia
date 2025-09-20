@@ -793,6 +793,174 @@ res = workflow.grid(
 # # END OF MAIN CODE
 
 # %% [markdown]
+# # Start of SUPPLEMENTAL DATA
+
+# %% [markdown]
+# # VOC speciation (CEDS)
+
+# %%
+from dask.utils import SerializableLock
+lock = SerializableLock()
+
+# %%
+# Load VOC data
+
+from concordia.cmip7.CONSTANTS import GASES_ESGF_CEDS_VOC
+import xarray as xr
+
+anthro_voc = settings.proxy_path / "VOC_speciation"
+
+# load VOC (bulk) scenario file
+
+# anthro
+voc_anthro = xr.open_dataset(
+    settings.out_path / HARMONIZATION_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution}-{model}-{scenario}_{grid_label}_{start_date}-{end_date}.nc".format(
+    name="VOC-em-anthro",
+    model=MODEL_SELECTION.replace(" ", "-"),
+    scenario=SCENARIO_SELECTION.replace(" ", "-"),
+    **cmip7_utils.DS_ATTRS | {"version": settings.version}
+),
+chunks={},
+lock=lock
+)
+voc_anthro
+
+# AIR is not required.
+
+# TODO: add openburning (which has entirely different names/formatting)
+
+# %%
+# Calculate VOC-speciation data; keep the structure of the VOC (bulk) data
+
+from dask.diagnostics import ProgressBar
+
+PROXY_TIME_RANGE_VOC_CEDS = "2023"
+
+voc_spec_ratios_location = settings.proxy_path / "VOC_speciation"
+
+# loop through all CEDS em-anthro VOC-species from input4MIP files
+# 1. load share data
+# 2. create an "empty"/"template" dataset as a copy of voc_anthro
+# 3. fill with zeroes
+# 4. for each sector, 
+#   i. do multiplication
+#   ii. assign sector value
+# 5. Update/set other attributes
+
+for v in GASES_ESGF_CEDS_VOC:
+# for v in [GASES_ESGF_CEDS_VOC[2]]: # only run one to test
+# for v in GASES_ESGF_CEDS_VOC[0:9]: # run a few to test
+    print(f'Reading in shares of {v}')
+    # import file 
+    voc_share = xr.open_dataset(
+        voc_spec_ratios_location / f"{v}_{PROXY_TIME_RANGE_VOC_CEDS}.nc",
+        engine="netcdf4",
+        chunks={},
+        lock=lock
+    )
+
+    # create VOC_em speciated
+    # Alternative approach using xarray's alignment capabilities
+    
+    # Create a mapping from voc_anthro sectors to voc_share sectors
+    sector_mapping = {
+        'Agriculture': 'AGR',
+        'Energy': 'ENE',
+        'Industrial': 'IND',
+        'Residential Commercial Other': 'RCO',
+        'Solvent production and application': 'SLV',
+        'Transportation': 'TRA',
+        'Waste': 'WST',
+        'International Shipping': 'SHP'
+    }
+    
+    # Rename sectors in voc_anthro to match voc_share sector names where possible
+    anthro_to_share_sectors = {v: k for k, v in sector_mapping.items() if v in voc_share.sector.values and k in voc_anthro.sector.values}
+    
+    # Initialize result with same structure as voc_anthro
+    voc_spec = xr.Dataset(
+        coords=voc_anthro.coords,
+        attrs=voc_anthro.attrs.copy()
+    )
+    
+    # Initialize the data variable with zeros
+    voc_spec_data = xr.zeros_like(voc_anthro["VOC_em_anthro"])
+    
+    # Perform multiplication for matching sectors
+    # print(f'Calculations of emissions of {v}')
+    for share_sector, anthro_sector in anthro_to_share_sectors.items():
+        # Select data from both datasets for matching sectors
+        voc_bulk = voc_anthro["VOC_em_anthro"].sel(sector=anthro_sector)
+        
+        # Get emissions share for this sector and gas
+        share_data = voc_share["emissions_share"].sel(
+            sector=share_sector,
+            gas=voc_share.gas[0]  # Take first gas
+        )
+        
+        # Convert time coordinates to year/month for alignment
+        years = voc_bulk.time.dt.year
+        months = voc_bulk.time.dt.month
+        
+        # Find the index of the sector in the coordinate array
+        sector_idx = list(voc_anthro.sector.values).index(anthro_sector)
+        
+        # Perform multiplication for each time step
+        for time_idx, time_val in enumerate(voc_bulk.time.values):
+            year = years[time_idx].values
+            month = months[time_idx].values
+            
+            # Check if this year/month exists in voc_share
+            if year in share_data.year.values and month in share_data.month.values:
+                # Get the share data for this specific year/month
+                share_slice = share_data.sel(year=year, month=month)
+                
+                # Get the bulk VOC data for this time step
+                voc_slice = voc_bulk.isel(time=time_idx)
+                
+                # Multiply and assign to result
+                voc_spec_data[time_idx, :, :, sector_idx] = (voc_slice * share_slice).values
+    
+    # Add the computed data to the result dataset
+    gas_variable_name = voc_share.gas.values[0]
+
+    voc_spec[f"{gas_variable_name}"] = voc_spec_data
+    # TODO:
+    # - [ ] update long_name of data (follow CEDS long_name) 
+    # Add the bounds
+    voc_spec['lon_bnds'] = voc_anthro['lon_bnds']
+    voc_spec['time_bnds'] = voc_anthro['time_bnds']
+    voc_spec['lat_bnds'] = voc_anthro['lat_bnds']
+    
+    # Update attributes
+    voc_spec.attrs['variable_id'] = gas_variable_name
+    voc_spec.attrs['title'] = f"Speciated {gas_variable_name} emissions"
+
+    # save out
+    print(f'Writing out emissions of {v}')
+    outfile = settings.out_path / HARMONIZATION_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution}-{model}-{scenario}_{grid_label}_{start_date}-{end_date}.nc".format(
+        name=gas_variable_name.replace("_", "-"),
+        model=MODEL_SELECTION.replace(" ", "-"),
+        scenario=SCENARIO_SELECTION.replace(" ", "-"),
+        **cmip7_utils.DS_ATTRS | {"version": settings.version}
+    )
+
+    encoding = {
+        gas_variable_name: {
+            "zlib": True,
+            "complevel": 2
+        }
+    }
+    
+    with ProgressBar():
+        voc_spec.to_netcdf(outfile, mode="w", encoding=encoding, compute=True)
+
+
+# %% [markdown]
+# # END OF SUPPLEMENTAL DATA CODE
+
+
+# %% [markdown]
 # # ------------------------------------
 
 # %% [markdown]

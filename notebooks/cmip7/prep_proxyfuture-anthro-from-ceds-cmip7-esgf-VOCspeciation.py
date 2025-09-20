@@ -221,8 +221,9 @@ for v in GASES_ESGF_CEDS_VOC:
     )
 
     # calculate share (now backed by NumPy arrays, detached from file IO)
-    voc_spec = xr.Dataset({
-        "emissions_share": ds[v] / tot["NMVOC_em_anthro"]
+    # If tot["NMVOC_em_anthro"] is zero, then emissions_share should also be zero
+    ds = xr.Dataset({
+        "emissions_share": xr.where(tot["NMVOC_em_anthro"] != 0, ds[v] / tot["NMVOC_em_anthro"], 0)
     })
 
     # # drop SHP sector, this has to be written into its own proxy file

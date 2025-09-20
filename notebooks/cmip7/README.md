@@ -63,20 +63,20 @@ After that, prepare the proxy files for future years:
 1. `prep_proxyfuture-anthro-from-ceds-cmip7-esgf.py`: prepares proxies for (land-based) anthropogenic emissions, shipping, and aircraft
 1. `prep_proxyfuture-openburning-from-dres-cmip7-esgf.py`: prepares proxies for openburning emissions
 1. `prep_proxyfuture-cdr-from-rescue.py`: prepares proxies for CDR
-1. `prep_proxyfuture-openburning-supplemental-VOCspeciation-from-dres-cmip7-esgf.py`: prepare input for VOC speciation workflow
+1. `prep_proxyfuture-anthro-supplemental-VOCspeciation-from-ceds-cmip7-esgf.py`: should loop over all VOC antro data, filter only 2023, make them into sectors, calculate the total, and assign 'percentages' as values
 
 **TODO:**
-- [ ] Make `prep_proxyfuture-anthro-supplemental-VOCspeciation-from-ceds-cmip7-esgf.py`: should loop over all VOC data, filter only 2023, make them into sectors, calculate the total, and assign 'percentages' as values
+- [ ] Make `prep_proxyfuture-openburning-supplemental-VOCspeciation-from-dres-cmip7-esgf.py`: prepare input for VOC speciation workflow for openburning
 
 
 
 ### Workflow
 
-1. `workflow-cmip7-fast-track.py`
+1. `workflow-cmip7-fast-track.py`: includes main species antro, anthro_AIR, openburning + VOC speciation anthro
 
 **TODO:**
 - [ ] update `workflow-cmip7-fast-track.py` to start the scenario data in 2022 (need to extend the scenario data with one year of history data)
-- [~] create `workflow-cmip7-fast-track-VOC-speciation.py` to create supplemental VOC speciated data
+- [ ] update `workflow-cmip7-fast-track.py` to include supplemental VOC speciated data for biomass burning
 
 ### Post-processing
 
@@ -96,6 +96,9 @@ Other checking scripts that do not always need to be run:
 * `check_plot-animated-grids.py`: makes animated grids (is very useful, especially for presentations, but also takes very long)
 * `check_gridded-scenarios-cmip7-vs-cmip6.py`: checks timeseries of our output grids to cmip6 scenario output grids 
 * `check_gridded-scenarios-Aircraft-latitude.py`: checks latitudinal profile of aircraft emissions
+
+**TODO:**
+- [ ] check VOC speciation data (compare to CEDS)
 
 ## Other
 
