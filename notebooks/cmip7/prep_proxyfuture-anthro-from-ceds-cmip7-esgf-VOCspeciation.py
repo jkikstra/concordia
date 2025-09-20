@@ -59,9 +59,14 @@ except (FileNotFoundError, NameError):
         cmip7_dir = Path(__file__).resolve().parent
         settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
     except (FileNotFoundError, NameError):
-        # Fallback for interactive/Jupyter mode, where 'file location' does not exist
-        cmip7_dir = Path().resolve()  # one up
-        settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+        try:
+            # Fallback for interactive/Jupyter mode, where 'file location' does not exist
+            cmip7_dir = Path().resolve()  # one up
+            settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+        except (FileNotFoundError, NameError):
+            # if Path().resolve somehow goes to the root of this repository
+            cmip7_dir = Path().resolve() / "notebooks" / "cmip7"  # one up
+            settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
 
 # %%
 PROXY_TIME_RANGE = 2023 # in principle, could also take some average like [2014,2023]
@@ -215,9 +220,9 @@ for v in GASES_ESGF_CEDS_VOC:
         ["lat_bnds", "lon_bnds", "time_bnds", "sector_bnds"]
     )
 
-    # do multiplication (now backed by NumPy arrays, detached from file IO)
+    # calculate share (now backed by NumPy arrays, detached from file IO)
     voc_spec = xr.Dataset({
-        "emissions_share": ds[v] * tot["NMVOC_em_anthro"]
+        "emissions_share": ds[v] / tot["NMVOC_em_anthro"]
     })
 
     # # drop SHP sector, this has to be written into its own proxy file
