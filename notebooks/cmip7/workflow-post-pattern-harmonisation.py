@@ -38,24 +38,65 @@ lock = SerializableLock()
 # ## setup
 
 # %%
-grid_file_location = "/home/hoegner/Projects/CMIP7/input/gridding/"
-# grid_file_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_2/input/gridding/"
+from concordia.cmip7.CONSTANTS import CONFIG, return_marker_information, PROXY_YEARS, CMIP_ERA
+import concordia.cmip7.utils_futureproxy_ceds_bb4cmip as uprox
 
-ceds_data_location = Path(grid_file_location, "ESGF", "CEDS", "CMIP7_anthro")
-ceds_air_data_location = Path(grid_file_location, "ESGF", "CEDS", "CMIP7_AIR")
+VERSION = CONFIG
+try:
+    # when running the script from a terminal or otherwise
+    cmip7_dir = Path(__file__).resolve()
+    settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+except (FileNotFoundError, NameError):
+    try:
+        # when running the script from a terminal or otherwise
+        cmip7_dir = Path(__file__).resolve().parent
+        settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+    except (FileNotFoundError, NameError):
+        try:
+            # Fallback for interactive/Jupyter mode, where 'file location' does not exist
+            cmip7_dir = Path().resolve()  # one up
+            settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+        except (FileNotFoundError, NameError):
+            # if Path().resolve somehow goes to the root of this repository
+            cmip7_dir = Path().resolve() / "notebooks" / "cmip7"  # one up
+            settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+
+# %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
+marker_to_run: str = "H"
 
 # %%
-# Settings
-SETTINGS_FILE = "config_cmip7_v0_2.yaml" # iteration round 2 
-
-sub_version = "_corrected_indexraster"
-HARMONIZATION_VERSION = f"config_cmip7_v0_2{sub_version}"
-
-gridded_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{HARMONIZATION_VERSION}")
-weighted_data_location = Path(gridded_data_location, "weighted")
+# Scenario information
+HARMONIZATION_VERSION, MODEL_SELECTION, SCENARIO_SELECTION = return_marker_information(
+    m=marker_to_run
+)
 
 # %%
-years = [2023, 2024, 2025, 2030, 2035, 2040, 2045, 2050, 2055, 2060, 2065, 2070, 2075, 2080, 2085, 2090, 2095, 2100]
+# grid_file_location = "/home/hoegner/Projects/CMIP7/input/gridding/"
+grid_file_location = settings.gridding_path
+
+# ceds_data_location = Path(grid_file_location, "ESGF", "CEDS", "CMIP7_anthro")
+# ceds_air_data_location = Path(grid_file_location, "ESGF", "CEDS", "CMIP7_AIR")
+ceds_data_location = Path(grid_file_location, "esgf", "ceds", "CMIP7_anthro")
+ceds_data_location_voc = Path("C:/Users/kikstra/Downloads/temp_VOC")
+# ceds_air_data_location = Path(grid_file_location, "ESGF", "CEDS", "CMIP7_AIR") # AIR should not be different as there is no border treatment in our downscaling 
+
+# %%
+# # Settings
+# SETTINGS_FILE = "config_cmip7_v0_2.yaml" # iteration round 2 
+
+# sub_version = "_corrected_indexraster"
+# HARMONIZATION_VERSION = f"config_cmip7_v0_2{sub_version}"
+
+# gridded_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{HARMONIZATION_VERSION}")
+# weighted_data_location = Path(gridded_data_location, "weighted")
+
+gridded_data_location = settings.out_path / HARMONIZATION_VERSION
+weighted_data_location = settings.out_path / HARMONIZATION_VERSION / "weighted"
+weighted_data_location.mkdir(parents=True, exist_ok=True)
+
+# %%
+
+years = [year for year in PROXY_YEARS if year >= settings.base_year]
 
 sector_dict = {
     0: "Agriculture",
@@ -70,38 +111,8 @@ sector_dict = {
     9: "BECCS"
 }
 
-# %% [markdown]
-# ## test for one example file
-
 # %%
-# CEDS file path
-ceds_file = Path(ceds_data_location, "CO2-em-anthro_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn_200001-202312.nc")
-
-# CMIP7-fast-track gridded file path
-gridded_file = Path(gridded_data_location, "CO2-em-anthro_input4MIPs_emissions_CMIP7_IIASA-REMIND-MAgPIE-3.5-4.11-SSP1---Very-Low-Emissions_gn_202301-210012.nc")
-
-# %%
-# load data
-ceds = xr.open_dataset(ceds_file)
-gridded = xr.open_dataset(gridded_file)
-
-# %%
-# apply sector mapping to ceds file to match gridded file
-ceds = ceds.assign_coords(
-    sector=pd.Series(ceds["sector"].values).map(sector_dict).values
-)
-ceds
-
-# %%
-ceds23 = ceds.where(ceds.time.dt.year==2023, drop=True)
-gridded23 = gridded.where(gridded.time.dt.year==2023, drop=True)
-
-# %%
-gridded23.sector
-
-
-# %%
-def calculate_diff(ceds_da, scen_da, gas, empty_treatment="fill_zeroes"):
+def calculate_diff(ceds_da, scen_da, gas, empty_treatment="fill_zeroes", type="em_anthro"):
     """
     Compute the ratio (or difference if desired) between a CEDS reference dataset
     and a scenario dataset for a specific gas, handling missing sectors.
@@ -113,12 +124,9 @@ def calculate_diff(ceds_da, scen_da, gas, empty_treatment="fill_zeroes"):
     ratio_list = []  # store per-sector ratios
     sector_names = []
 
-    var_name = f"{gas}_em_anthro"
+    var_name = f"{gas}_{type}"
 
     for sector in sectors:
-        # skip unwanted sectors
-    #    if sector in ['Other non-Land CDR', 'BECCS']:
-    #        continue
 
         # check if sector exists in each dataset
         sector_in_ceds = sector in ceds_da.sector.values
@@ -175,194 +183,83 @@ def calculate_diff(ceds_da, scen_da, gas, empty_treatment="fill_zeroes"):
 
 
 # %%
-pct_diff23 = calculate_diff(ceds23, gridded23, "CO2")
-
-# %%
-test = pct_diff23.sel(sector="Waste").isel(time=0)
-
-# %%
-print(np.min(test.values))
-print(np.max(test.values))
-
-# %%
-fig, ax = plt.subplots(
-    figsize=(10, 5),  # wider figure
-    subplot_kw={'projection': ccrs.PlateCarree()}
-)
-
-cbar_kwargs = {"label": "Value", "shrink": 0.8}
-test.plot(ax=ax, transform=ccrs.PlateCarree(), cmap="viridis", cbar_kwargs=cbar_kwargs)
-
-# Add coastlines and land
-ax.coastlines()
-ax.add_feature(cfeature.LAND, facecolor="lightgray")
-ax.add_feature(cfeature.BORDERS, linestyle=':')
-
-plt.show()
-
-# %%
-weights = pct_diff23.to_dataset(name="CO2_em_anthro")
-
-# %%
-weighted23 = gridded23 * weights
-
-# %%
-test23 = weighted23 - ceds23
-
-# %%
-test = test23["CO2_em_anthro"].sel(sector="Waste").isel(time=0)
-
-# %%
-print(np.min(test.values))
-print(np.max(test.values))
-
-# %%
-fig, ax = plt.subplots(
-    figsize=(10, 5),  # wider figure
-    subplot_kw={'projection': ccrs.PlateCarree()}
-)
-
-cbar_kwargs = {"label": "Value", "shrink": 0.8}
-test.plot(ax=ax, transform=ccrs.PlateCarree(), cmap="RdBu_r", cbar_kwargs=cbar_kwargs)
-
-# Add coastlines and land
-ax.coastlines()
-ax.add_feature(cfeature.LAND, facecolor="lightgray")
-ax.add_feature(cfeature.BORDERS, linestyle=':')
-
-plt.show()
-
-# %% [markdown]
-# ## run for all files
-
-# %%
-files = [
+files_main = [
     file
     for file in gridded_data_location.glob("*.nc")
-    if "anthro" in file.name and "-AIR-" not in file.name
+    if "anthro" in file.name and "-AIR-" not in file.name and "speciated" not in file.name
+]
+files_voc = [
+    file
+    for file in gridded_data_location.glob("*.nc")
+    if "anthro" in file.name and "-AIR-" not in file.name and "speciated" in file.name
 ]
 
-# %% [markdown]
-# with dask
-#
-# prefix, postfix = [], []
-#
-# for file in files:
-#     gas = file.name.split("-")[0]
-#     outfile = Path(weighted_data_location, file.name)
-#     print(f"creating fix for {file.name}")
-#
-#     # match reference file
-#     if gas == "VOC":
-#         gas = "NMVOC"
-#     elif gas == "Sulfur":
-#         gas = "SO2"
-#     else:
-#         gas = gas
-#     match = next(ceds_data_location.glob(f"{gas}-*.nc"))
-#     
-#     # open with dask
-#     ceds = xr.open_dataset(match, chunks={"time": 12})
-#     gridded = xr.open_dataset(file, chunks={"time": 12})
-#
-#     if "NMVOC_em_anthro" in ceds.data_vars:
-#         ceds = ceds.rename({"NMVOC_em_anthro": "VOC_em_anthro"})
-#     if "SO2_em_anthro" in ceds.data_vars:
-#         ceds = ceds.rename({"SO2_em_anthro": "Sulfur_em_anthro"})
-#
-#     # revert names for output
-#     if gas == "NMVOC":
-#         gas = "VOC"
-#     elif gas == "SO2":
-#         gas = "Sulfur"
-#     else:
-#         gas = gas
-#     
-#     var = f"{gas}_em_anthro"
-#  
-#     # rename sectors
-#     ceds = ceds.assign_coords(sector=pd.Series(ceds["sector"].values).map(sector_dict).values)
-#     reference = ceds.where(ceds.time.dt.year == 2023, drop=True)
-#     gridded_23 = gridded.where(gridded.time.dt.year == 2023, drop=True)
-#
-#     # calculate relative difference
-#     pct_diff23 = calculate_diff(reference, gridded_23, gas)
-#     weights = pct_diff23.to_dataset(name=f"{gas}_em_anthro")
-#
-#     # expand weights to all years
-#     n_repeat = gridded.sizes["time"] // weights.sizes["time"]
-#     weights_exp = xr.concat([weights] * n_repeat, dim="time")
-#     weights_exp = weights_exp.assign_coords(time=gridded.time)
-#
-#     weighted = gridded * weights_exp
-#
-#     # replace the data in weighted with the data in gridded for the sectors we don't want to be touched
-#     print(weighted.sector.values)
-#     sectors_to_keep = ['Other non-Land CDR', 'BECCS', 'International Shipping']
-#     sectors_present = [s for s in sectors_to_keep if s in weighted.sector.values]
-#     if sectors_present:
-#         weighted[var].loc[dict(sector=sectors_present)] = gridded[var].sel(sector=sectors_present)
-#
-#     # calculate sectoral global totals
-#     gridded_global = gridded[f"{gas}_em_anthro"].groupby("sector").sum(dim=("lat", "lon"))
-#     weighted_global = weighted[f"{gas}_em_anthro"].groupby("sector").sum(dim=("lat", "lon"))
-#         
-#     df1 = gridded_global.to_dataframe(name="prefix").reset_index()
-#     df1["gas"] = gas
-#     df1 = df1.melt(id_vars=["time", "sector", "gas"], var_name="version", value_name="value")
-#
-#     df2 = weighted_global.to_dataframe(name="postfix").reset_index()
-#     df2["gas"] = gas
-#     df2 = df2.melt(id_vars=["time", "sector", "gas"], var_name="version", value_name="value")
-#
-#     prefix.append(df1)
-#     postfix.append(df2)
-#
-#     outfile.unlink(missing_ok=True)
-#     
-#     encoding = {var: {"zlib": True, "complevel": 4}}
-#
-#     with ProgressBar():
-#         weighted.to_netcdf(outfile, encoding=encoding, compute=True)
-#
-# combine results
-# global_prefix = pd.concat(prefix, ignore_index=True)
-# global_postfix = pd.concat(postfix, ignore_index=True)
-
 # %%
-## without dask
+## without dask (~3 mins per file)
 
-prefix, postfix = [], []
+prefix, postfix, postfullfix = [], [], []
 
-for file in tqdm(files, desc="Processing files"):
+def rename_ceds_species_string(gas, to_ceds=True):
+    if to_ceds:
+        if gas == "VOC":
+            gas = "NMVOC"
+        elif gas == "Sulfur":
+            gas = "SO2"
+    elif not to_ceds: # from CEDS to our workflow
+        if gas == "NMVOC":
+            gas = "VOC"
+        elif gas == "SO2":
+            gas = "Sulfur"
+    return gas
+
+def rename_ceds_species(ceds):
+    if f"NMVOC_{type}" in ceds.data_vars:
+        ceds = ceds.rename({f"NMVOC_{type}": f"VOC_{type}"})
+    if f"SO2_{type}" in ceds.data_vars:
+        ceds = ceds.rename({f"SO2_{type}": f"Sulfur_{type}"})
+    return ceds
+
+def what_emissions_variable_type(file):
+    if file in files_main:
+        type = "em_anthro"
+    elif file in files_voc:
+        type = "em_speciated_VOC_anthro"
+    return type
+
+def get_correct_naming(file):
+    type = what_emissions_variable_type(file)
+
     gas = file.name.split("-")[0]
     outfile = Path(weighted_data_location, file.name)
     print(f"creating fix for {file.name}")
 
+    gas = rename_ceds_species_string(gas)
+
+    return type, outfile, gas
+
+# for file in tqdm(files_main + files_voc, desc="Processing files"): # VOC not yet working; need to check variable names as there is a mismatch
+# for file in tqdm([files_main[7]], desc="Processing files"):
+for file in tqdm(files_main, desc="Processing files"):
+    type, outfile, gas = get_correct_naming(file)
+
     # match reference file
-    if gas == "VOC":
-        gas = "NMVOC"
-    elif gas == "Sulfur":
-        gas = "SO2"
-    match = next(ceds_data_location.glob(f"{gas}-*.nc"))
+    if file in files_main:
+        match = next(ceds_data_location.glob(f"{gas}-*.nc"))
+    if file in files_voc:
+        match = next(ceds_data_location_voc.glob(f"{gas}-*.nc"))
+        
 
     # open datasets (no dask)
     ceds = xr.open_dataset(match)
     gridded = xr.open_dataset(file)
 
     # rename variables if needed
-    if "NMVOC_em_anthro" in ceds.data_vars:
-        ceds = ceds.rename({"NMVOC_em_anthro": "VOC_em_anthro"})
-    if "SO2_em_anthro" in ceds.data_vars:
-        ceds = ceds.rename({"SO2_em_anthro": "Sulfur_em_anthro"})
-
-    # revert gas names for output
-    if gas == "NMVOC":
-        gas = "VOC"
-    elif gas == "SO2":
-        gas = "Sulfur"
+    if f"NMVOC_{type}" in ceds.data_vars or f"SO2_{type}" in ceds.data_vars:
+        ceds = rename_ceds_species(ceds)
     
-    var = f"{gas}_em_anthro"
+    # revert gas names for output
+    gas = rename_ceds_species_string(gas, to_ceds=False)
+    var = f"{gas}_{type}"
 
     # rename sectors
     ceds = ceds.assign_coords(sector=pd.Series(ceds["sector"].values).map(sector_dict).values)
@@ -378,8 +275,8 @@ for file in tqdm(files, desc="Processing files"):
     weights_exp = xr.concat([weights] * n_repeat, dim="time")
     weights_exp = weights_exp.assign_coords(time=gridded.time)
 
-    # apply weights
-    weighted = gridded * weights_exp
+    # apply weights (= raw ratios)
+    weighted = gridded * weights_exp # TODO: check - For MAIN vs VOC; VOC not the same data variable names?
 
     # replace sectors we don't want weighted
     sectors_to_keep = ['Other non-Land CDR', 'BECCS', 'International Shipping']
@@ -387,30 +284,65 @@ for file in tqdm(files, desc="Processing files"):
     if sectors_present:
         weighted[var].loc[dict(sector=sectors_present)] = gridded[var].sel(sector=sectors_present)
 
+    # step 1:
     # calculate sectoral global totals
     gridded_global = gridded[var].groupby("sector").sum(dim=("lat", "lon")).astype("float64")
     weighted_global = weighted[var].groupby("sector").sum(dim=("lat", "lon")).astype("float64")
 
+    global_scalar = xr.where(gridded_global != 0,
+                             weighted_global / gridded_global,
+                             0)
+
+    # step 2: calculate how much to the global total to make the adjustment perfect for the future (ensure same global emissions)
+    # sub-steps:
+    # 1. multiply by cell_area to get emissions
+    # 2. divide all grid cells by the same scalar (weighted_total / gridded_global)
+    # 3. divide by cell_area to go back to emissions/m2
+    
+    # 1.
+    areacella = xr.open_dataset(Path(grid_file_location, "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc"))
+    cell_area = areacella["areacella"]
+
+    total_emissions_weighted = cell_area * weighted
+
+    # 2.
+    total_emissions_harmonised = xr.where(global_scalar != 0,
+                             total_emissions_weighted / global_scalar,
+                             0) # looks like this somehow turns nan into 0?
+
+    # 3.
+    emissions_harmonised = total_emissions_harmonised / cell_area
+
+    emissions_harmonised_global = emissions_harmonised.groupby("sector").sum(dim=("lat", "lon")).astype("float64") # for diagnostics
+
+    
+    # for diagnostics:
     # convert to dataframes
     df1 = gridded_global.to_dataframe(name="prefix").reset_index()
     df1["gas"] = gas
     df1 = df1.melt(id_vars=["time", "sector", "gas"], var_name="version", value_name="value")
 
-    df2 = weighted_global.to_dataframe(name="postfix").reset_index()
-    df2["gas"] = gas
-    df2 = df2.melt(id_vars=["time", "sector", "gas"], var_name="version", value_name="value")
+    # intermediary step
+    # df2 = weighted_global.to_dataframe(name="postfix").reset_index()
+    # df2["gas"] = gas
+    # df2 = df2.melt(id_vars=["time", "sector", "gas"], var_name="version", value_name="value")
+
+    # post-fix
+    df3 = emissions_harmonised_global[var].to_dataframe(name="postfix").reset_index()
+    df3["gas"] = gas
+    df3 = df3.melt(id_vars=["time", "sector", "gas"], var_name="version", value_name="value")
 
     prefix.append(df1)
-    postfix.append(df2)
+    postfix.append(df3)
 
-    # remove old file
+    # remove old file (from previous loop in processing)
     outfile.unlink(missing_ok=True)
-
     # save weighted dataset (no dask)
     encoding = {var: {"zlib": True, "complevel": 4}}
     weighted.to_netcdf(outfile, encoding=encoding)
 
-# combine results
+# %%
+# combine diagnostic results
 global_prefix = pd.concat(prefix, ignore_index=True)
 global_postfix = pd.concat(postfix, ignore_index=True)
 
@@ -424,6 +356,8 @@ out_csv = Path(weighted_data_location, "global_aggregates_for_checking.csv")
 to_plot.to_csv(out_csv, index=False)
 
 # %%
+# plot postfix and prefix values
+
 sns.relplot(
     data=to_plot,
     kind="line",
@@ -447,6 +381,8 @@ wide_df["diff"] = wide_df["postfix"] - wide_df["prefix"]
 wide = wide_df.reset_index()
 
 # %%
+# plot diff (postfix - prefix)
+
 sns.relplot(
     data=wide,
     kind="line",
@@ -458,3 +394,5 @@ sns.relplot(
     facet_kws={"sharey": False}
 )
 plt.show()
+
+# %%
