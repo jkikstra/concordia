@@ -965,45 +965,185 @@ for v in GASES_ESGF_CEDS_VOC:
 # # ------------------------------------
 
 # %% [markdown]
+# # Investigate VOC speciation
+
+# %% [markdown]
+# ### Plot VOC shares
+
+# %%
+# Add this variable at the top of the plotting section
+RUN_INTERACTIVE_PLOTS = False  # Set to True to enable interactive plotting
+
+# %%
+# Only run plotting code if explicitly enabled
+if RUN_INTERACTIVE_PLOTS:
+    # Plot voc_share emissions data
+    import matplotlib.pyplot as plt
+    import matplotlib.colors as colors
+    import numpy as np
+
+    # Select data for a specific year, month, and sector for plotting
+    plot_data = voc_share['emissions_share'].sel(
+        year=2023, 
+        month=6,  # January
+        sector='IND'  # Industrial sector
+    ).squeeze()  # Remove singleton dimensions
+
+    # Select data for a specific year, month, and sector for plotting
+    plot_data = voc_anthro['VOC_em_anthro'].sel(
+        time="2023-06",
+        sector='Industrial'  # Industrial sector
+    ).squeeze()  # Remove singleton dimensions
+else:
+    print("Interactive plotting disabled. Set RUN_INTERACTIVE_PLOTS = True to enable.")
+
+# %%
+# Only run detailed plotting if enabled
+if RUN_INTERACTIVE_PLOTS:
+    # Create figure with subplots
+    fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+    fig.suptitle(f'VOC Emissions Share: {voc_share.gas.values[0]}', fontsize=16)
+
+    # Plot 1: Raw data
+    ax1 = axes[0, 0]
+    im1 = plot_data.plot(ax=ax1, cmap='viridis', add_colorbar=False)
+    ax1.set_title('Raw Emissions Share (Industrial, June 2023)')
+
+    # Add country borders using a simpler approach
+    try:
+        import cartopy.feature as cfeature
+        import cartopy.crs as ccrs
+        
+        # Create a new subplot with cartopy projection for this plot
+        fig.delaxes(ax1)  # Remove the original axes
+        ax1 = fig.add_subplot(2, 2, 1, projection=ccrs.PlateCarree())
+        
+        # Replot the data on the cartopy axes
+        im1 = plot_data.plot(ax=ax1, cmap='viridis', add_colorbar=False, transform=ccrs.PlateCarree())
+        ax1.set_title('Raw Emissions Share (Industrial, June 2023)')
+        
+        # Add country borders and coastlines
+        ax1.add_feature(cfeature.BORDERS, linewidth=0.5, color='white', alpha=0.8)
+        ax1.add_feature(cfeature.COASTLINE, linewidth=0.5, color='white', alpha=0.8)
+        ax1.set_global()
+        
+    except ImportError:
+        print("Cartopy not available - skipping country borders")
+        # Fallback: just plot without borders
+        im1 = plot_data.plot(ax=ax1, cmap='viridis', add_colorbar=False)
+        ax1.set_title('Raw Emissions Share (Industrial, June 2023)')
+
+    plt.colorbar(im1, ax=ax1, shrink=0.8)
+
+    # Plot 2: Log scale for better visibility of small values
+    ax2 = axes[0, 1]
+    # Add small value to avoid log(0)
+    log_data = np.log10(plot_data.where(plot_data > 0) + 1e-10)
+    im2 = log_data.plot(ax=ax2, cmap='plasma', add_colorbar=False)
+    ax2.set_title('Log10 Emissions Share')
+    plt.colorbar(im2, ax=ax2, shrink=0.8)
+
+    # Plot 3: Histogram of values
+    ax3 = axes[1, 0]
+    values = plot_data.values.flatten()
+    values = values[~np.isnan(values)]  # Remove NaN values
+    ax3.hist(values, bins=50, alpha=0.7, edgecolor='black')
+    ax3.set_xlabel('Emissions Share')
+    ax3.set_ylabel('Frequency')
+    ax3.set_title('Distribution of Emissions Share Values')
+    ax3.set_yscale('log')
+
+    # Plot 4: Summary statistics by sector
+    ax4 = axes[1, 1]
+    sector_means = []
+    sector_names = []
+    for sector in voc_share.sector.values:
+        sector_data = voc_share['emissions_share'].sel(
+            year=2023, month=1, sector=sector
+        ).values.flatten()
+        sector_data = sector_data[~np.isnan(sector_data)]
+        if len(sector_data) > 0:
+            sector_means.append(np.mean(sector_data))
+            sector_names.append(sector)
+
+    bars = ax4.bar(sector_names, sector_means)
+    ax4.set_xlabel('Sector')
+    ax4.set_ylabel('Mean Emissions Share')
+    ax4.set_title('Mean Emissions Share by Sector (2023, Jan)')
+    ax4.tick_params(axis='x', rotation=45)
+
+    # Color bars by value
+    if sector_means:  # Only if we have data
+        norm = colors.Normalize(min(sector_means), max(sector_means))
+        colors_list = plt.cm.viridis(norm(sector_means))
+        for bar, color in zip(bars, colors_list):
+            bar.set_color(color)
+
+    plt.tight_layout()
+    plt.show()
+
+# %%
+# Summary statistics - always run these as they're informational, not interactive
+if RUN_INTERACTIVE_PLOTS:
+    # Print summary statistics
+    print(f"\nSummary statistics for {voc_share.gas.values[0]}:")
+    print(f"Shape: {voc_share['emissions_share'].shape}")
+    print(f"Min value: {voc_share['emissions_share'].min().values:.2e}")
+    print(f"Max value: {voc_share['emissions_share'].max().values:.2e}")
+    print(f"Mean value: {voc_share['emissions_share'].mean().values:.2e}")
+    print(f"Non-zero fraction: {(voc_share['emissions_share'] > 0).sum().values / voc_share['emissions_share'].size:.3f}")
+
+    # Check for grid cells with 100% share
+    max_share = voc_share['emissions_share'].max().values
+    if max_share >= 0.99:
+        print(f"\nMaximum share found: {max_share:.3f}")
+        high_share_data = voc_share['emissions_share'].where(voc_share['emissions_share'] >= 0.99)
+        if high_share_data.count() > 0:
+            print("Grid cells with >99% share found!")
+
+
+# %% [markdown]
 # # Investigate GRIDS
 
 # %% [markdown]
 # ### Look at a processed emissions file
 
 # %%
-import xarray as xr
+if RUN_INTERACTIVE_PLOTS:
+    import xarray as xr
+
+    result_grid = xr.open_dataset(Path("..", "results", 
+    "config_cmip7_v0_1_testing_ukesm_remind", 
+    "NOx-em-anthro_input4MIPs_emissions_CMIP7_IIASA-REMIND-MAgPIE-3.5-4.10-SSP1---Very-Low-Emissions_gn_202301-210012.nc"))
+
+    # View variable names
+    print(result_grid.data_vars)
+    # View coordinates
+    print(result_grid.coords)
+    # Pick the variable (one per nc file)
+    print(result_grid['NOx_em_anthro'])
+    # What years?
+    import numpy as np
+    print(np.unique(result_grid.coords['time'].values))
 
 # %%
-result_grid = xr.open_dataset(Path("..", "results", 
-"config_cmip7_v0_1_testing_ukesm_remind", 
-"NOx-em-anthro_input4MIPs_emissions_CMIP7_IIASA-REMIND-MAgPIE-3.5-4.10-SSP1---Very-Low-Emissions_gn_202301-210012.nc"))
+if RUN_INTERACTIVE_PLOTS:
+    import matplotlib.pyplot as plt
+    import matplotlib.colors as colors
 
-# %%
-# View variable names
-print(result_grid.data_vars)
-# View coordinates
-print(result_grid.coords)
-# Pick the variable (one per nc file)
-print(result_grid['NOx_em_anthro'])
-# What years?
-import numpy as np
-print(np.unique(result_grid.coords['time'].values))
+    # Extract data
+    data = result_grid['NOx_em_anthro'].sel(time='2020-01-16 00:00:00', sector='Transportation')
 
-# %%
-import matplotlib.pyplot as plt
-import matplotlib.colors as colors
+    # Compute 99th percentile
+    vmax = np.percentile(data.values, 99.5)
 
-# Extract data
-data = result_grid['NOx_em_anthro'].sel(time='2020-01-16 00:00:00', sector='Transportation')
+    # Plot with normalization: cap all higher values at the 99th percentile
+    norm = colors.Normalize(vmin=data.min(), vmax=vmax)
 
-# Compute 99th percentile
-vmax = np.percentile(data.values, 99.5)
-
-# Plot with normalization: cap all higher values at the 99th percentile
-norm = colors.Normalize(vmin=data.min(), vmax=vmax)
-
-# Plot
-plt.figure(figsize=(10, 5))
-data.plot(norm=norm, cmap='viridis')  # Or use any perceptual map: 'plasma', 'inferno', etc.
-plt.title("NOx Emissions (Transportation)")
-plt.show()
+    # Plot
+    plt.figure(figsize=(10, 5))
+    data.plot(norm=norm, cmap='viridis')  # Or use any perceptual map: 'plasma', 'inferno', etc.
+    plt.title("NOx Emissions (Transportation)")
+    plt.show()
+else:
+    print("Interactive plotting disabled. Set RUN_INTERACTIVE_PLOTS = True to enable NOx grid plots.")
