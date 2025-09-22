@@ -102,10 +102,13 @@ from concordia.utils import MultiLineFormatter, extend_overrides
 from concordia.workflow import WorkflowDriver
 from concordia.cmip7.CONSTANTS import return_marker_information, CMIP_ERA
 
+# %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
+marker_to_run: str = "VLLO"
+
 # %%
 # Scenario information
 HARMONIZATION_VERSION, MODEL_SELECTION, SCENARIO_SELECTION = return_marker_information(
-    m="H"
+    m=marker_to_run
 )
 SCENARIO_FILE = "harmonised-gridding_{MODEL_SELECTION}.csv"
 
