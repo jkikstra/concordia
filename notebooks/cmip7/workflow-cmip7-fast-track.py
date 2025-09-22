@@ -796,7 +796,8 @@ res = workflow.grid(
 # # Start of SUPPLEMENTAL DATA
 
 # %% [markdown]
-# # VOC speciation (CEDS)
+# # VOC speciation (CEDS, anthro)
+# **NOTE: currently takes long at >4hrs for all 23 VOC species**
 
 # %%
 from dask.utils import SerializableLock
@@ -867,9 +868,9 @@ for v in GASES_ESGF_CEDS_VOC:
         'Agriculture': 'AGR',
         'Energy': 'ENE',
         'Industrial': 'IND',
-        'Residential Commercial Other': 'RCO',
-        'Solvent production and application': 'SLV',
         'Transportation': 'TRA',
+        'Residential, Commercial, Other': 'RCO',
+        'Solvents production and application': 'SLV',
         'Waste': 'WST',
         'International Shipping': 'SHP'
     }
