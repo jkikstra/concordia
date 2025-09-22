@@ -133,9 +133,14 @@ except (FileNotFoundError, NameError):
         cmip7_dir = Path(__file__).resolve().parent
         settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
     except (FileNotFoundError, NameError):
-        # Fallback for interactive/Jupyter mode, where 'file location' does not exist
-        cmip7_dir = Path().resolve()  # one up
-        settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+        try:
+            # Fallback for interactive/Jupyter mode, where 'file location' does not exist
+            cmip7_dir = Path().resolve()  # one up
+            settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+        except (FileNotFoundError, NameError):
+            # if Path().resolve somehow goes to the root of this repository
+            cmip7_dir = Path().resolve() / "notebooks" / "cmip7"  # one up
+            settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
 
 # %%
 
@@ -145,6 +150,8 @@ path_scen_cmip7 = settings.out_path / GRIDDING_VERSION
 
 # CEDS (CMIP7)
 path_ceds_cmip7 = settings.gridding_path / "esgf" / "ceds" / "CMIP7_anthro"
+path_ceds_cmip7_voc = settings.gridding_path / "esgf" / "ceds" / "CMIP7_anthro_VOC"
+path_ceds_cmip7_voc = Path("C:/Users/kikstra/Downloads/temp_VOC")
 # path_ceds_cmip7 = Path(f"C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/ESGF/CEDS/CMIP7_anthro") 
 
 # where to save plots of this script  
@@ -513,7 +520,8 @@ def plot_ceds_vs_scenario_comparison(ceds_da, scen_da, gas, sectors, time_slice,
 def plot_place_timeseries(ceds_ds, scen_ds, 
                           lat=39.9042, lon=116.4074,
                           place='Beijing',
-                          gas='CO', sector='Energy'):
+                          gas='CO', sector='Energy',
+                          type="em_anthro"):
     """
     Plot timeseries for PLACE (e.g. Beijing) gridpoint comparing CEDS and scenario data
     
@@ -538,7 +546,7 @@ def plot_place_timeseries(ceds_ds, scen_ds,
     ).sel(sector=sector)
     
     # Get the variable name
-    var_name = f'{gas}_em_anthro'
+    var_name = f'{gas}_{type}'
     
     # Extract the timeseries data
     ceds_ts = ceds_place[var_name]
@@ -578,7 +586,8 @@ def plot_place_timeseries(ceds_ds, scen_ds,
 def plot_place_area_average_timeseries(ceds_ds, scen_ds, gas='CO', sector='Energy',
                                        lat=39.9042, lon=116.4074,
                                        place='Beijing',
-                                       lat_range=1.0, lon_range=1.0):
+                                       lat_range=1.0, lon_range=1.0,
+                                       type="em_anthro"):
     """
     Plot timeseries for PLACE (e.g., Beijing) area (average of nearby gridpoints)
     
@@ -606,7 +615,7 @@ def plot_place_area_average_timeseries(ceds_ds, scen_ds, gas='CO', sector='Energ
     )
     
     # Get variable name
-    var_name = f'{gas}_em_anthro'
+    var_name = f'{gas}_{type}'
     
     # Average over the spatial area
     ceds_ts = ceds_area[var_name].mean(dim=['lat', 'lon'])
@@ -641,7 +650,8 @@ def plot_place_area_average_timeseries(ceds_ds, scen_ds, gas='CO', sector='Energ
 def plot_place_multisector_timeseries(ceds_ds, scen_ds, 
                                       lat=39.9042, lon=116.4074,
                                       place='Beijing',
-                                      gas='CO', sectors=None):
+                                      gas='CO', sectors=None,
+                                      type="em_anthro"):
     """
     Plot timeseries for multiple sectors at a specific location
     
@@ -668,7 +678,7 @@ def plot_place_multisector_timeseries(ceds_ds, scen_ds,
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
     
     # Variable name
-    var_name = f'{gas}_em_anthro'
+    var_name = f'{gas}_{type}'
     
     # Colors for different sectors
     colors = cm.get_cmap('tab10')(np.linspace(0, 1, len(sectors)))
@@ -777,20 +787,49 @@ def plot_place_multisector_combined_timeseries(ceds_ds, scen_ds,
 # ### Comparison with CEDS: maps and timeseries, per sector, per species
 
 
-
 # %%
 # Loop (1) 
 
+# main gases
 GASES = [
-    "BC", 
-    "CO", 
-    "CO2", 
-    "NOx", 
-    "OC", 
-    "Sulfur",
-    "CH4","N2O", "NH3", 
-    "VOC"
-         ]
+    # "BC", 
+    # "CO", 
+    # "CO2", 
+    # "NOx", 
+    # "OC", 
+    # "Sulfur",
+    # "CH4","N2O", "NH3", 
+    # "VOC",
+]
+# supplemental speciated VOCs
+GASES_VOC = [
+    # see CONSTANTS.py for more
+    # "VOC01_alcohols",
+    # "VOC02_ethane",
+    # "VOC03_propane",
+    "VOC04_butanes",
+    "VOC05_pentanes",
+    "VOC06_hexanes_pl",
+    # "VOC07_ethene",
+    "VOC08_propene",
+    "VOC09_ethyne",
+    "VOC12_other_alke",
+    "VOC13_benzene",
+    "VOC14_toluene",
+    "VOC15_xylene",
+    "VOC16_trimethylb",
+    # "VOC17_other_arom",
+    # "VOC18_esters",
+    # "VOC19_ethers",
+    # "VOC20_chlorinate",
+    # "VOC21_methanal",
+    # "VOC22_other_alka",
+    # "VOC23_ketones",
+    # "VOC24_acids",
+    # "VOC25_other_voc"
+]
+
+ALL_GASES = GASES + GASES_VOC
 
 # Mapping for gases where the file name differs from the analysis name
 GAS_FILE_MAPPING = {
@@ -803,13 +842,13 @@ def get_file_gas_name_CEDS(gas):
     return GAS_FILE_MAPPING.get(gas, gas)
 
 # Function to get the correct variable name in the dataset
-def rename_CEDS_data_variable_name(ds, gas):
+def rename_CEDS_data_variable_name(ds, gas, type="em_anthro"):
     file_gas = get_file_gas_name_CEDS(gas)
-    return ds.rename({f"{file_gas}_em_anthro": f"{gas}_em_anthro"})
+    return ds.rename({f"{file_gas}_{type}": f"{gas}_{type}"})
 
 PLOTS = [
     'maps',
-    'timeseries'
+    # 'timeseries'
 ]
 
 PLOT_TIMESERIES_MULTISECTOR = False
@@ -823,9 +862,9 @@ SECTORS = [
     "Residential, Commercial, Other",
     "Solvents production and application",
     "Waste",
-    "International Shipping",
-    "Other non-Land CDR",
-    "BECCS"
+    "International Shipping"#,
+    # "Other non-Land CDR",
+    # "BECCS"
 ]
 
 # used in 'maps'
@@ -839,7 +878,8 @@ TIMES = [
 # used in 'timeseries'
 # Define locations dictionary with coordinates
 LOCATIONS = {
-    'Beijing': (39.9042, 116.4074),
+    # 'Beijing': (39.9042, 116.4074),
+    "Laxenburg": (48.0689, 16.3555),
     # 'Geneva': (46.2044, 6.1432),
     # 'Delhi': (28.6139, 77.2090),
     # 'Spain': (40.4637, 3.7492), # central spain, close to Madrid
@@ -855,12 +895,21 @@ LOCATIONS = {
 }
 
 
+for g in ALL_GASES:
 
-for g in GASES:
+    if g in GASES:
+        type = "em_anthro"
+        supplemental = ""
+    elif g in GASES_VOC:
+        type = "em_speciated_VOC_anthro"
+        supplemental = "-supplemental"
+    
+    type_file = type.replace("_", "-")
+    g_file = g.replace("_","-")
     
     # load and organise data
     # load a CMIP7 scenario file
-    scen_cmip7_data_file = f"{g}-em-anthro_input4MIPs_emissions_{CMIP_ERA}_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
+    scen_cmip7_data_file = f"{g_file}-{type_file}_input4MIPs_emissions_{CMIP_ERA}_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
 
     scen_ds = read_nc_file(
         f = scen_cmip7_data_file,
@@ -868,15 +917,16 @@ for g in GASES:
     )
 
     # load a CMIP7 CEDS file
-    file_gas_ceds = get_file_gas_name_CEDS(g) # for different naming VOC and Sulfur
-    ceds_cmip7_data_file = f"{file_gas_ceds}-em-anthro_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn_200001-202312.nc"
+    file_gas_ceds = get_file_gas_name_CEDS(g_file) # for different naming VOC and Sulfur
+    ceds_cmip7_data_file = f"{file_gas_ceds}-{type_file}_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18{supplemental}_gn_200001-202312.nc"
 
+    ceds_loc = path_ceds_cmip7_voc if g in GASES_VOC else path_ceds_cmip7
     ceds_ds = read_nc_file(
         f = ceds_cmip7_data_file,
-        loc = path_ceds_cmip7,  
+        loc = ceds_loc,  
         rename_sectors_cmip6 = True
     )
-    ceds_ds = rename_CEDS_data_variable_name(ceds_ds, g) # rename data variable too, for different naming VOC and Sulfur
+    ceds_ds = rename_CEDS_data_variable_name(ceds_ds, g, type) # rename data variable too, for different naming VOC and Sulfur
 
     ceds_da = ceds_ds.sel(time=TIMES,
                 method="nearest",
@@ -936,7 +986,8 @@ for g in GASES:
                     fig1, ax1 = plot_place_timeseries(ceds_ds, scen_ds, 
                                         lat=lat, lon=lon,
                                         place=place,
-                                        gas=g, sector=sec)
+                                        gas=g, sector=sec,
+                                        type=type)
                     plt.savefig(plots_path / f"{place}_timeseries_{g}_{sec}.png", 
                                 dpi=300, 
                                 bbox_inches='tight')
@@ -947,7 +998,8 @@ for g in GASES:
                                         lat=lat, lon=lon,
                                         place=place,
                                         gas=g, sector=sec,
-                                        lat_range=2.0, lon_range=2.0)
+                                        lat_range=2.0, lon_range=2.0,
+                                        type=type)
                     plt.savefig(plots_path / f"{place}_area_timeseries_{g}_{sec}.png", 
                                 dpi=300, 
                                 bbox_inches='tight')
@@ -965,7 +1017,8 @@ for g in GASES:
                     fig3, ax3 = plot_place_multisector_combined_timeseries(
                         ceds_ds, scen_ds, 
                         lat=lat, lon=lon, place=place,
-                        gas=g, sectors=SECTORS
+                        gas=g, sectors=SECTORS,
+                                        type=type
                     )
                     plt.savefig(plots_path / f"{place}_multisector_combined_{g}.png", 
                                 dpi=300, bbox_inches='tight')
