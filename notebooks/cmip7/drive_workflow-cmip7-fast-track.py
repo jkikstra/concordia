@@ -99,6 +99,9 @@ def main():  # noqa: PLR0912
                     marker=marker,
                 )
 
+    # TODO: enable separate running of MAIN downscaling and SUPPLEMENTAL downscaling.
+    # - [ ] add parameters on the running of main workflow vs supplemental (VOC speciation) workflow
+    
     # TODO: run checks automatically as well.
     # - [ ] add parameters to the check notebooks
     # - [ ] ensure no bits of the check notebooks should not be run
