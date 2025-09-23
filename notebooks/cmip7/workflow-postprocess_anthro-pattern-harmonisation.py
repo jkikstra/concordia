@@ -62,7 +62,7 @@ except (FileNotFoundError, NameError):
             settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
 
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
-marker_to_run: str = "VLLO"
+marker_to_run: str = "H"
 
 # %%
 # Scenario information
