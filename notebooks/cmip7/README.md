@@ -10,6 +10,29 @@ All mentioned files are located in this folder, unless mentioned otherwise.
 It is assumed that you have a pre-harmonised scenario. 
 There is harmonisation functionality in this repository. While this was used for the RESCUE project, it is not used in this project, as the scenarios are already harmonised in the `iiasa/emissions_harmonization_historical` repository.
 
+## Naming logic (for the notebooks folder) for cmip7:
+**Note: keeping rescue filenames untouched, until we speak with Matt?** 
+
+__File naming structure__
+- {project-name} / "{type-of-file}_{description-of-purpose-or-action}_{version}"
+  - {project-name} is not necessary when the script or data is generic and can be used (unchanged) for more than 1 project. If the file is not meant to be used (unchanged) for more than that specific project, put it in the project folder. Future code development can always later choose to move it back to the root notebooks folder when made more generic. 
+  - {version} should be avoided, but may be added if there is a good reason to keep multiple versions for the same project, for instance to enable running the same workflow with multiple configurations 
+  - the file should not end with "_"
+
+__Main configuration files__
+- "config_*": main configuration file, can serve all types of scripts
+
+__Main python files__
+- "prep_*": before running "workflow_*", includes:
+  - "prep_proxy_*"
+- "workflow_*": from input (IAM {harmonized or raw} emissions) to downscaled and gridded dataproducts 
+- "workflow-postprocess_*": does additional processing on the spatial grid files after "workflow_*", for instance adding a year at the start 
+- "check_*": checks on all data created in "prep_*" and "prep_*". checks can be both numerical and visual (plots) 
+
+__Helper files__
+- "investigate_*": notebooks that look into input files. These files do not produce anything needed for "workflow_*", nor do they analyse the outputs of "workflow_*"
+
+
 ## Current Main workflow
 
 ### Configuration
@@ -75,13 +98,21 @@ After that, prepare the proxy files for future years:
 1. `workflow-cmip7-fast-track.py`: includes main species antro, anthro_AIR, openburning + VOC speciation anthro
 
 **TODO:**
+- [ ] rename `workflow-cmip7-fast-track.py` to `workflow_cmip7-fast-track.py`
+
 - [ ] update `workflow-cmip7-fast-track.py` to start the scenario data in 2022 (need to extend the scenario data with one year of history data)
 - [ ] update `workflow-cmip7-fast-track.py` to include supplemental VOC speciated data for biomass burning
+- [ ] perform pattern-harmonisation in `workflow-post-pattern-harmonisation.py`: a script that "glues together" our scenarios and the CEDS ESGF files, for the harmonization year (2023).
+  - [~] for CEDS main
+  - [ ] for CEDS VOS
+  - [ ] for BB4CMIP
 
 ### Post-processing
 
+1. `workflow-postprocess_pattern-harmonisation.py`: ensures (100%) consistency of scenarios with spatial patterns in historical data
+
+
 **TODO:**
-- [ ] Make `workflow-postprocess_harmonize-output-grids-to-cmip7-ceds-esgf.py...`: a script that "glues together" our scenarios and the CEDS ESGF files, for the harmonization year (2023).
 - [ ] Make `workflow-postprocess_add-missing-years-cmip7-ceds-esgf.py`: makes the year 2022 for ceds; just copy the 2022 files from CEDS, and add them to our scenario files in the same format as our scenario files.
 - [ ] Make `workflow-postprocess_add-missing-years-cmip7-bb4cmip7-esgf.py`: makes the year 2022 for bb4cmip7; **N.B. consider whether this also needs a "force-fix": make also 2021 and see whether we are wrong there or not**
 

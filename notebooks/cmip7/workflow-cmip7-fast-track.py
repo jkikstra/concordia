@@ -800,7 +800,7 @@ res = workflow.grid(
 
 # %% [markdown]
 # # VOC speciation (CEDS, anthro)
-# **NOTE: currently takes long at >4hrs for all 23 VOC species**
+# **NOTE: currently takes long at ~20mins per VOC species ~= 8hrs for all 23 VOC species**
 
 # %%
 from dask.utils import SerializableLock
