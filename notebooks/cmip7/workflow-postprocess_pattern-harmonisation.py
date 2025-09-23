@@ -112,9 +112,9 @@ sector_dict = {
 }
 
 # %%
-def calculate_diff(ceds_da, scen_da, gas, empty_treatment="fill_zeroes", type="em_anthro"):
+def calculate_ratio(ceds_da, scen_da, gas, empty_treatment="fill_zeroes", type="em_anthro"):
     """
-    Compute the ratio (or difference if desired) between a CEDS reference dataset
+    Compute the ratio between a CEDS reference dataset
     and a scenario dataset for a specific gas, handling missing sectors.
 
     Returns an xarray DataArray with 'sector' dimension and all other coordinates intact.
@@ -238,9 +238,9 @@ def get_correct_naming(file):
     return type, outfile, gas
 
 # for file in tqdm(files_main + files_voc, desc="Processing files"): # VOC not yet working; need to check variable names as there is a mismatch
-# for file in tqdm([files_main[7]], desc="Processing files"):
+for file in tqdm([files_main[7]], desc="Processing files"):
 # for file in tqdm(files_main, desc="Processing files"):
-for file in tqdm(files_voc, desc="Processing files"):
+# for file in tqdm(files_voc, desc="Processing files"):
     type, outfile, gas = get_correct_naming(file)
 
     # match reference file
@@ -250,6 +250,7 @@ for file in tqdm(files_voc, desc="Processing files"):
         match = next(ceds_data_location_voc.glob(f"{gas}-*.nc"))
         
 
+    # step 1: find ratio grid between baseyear historical(CEDS) and baseyear scenario(gridded)
     # open datasets (no dask)
     ceds = xr.open_dataset(match)
     gridded = xr.open_dataset(file)
@@ -271,7 +272,7 @@ for file in tqdm(files_voc, desc="Processing files"):
     gridded_23 = gridded.where(gridded.time.dt.year == 2023, drop=True)
 
     # calculate relative difference (vectorized)
-    pct_diff23 = calculate_diff(reference, gridded_23, gas)
+    pct_diff23 = calculate_ratio(reference, gridded_23, gas)
     weights = pct_diff23.to_dataset(name=var)
 
     # expand weights to all years
@@ -288,38 +289,41 @@ for file in tqdm(files_voc, desc="Processing files"):
     if sectors_present:
         weighted[var].loc[dict(sector=sectors_present)] = gridded[var].sel(sector=sectors_present)
 
-    # step 1:
-    # calculate sectoral global totals
-    gridded_global = gridded[var].groupby("sector").sum(dim=("lat", "lon")).astype("float64")
-    weighted_global = weighted[var].groupby("sector").sum(dim=("lat", "lon")).astype("float64")
-
-    global_scalar = xr.where(gridded_global != 0,
-                             weighted_global / gridded_global,
-                             0)
 
     # step 2: calculate how much to the global total to make the adjustment perfect for the future (ensure same global emissions)
-    # sub-steps:
-    # 1. multiply by cell_area to get emissions
-    # 2. divide all grid cells by the same scalar (weighted_total / gridded_global)
-    # 3. divide by cell_area to go back to emissions/m2
-    
-    # 1.
+    # 2.1. multiply the two grids by cell_area to get (total) emissions -- instead of emissions per m2
+    # 2.2. calculate the difference between the global total from our gridding, and the 'weighted' (=spatially adjusted) data; per sector, per year
+    # 2.3. divide all grid cells by the same scalar (weighted_total / gridded_global)
+    # 2.4. divide by cell_area to go back to emissions/m2
+
+
+    # 2.1:
+    # calculate sectoral global totals
     areacella = xr.open_dataset(Path(grid_file_location, "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc"))
     cell_area = areacella["areacella"]
 
+    total_emissions_gridded = cell_area * gridded.drop_vars(["lon_bnds", "lat_bnds", "time_bnds"])
+    gridded_global = total_emissions_gridded[var].groupby("sector").sum(dim=("lat", "lon")).astype("float64")
+    
     total_emissions_weighted = cell_area * weighted
+    weighted_global = total_emissions_weighted[var].groupby("sector").sum(dim=("lat", "lon")).astype("float64")
 
-    # 2.
-    total_emissions_harmonised = xr.where(global_scalar != 0,
-                             total_emissions_weighted / global_scalar,
-                             0) # looks like this somehow turns nan into 0?
+    # 2.2.
+    global_scalar = xr.where(weighted_global != 0,
+                             gridded_global / weighted_global,
+                             0)
 
-    # 3.
+    # 2.3.
+    total_emissions_harmonised = total_emissions_weighted * global_scalar
+
+    emissions_harmonised_global = total_emissions_harmonised.groupby("sector").sum(dim=("lat", "lon")).astype("float64") # for diagnostics
+
+    # 2.4.
     emissions_harmonised = total_emissions_harmonised / cell_area
 
-    emissions_harmonised_global = emissions_harmonised.groupby("sector").sum(dim=("lat", "lon")).astype("float64") # for diagnostics
-
     
+
+
     # for diagnostics:
     # convert to dataframes
     df1 = gridded_global.to_dataframe(name="prefix").reset_index()
