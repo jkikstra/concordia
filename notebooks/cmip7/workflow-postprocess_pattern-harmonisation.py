@@ -38,7 +38,7 @@ lock = SerializableLock()
 # ## setup
 
 # %%
-from concordia.cmip7.CONSTANTS import CONFIG, return_marker_information, PROXY_YEARS, CMIP_ERA
+from concordia.cmip7.CONSTANTS import CONFIG, return_marker_information, PROXY_YEARS, CMIP_ERA, GASES_ESGF_CEDS_VOC, find_voc_data_variable_string
 import concordia.cmip7.utils_futureproxy_ceds_bb4cmip as uprox
 
 VERSION = CONFIG
@@ -62,7 +62,7 @@ except (FileNotFoundError, NameError):
             settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
 
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
-marker_to_run: str = "H"
+marker_to_run: str = "VLLO"
 
 # %%
 # Scenario information
@@ -239,7 +239,8 @@ def get_correct_naming(file):
 
 # for file in tqdm(files_main + files_voc, desc="Processing files"): # VOC not yet working; need to check variable names as there is a mismatch
 # for file in tqdm([files_main[7]], desc="Processing files"):
-for file in tqdm(files_main, desc="Processing files"):
+# for file in tqdm(files_main, desc="Processing files"):
+for file in tqdm(files_voc, desc="Processing files"):
     type, outfile, gas = get_correct_naming(file)
 
     # match reference file
@@ -259,7 +260,10 @@ for file in tqdm(files_main, desc="Processing files"):
     
     # revert gas names for output
     gas = rename_ceds_species_string(gas, to_ceds=False)
-    var = f"{gas}_{type}"
+    if file in files_main:
+        var = f"{gas}_{type}"
+    if file in files_voc:
+        var = find_voc_data_variable_string(gas)
 
     # rename sectors
     ceds = ceds.assign_coords(sector=pd.Series(ceds["sector"].values).map(sector_dict).values)
@@ -276,7 +280,7 @@ for file in tqdm(files_main, desc="Processing files"):
     weights_exp = weights_exp.assign_coords(time=gridded.time)
 
     # apply weights (= raw ratios)
-    weighted = gridded * weights_exp # TODO: check - For MAIN vs VOC; VOC not the same data variable names?
+    weighted = gridded * weights_exp
 
     # replace sectors we don't want weighted
     sectors_to_keep = ['Other non-Land CDR', 'BECCS', 'International Shipping']

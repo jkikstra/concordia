@@ -32,6 +32,17 @@ GASES_ESGF_CEDS_VOC = ["VOC01_alcohols_em_speciated_VOC_anthro",
 
 GASES_ESGF_BB4CMIP_VOC = [] # TBD
 
+def find_voc_data_variable_string(voc_code, voc_list=GASES_ESGF_CEDS_VOC):
+    matching = [s for s in voc_list if voc_code in s]
+    
+    if len(matching) == 1:
+        return matching[0]
+    elif len(matching) == 0:
+        raise ValueError(f"No string found containing '{voc_code}'")
+    else:
+        raise ValueError(f"Multiple strings found containing '{voc_code}': {matching}")
+
+
 PROXY_YEARS =  [2022, 2023, 2024, 2025, 2030, 2035, 2040, 2045, 2050, 2055, 2060, 2065, 2070, 2075, 2080, 2085, 2090, 2095, 2100]
 
 def return_marker_information(m, v="cmip7_esgf_v0_alpha"):
