@@ -109,8 +109,8 @@ After that, prepare the proxy files for future years:
 
 ### Post-processing
 
-1. `workflow-postprocess_pattern-harmonisation.py`: ensures (100%) consistency of scenarios with spatial patterns in historical data
-
+1. `workflow-postprocess_anthro-pattern-harmonisation.py`: ensures (100%) consistency of scenarios with spatial patterns in historical data
+1. `workflow-postprocess_anthro-reaggregate-CDR-sectors.py`: adds CDR sectors back into original net-emissions sector after gridding
 
 **TODO:**
 - [ ] Make `workflow-postprocess_add-missing-years-cmip7-ceds-esgf.py`: makes the year 2022 for ceds; just copy the 2022 files from CEDS, and add them to our scenario files in the same format as our scenario files.
