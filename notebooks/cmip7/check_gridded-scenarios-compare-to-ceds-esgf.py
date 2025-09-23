@@ -880,6 +880,7 @@ TIMES = [
 LOCATIONS = {
     # 'Beijing': (39.9042, 116.4074),
     "Laxenburg": (48.0689, 16.3555),
+    "Nuuk": (64.1743, -51.7373),
     # 'Geneva': (46.2044, 6.1432),
     # 'Delhi': (28.6139, 77.2090),
     # 'Spain': (40.4637, 3.7492), # central spain, close to Madrid
