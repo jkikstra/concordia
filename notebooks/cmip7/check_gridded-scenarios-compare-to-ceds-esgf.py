@@ -114,7 +114,7 @@ lock = SerializableLock()
 from concordia.cmip7.CONSTANTS import return_marker_information, CMIP_ERA
 
 GRIDDING_VERSION, MODEL_SELECTION, SCENARIO_SELECTION = return_marker_information(
-    m="H"
+    m="VLLO"
 )
 
 
@@ -145,13 +145,13 @@ except (FileNotFoundError, NameError):
 # %%
 
 
-path_scen_cmip7 = settings.out_path / GRIDDING_VERSION
+path_scen_cmip7 = settings.out_path / GRIDDING_VERSION / "weighted"
 # path_scen_cmip7 = Path(f"C:/Users/kikstra/Documents/GitHub/concordia/results/{GRIDDING_VERSION}") # gridding output
 
 # CEDS (CMIP7)
 path_ceds_cmip7 = settings.gridding_path / "esgf" / "ceds" / "CMIP7_anthro"
-path_ceds_cmip7_voc = settings.gridding_path / "esgf" / "ceds" / "CMIP7_anthro_VOC"
-path_ceds_cmip7_voc = Path("C:/Users/kikstra/Downloads/temp_VOC")
+path_ceds_cmip7_voc = settings.gridding_path / "esgf" / "ceds" / "CMIP7_anthro_VOC" # on sharepoint; on windows path is too long for Jarmo
+path_ceds_cmip7_voc = Path("C:/Users/kikstra/Downloads/temp_VOC") # copied the files here to avoid 'long path' error
 # path_ceds_cmip7 = Path(f"C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/ESGF/CEDS/CMIP7_anthro") 
 
 # where to save plots of this script  
@@ -794,7 +794,7 @@ def plot_place_multisector_combined_timeseries(ceds_ds, scen_ds,
 GASES = [
     # "BC", 
     # "CO", 
-    # "CO2", 
+    "CO2", 
     # "NOx", 
     # "OC", 
     # "Sulfur",
@@ -807,17 +807,17 @@ GASES_VOC = [
     # "VOC01_alcohols",
     # "VOC02_ethane",
     # "VOC03_propane",
-    "VOC04_butanes",
-    "VOC05_pentanes",
-    "VOC06_hexanes_pl",
+    # "VOC04_butanes",
+    # "VOC05_pentanes",
+    # "VOC06_hexanes_pl",
     # "VOC07_ethene",
-    "VOC08_propene",
-    "VOC09_ethyne",
-    "VOC12_other_alke",
-    "VOC13_benzene",
-    "VOC14_toluene",
-    "VOC15_xylene",
-    "VOC16_trimethylb",
+    # "VOC08_propene",
+    # "VOC09_ethyne",
+    # "VOC12_other_alke",
+    # "VOC13_benzene",
+    # "VOC14_toluene",
+    # "VOC15_xylene",
+    # "VOC16_trimethylb",
     # "VOC17_other_arom",
     # "VOC18_esters",
     # "VOC19_ethers",
