@@ -108,6 +108,7 @@ def process_single_file(file, files_main, files_voc, grid_file_location_fixed_an
     
     # Step 2: sum sectors "Energy" and "BECCS", call the new sector "Energy"
     if "Energy" in ds.sector.values and "BECCS" in ds.sector.values:
+        
         # Extract Energy and BECCS data
         energy_data = ds.sel(sector="Energy")
         beccs_data = ds.sel(sector="BECCS")
@@ -135,6 +136,31 @@ def process_single_file(file, files_main, files_voc, grid_file_location_fixed_an
         ds_filtered = ds
         print(f"Warning: {file.name} has neither Energy nor BECCS sectors")
     
+    # Step 2.5: Rename "Other non-Land CDR" to "Other Capture and Removal"
+    if "Other non-Land CDR" in ds_filtered.sector.values:
+        # Create new sector coordinate values with the renamed sector
+        new_sector_values = []
+        for sector in ds_filtered.sector.values:
+            if sector == "Other non-Land CDR":
+                new_sector_values.append("Other Capture and Removal")
+            else:
+                new_sector_values.append(sector)
+        
+        # Assign the new coordinate values
+        ds_filtered = ds_filtered.assign_coords(sector=new_sector_values)
+        print(f"Renamed 'Other non-Land CDR' to 'Other Capture and Removal' in {file.name}")
+    
+    # Update the sector coordinate attributes for all changes
+    if 'ids' in ds_filtered.sector.attrs:
+        # Create new ids mapping with updated sector names
+        new_ids_list = []
+        for i, sector in enumerate(ds_filtered.sector.values):
+            new_ids_list.append(f"{i}: {sector}")
+        
+        # Update the ids attribute
+        ds_filtered.sector.attrs['ids'] = "; ".join(new_ids_list)
+        print(f"Updated sector ids for {file.name}")
+    
     # Step 3: write out in `grid_file_location_fixed_anthro_reagg` with the same file name
     output_file = grid_file_location_fixed_anthro_reagg / file.name
     
@@ -160,9 +186,20 @@ print(f"Processing {len(delayed_tasks)} files in parallel...")
 with ProgressBar():
     results = compute(*delayed_tasks)
 
+# Took ~20 mins on Jarmo's laptop for main+VOC, running it for two scenarios in separate kernels, at the same time. 
 print("All files processed successfully!")
 for result in results:
     print(result)
 
 
+# %% 
+# # Check new format
+# test = xr.open_dataset(
+#     # grid_file_location_fixed_anthro_reagg / files_main[0].name
+#     settings.out_path / HARMONIZATION_VERSION / "weighted-reaggregated" / files_main[0].name
+# )
 
+# print(test.sector.values)
+# test
+
+# %%
