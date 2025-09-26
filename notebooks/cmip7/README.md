@@ -102,19 +102,17 @@ After that, prepare the proxy files for future years:
 
 - [ ] update `workflow-cmip7-fast-track.py` to start the scenario data in 2022 (need to extend the scenario data with one year of history data)
 - [ ] update `workflow-cmip7-fast-track.py` to include supplemental VOC speciated data for biomass burning
-- [ ] perform pattern-harmonisation in `workflow-post-pattern-harmonisation.py`: a script that "glues together" our scenarios and the CEDS ESGF files, for the harmonization year (2023).
-  - [~] for CEDS main
-  - [ ] for CEDS VOS
-  - [ ] for BB4CMIP
+
 
 ### Post-processing
 
 1. `workflow-postprocess_anthro-pattern-harmonisation.py`: ensures (100%) consistency of scenarios with spatial patterns in historical data
 1. `workflow-postprocess_anthro-reaggregate-CDR-sectors.py`: adds CDR sectors back into original net-emissions sector after gridding
+1. `workflow-postprocess_fix-naming-and-metadata.py`: fixes variables and metadata
 
 **TODO:**
 - [ ] Make `workflow-postprocess_add-missing-years-cmip7-ceds-esgf.py`: makes the year 2022 for ceds; just copy the 2022 files from CEDS, and add them to our scenario files in the same format as our scenario files.
-- [ ] Make `workflow-postprocess_add-missing-years-cmip7-bb4cmip7-esgf.py`: makes the year 2022 for bb4cmip7; **N.B. consider whether this also needs a "force-fix": make also 2021 and see whether we are wrong there or not**
+- [ ] Make `workflow-postprocess_add-missing-years-cmip7-bb4cmip7-esgf.py`: makes the year 2022 for bb4cmip7; **N.B. consider whether this also needs some "pattern-harmonisation" to make the move from 2021 to 2022 more smooth, as spatial patterns will be different; but fire location is of course uncertain.**
 
 ### Checking and plotting
 
