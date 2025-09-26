@@ -62,7 +62,7 @@ except (FileNotFoundError, NameError):
             settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
 
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
-marker_to_run: str = "H"
+marker_to_run: str = "VLLO" # still run this for VLLO
 
 # %%
 # Scenario information
@@ -237,17 +237,24 @@ def get_correct_naming(file):
 
     return type, outfile, gas
 
-# for file in tqdm(files_main + files_voc, desc="Processing files"): # VOC not yet working; need to check variable names as there is a mismatch
-for file in tqdm([files_main[7]], desc="Processing files"):
+# for file in tqdm(files_main + files_voc, desc="Processing files"):
+# for file in tqdm([files_main[7]], desc="Processing files"):
 # for file in tqdm(files_main, desc="Processing files"):
-# for file in tqdm(files_voc, desc="Processing files"):
+for file in tqdm(files_voc, desc="Processing files"):
     type, outfile, gas = get_correct_naming(file)
 
     # match reference file
+    # all_files = 
     if file in files_main:
-        match = next(ceds_data_location.glob(f"{gas}-*.nc"))
+        match = next(ceds_data_location.glob(f"{gas}-*.nc"), None)
+        if match is None:
+            print(f"Warning: No CEDS file found for {gas} in {ceds_data_location}")
+            continue
     if file in files_voc:
-        match = next(ceds_data_location_voc.glob(f"{gas}-*.nc"))
+        match = next(ceds_data_location_voc.glob(f"{gas}-*.nc"), None)
+        if match is None:
+            print(f"Warning: No VOC CEDS file found for {gas} in {ceds_data_location_voc}")
+            continue
         
 
     # step 1: find ratio grid between baseyear historical(CEDS) and baseyear scenario(gridded)
@@ -293,8 +300,9 @@ for file in tqdm([files_main[7]], desc="Processing files"):
     # step 2: calculate how much to the global total to make the adjustment perfect for the future (ensure same global emissions)
     # 2.1. multiply the two grids by cell_area to get (total) emissions -- instead of emissions per m2
     # 2.2. calculate the difference between the global total from our gridding, and the 'weighted' (=spatially adjusted) data; per sector, per year
-    # 2.3. divide all grid cells by the same scalar (weighted_total / gridded_global)
-    # 2.4. divide by cell_area to go back to emissions/m2
+    # {2.3. divide all grid cells by the same scalar (weighted_total / gridded_global)}
+    # {2.4. divide by cell_area to go back to emissions/m2}
+    # 2.3. apply the scalar to the 'weighted' emissions; per sector, per year, to obtain the desired grid
 
 
     # 2.1:
@@ -313,13 +321,16 @@ for file in tqdm([files_main[7]], desc="Processing files"):
                              gridded_global / weighted_global,
                              0)
 
-    # 2.3.
-    total_emissions_harmonised = total_emissions_weighted * global_scalar
+    # # 2.3.
+    # total_emissions_harmonised = total_emissions_weighted * global_scalar
 
-    emissions_harmonised_global = total_emissions_harmonised.groupby("sector").sum(dim=("lat", "lon")).astype("float64") # for diagnostics
+    # emissions_harmonised_global = total_emissions_harmonised.groupby("sector").sum(dim=("lat", "lon")).astype("float64") # for diagnostics
 
-    # 2.4.
-    emissions_harmonised = total_emissions_harmonised / cell_area
+    # # 2.4.
+    # emissions_harmonised = total_emissions_harmonised / cell_area
+
+    # 2.3
+    emissions_harmonised = weighted * global_scalar
 
     
 
