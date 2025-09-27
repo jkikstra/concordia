@@ -113,8 +113,10 @@ lock = SerializableLock()
 
 from concordia.cmip7.CONSTANTS import return_marker_information, CMIP_ERA
 
-GRIDDING_VERSION, MODEL_SELECTION, SCENARIO_SELECTION = return_marker_information(
-    m="VLLO"
+FIXED_METADATA = True
+
+GRIDDING_VERSION, MODEL_SELECTION, SCENARIO_SELECTION, SCENARIO_SELECTION_GRIDDED_AFTER_METADATA = return_marker_information(
+    m="VLLO", fixed_metadata=FIXED_METADATA
 )
 
 
@@ -145,7 +147,7 @@ except (FileNotFoundError, NameError):
 # %%
 
 
-path_scen_cmip7 = settings.out_path / GRIDDING_VERSION / "weighted"
+path_scen_cmip7 = settings.out_path / GRIDDING_VERSION / "final"
 # path_scen_cmip7 = Path(f"C:/Users/kikstra/Documents/GitHub/concordia/results/{GRIDDING_VERSION}") # gridding output
 
 # CEDS (CMIP7)
@@ -168,8 +170,7 @@ SECTORS_ANTHRO = [
     '**Solvents Production and Application',
     '**Transportation Sector',
     '**Waste',
-    '**Other non-Land CDR',
-    '**BECCS'
+    '**Other Capture and Removal'
 ]
 SECTORS_AIR = [
     '**Aircraft'
@@ -266,7 +267,11 @@ var = "CO2-em-anthro"
 
 # %%
 # load a CMIP7 scenario sample file
-scen_cmip7_data_file = f"{var}_input4MIPs_emissions_{CMIP_ERA}_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
+if FIXED_METADATA:
+    scen_cmip7_data_file = f"{var}_input4MIPs_emissions_{CMIP_ERA}_IIASA-{SCENARIO_SELECTION_GRIDDED_AFTER_METADATA}_gn_202201-210012.nc"
+else:
+    scen_cmip7_data_file = f"{var}_input4MIPs_emissions_{CMIP_ERA}_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
+
 
 scen_ds = read_nc_file(
     f = scen_cmip7_data_file,
@@ -792,14 +797,16 @@ def plot_place_multisector_combined_timeseries(ceds_ds, scen_ds,
 
 # main gases
 GASES = [
-    # "BC", 
-    # "CO", 
+    "BC", 
+    "CO", 
     "CO2", 
-    # "NOx", 
-    # "OC", 
-    # "Sulfur",
-    # "CH4","N2O", "NH3", 
-    # "VOC",
+    "NOx", 
+    "OC", 
+    "SO2", # "Sulfur",
+    "CH4",
+    "N2O", 
+    "NH3", 
+    "NMVOC", # "VOC",
 ]
 # supplemental speciated VOCs
 GASES_VOC = [
@@ -847,8 +854,8 @@ def rename_CEDS_data_variable_name(ds, gas, type="em_anthro"):
     return ds.rename({f"{file_gas}_{type}": f"{gas}_{type}"})
 
 PLOTS = [
-    'maps',
-    # 'timeseries'
+    # 'maps',
+    'timeseries'
 ]
 
 PLOT_TIMESERIES_MULTISECTOR = False
@@ -862,9 +869,8 @@ SECTORS = [
     "Residential, Commercial, Other",
     "Solvents production and application",
     "Waste",
-    "International Shipping"#,
-    # "Other non-Land CDR",
-    # "BECCS"
+    "International Shipping",
+    "Other Capture and Removal"
 ]
 
 # used in 'maps'
@@ -878,21 +884,21 @@ TIMES = [
 # used in 'timeseries'
 # Define locations dictionary with coordinates
 LOCATIONS = {
-    # 'Beijing': (39.9042, 116.4074),
-    "Laxenburg": (48.0689, 16.3555),
+    'Beijing': (39.9042, 116.4074),
+    # "Laxenburg": (48.0689, 16.3555),
     "Nuuk": (64.1743, -51.7373),
     # 'Geneva': (46.2044, 6.1432),
-    # 'Delhi': (28.6139, 77.2090),
-    # 'Spain': (40.4637, 3.7492), # central spain, close to Madrid
+    'Delhi': (28.6139, 77.2090),
+    'Spain': (40.4637, 3.7492), # central spain, close to Madrid
     # 'New_York': (40.7128, -74.0060),
-    # 'London': (51.5074, -0.1278),
+    'London': (51.5074, -0.1278),
     # 'Tokyo': (35.6762, 139.6503),
     # 'São_Paulo': (-23.5505, -46.6333),
-    # 'Lagos': (6.5244, 3.3792),
-    # 'Mumbai': (19.0760, 72.8777),
-    # 'Rural_Amazon': (-3.4653, -62.2159),  # Remote area in Amazon
-    # 'North_Atlantic': (45.0, -30.0),     # Shipping route
-    # 'South_China_Sea': (12.0, 113.0)     # Shipping route
+    'Lagos': (6.5244, 3.3792),
+    'Mumbai': (19.0760, 72.8777),
+    'Rural_Amazon': (-3.4653, -62.2159),  # Remote area in Amazon
+    'North_Atlantic': (45.0, -30.0),     # Shipping route
+    'South_China_Sea': (12.0, 113.0)     # Shipping route
 }
 
 
@@ -910,7 +916,11 @@ for g in ALL_GASES:
     
     # load and organise data
     # load a CMIP7 scenario file
-    scen_cmip7_data_file = f"{g_file}-{type_file}_input4MIPs_emissions_{CMIP_ERA}_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
+    if FIXED_METADATA:
+        scen_cmip7_data_file = f"{g_file}-{type_file}_input4MIPs_emissions_{CMIP_ERA}_IIASA-{SCENARIO_SELECTION_GRIDDED_AFTER_METADATA}_gn_202201-210012.nc"
+    else:
+        scen_cmip7_data_file = f"{g_file}-{type_file}_input4MIPs_emissions_{CMIP_ERA}_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
+
 
     scen_ds = read_nc_file(
         f = scen_cmip7_data_file,
@@ -1131,11 +1141,11 @@ GASES = [
     "CO2", 
     "NOx", 
     "OC", 
-    "Sulfur",
+    "SO2", # "Sulfur",
     "CH4",
     "N2O", 
     "NH3", 
-    "VOC"
+    "NMVOC", # "VOC",
     ]
 
 # times = [cftime.DatetimeNoLeap(2023, mon, 16) for mon in range(1, 13)]
@@ -1170,7 +1180,11 @@ if 'maps-per-species' in PLOTS:
                 print(f"{g}-em-{sector_file} not available")
                 continue
 
-            scen_cmip7_data_file = f"{g}-em-{sector_file}_input4MIPs_emissions_{CMIP_ERA}_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
+            if FIXED_METADATA:
+                scen_cmip7_data_file = f"{g}-em-{sector_file}_input4MIPs_emissions_{CMIP_ERA}_IIASA-{SCENARIO_SELECTION_GRIDDED_AFTER_METADATA}_gn_202201-210012.nc"
+            else:
+                scen_cmip7_data_file = f"{g}-em-{sector_file}_input4MIPs_emissions_{CMIP_ERA}_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
+
 
             scen_ds = read_nc_file(
                 f = scen_cmip7_data_file,

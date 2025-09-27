@@ -12,6 +12,16 @@
 #     name: python3
 # ---
 
+
+# %%
+# TODO:
+# now still, if possible
+# - [ ] filename: IIASA -> IIASA-IAMC (do by hand?)
+# future:
+# - [ ] check _FillValue better
+# - [ ] update authors?
+
+
 # %%
 import xarray as xr
 from pathlib import Path
@@ -312,29 +322,29 @@ def rename_variables_and_attributes(ds, ds_attrs=None, g=None, type="toceds-anth
 
 # anthro
 # for g in [gas_prefixes_anthro[8]]: # try one file
-# for g in gas_prefixes_anthro:
-#     print(f"Processing anthro {g}")
-#     matching_file_post_fix = [f for f in files_anthro if f.name.startswith(g + '-')][0]
-#     matching_file_pre_fix = [f for f in files_anthro_before_postprocessing if f.name.startswith(g + '-')][0]
+for g in gas_prefixes_anthro:
+    print(f"Processing anthro {g}")
+    matching_file_post_fix = [f for f in files_anthro if f.name.startswith(g + '-')][0]
+    matching_file_pre_fix = [f for f in files_anthro_before_postprocessing if f.name.startswith(g + '-')][0]
 
-#     ds = xr.open_dataset(matching_file_post_fix)
-#     ds_attrs = xr.open_dataset(matching_file_pre_fix) # old file to use to copy over attributes
+    ds = xr.open_dataset(matching_file_post_fix)
+    ds_attrs = xr.open_dataset(matching_file_pre_fix) # old file to use to copy over attributes
 
-#     # step 1. align Sulfur/SO2 and (NM)VOC naming
-#     # rename filename:
-#     f_out = rename_files(matching_file_post_fix.name, g, type="toceds-anthro")
+    # step 1. align Sulfur/SO2 and (NM)VOC naming
+    # rename filename:
+    f_out = rename_files(matching_file_post_fix.name, g, type="toceds-anthro")
 
-#     # rename variable:
-#     ds, var_name = rename_variables_and_attributes(ds, ds_attrs, g, type="toceds-anthro")
+    # rename variable:
+    ds, var_name = rename_variables_and_attributes(ds, ds_attrs, g, type="toceds-anthro")
 
-#     # write out to final folder
-#     # Save with compression (this triggers computation)
-#     encoding = {var_name: {"zlib": True, "complevel": 4}}
-#     ds.to_netcdf(grid_location_out / f_out, encoding=encoding)
+    # write out to final folder
+    # Save with compression (this triggers computation)
+    encoding = {var_name: {"zlib": True, "complevel": 4}}
+    ds.to_netcdf(grid_location_out / f_out, encoding=encoding)
     
-#     # Close datasets to free memory
-#     ds.close()
-#     ds_attrs.close()
+    # Close datasets to free memory
+    ds.close()
+    ds_attrs.close()
 
 # air and openburning
 for f in files_non_anthro:

@@ -109,6 +109,7 @@ After that, prepare the proxy files for future years:
 1. `workflow-postprocess_anthro-pattern-harmonisation.py`: ensures (100%) consistency of scenarios with spatial patterns in historical data
 1. `workflow-postprocess_anthro-reaggregate-CDR-sectors.py`: adds CDR sectors back into original net-emissions sector after gridding
 1. `workflow-postprocess_fix-naming-and-metadata.py`: fixes variables and metadata
+    - [ ] **TODO**: target_mip to ScenarioMIP
 
 **TODO:**
 - [ ] Make `workflow-postprocess_add-missing-years-cmip7-ceds-esgf.py`: makes the year 2022 for ceds; just copy the 2022 files from CEDS, and add them to our scenario files in the same format as our scenario files.
@@ -119,6 +120,7 @@ After that, prepare the proxy files for future years:
 Main checking scripts:
 * `check_gridded-scenarios-global-sectoral-aggregation-compared-to-input.py`: checks global totals of output grids against input harmonized scenario
 * `check_gridded-scenarios-compare-to-ceds-esgf.py`: compares all sectors of outputs to CEDS grids in harmonization year (2023), and also can make many timeseries plots for specific points and areas (though please note that this can take very long)
+  - [ ] **TODO**: rerun "Energy" timeseries {check sector names!} + ceds-diff-maps
 * `check_gridded-scenarios-country-level-reaggregation-to-cedsCountry.py`: checks whether our output grids align with the input historical national emissions data of CEDS
 
 Other checking scripts that do not always need to be run:
@@ -146,3 +148,26 @@ In that case, you would want to skip the `` notebook, and instead run:
 * `investigate_bb4cmip7.py`: load and plot BB4CMIP7 files
 * `investigate_CEDS-pnnlRd-files.py`: load and plot CEDS .Rd files from the PNNL server
 * `investigate_country-level-aggregation-cedsESGF-vs-cedsCountry.py`: compare CEDS grids by aggregating them to the country level, to the already national CEDS data which is input for harmonisation
+
+
+
+# Versioning and run checks:
+
+## config_cmip7_esgf_v0_alpha (v0.3j 0-3-0)
+
+### Data and documentation
+
+Docs: https://docs.google.com/document/d/1E7Wv2APCRY-LRfI6II9pkwtfySGvRm2zPE2oyYP6mak/edit?usp=sharing 
+Data: https://iiasahub.sharepoint.com/:f:/r/sites/eceprog/Shared%20Documents/Projects/CMIP7/IAM%20Data%20Processing/concordia_cmip7_esgf_v0_alpha/output?csf=1&web=1&e=AYU3sd 
+
+### Run checks
+
+Main checking scripts:
+- [ ;  :VLLO, ...:H] `check_gridded-scenarios-global-sectoral-aggregation-compared-to-input.py`: checks global totals of output grids against input harmonized scenario
+- [~; x:VLLO, ...:H] `check_gridded-scenarios-compare-to-ceds-esgf.py`: compares all sectors of outputs to CEDS grids in harmonization year (2023), and also can make many timeseries plots for specific points and areas (though please note that this can take very long)
+- [ ;  :VLLO, ...:H] `check_gridded-scenarios-country-level-reaggregation-to-cedsCountry.py`: checks whether our output grids align with the input historical national emissions data of CEDS
+
+Other checking scripts that do not always need to be run:
+- [ ;  :VLLO, ...:H] `check_plot-animated-grids.py`: makes animated grids (is very useful, especially for presentations, but also takes very long)
+- [ ] `check_gridded-scenarios-cmip7-vs-cmip6.py`: checks timeseries of our output grids to cmip6 scenario output grids 
+- [ ] `check_gridded-scenarios-Aircraft-latitude.py`: checks latitudinal profile of aircraft emissions
