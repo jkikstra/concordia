@@ -36,8 +36,10 @@ IAMC_COLS = ["model", "scenario", "region", "variable", "unit"]
 # %%
 from concordia.cmip7.CONSTANTS import return_marker_information, CMIP_ERA
 
-GRIDDING_VERSION, MODEL_SELECTION, SCENARIO_SELECTION = return_marker_information(
-    m="VLLO"
+FIXED_METADATA = True
+
+GRIDDING_VERSION, MODEL_SELECTION, SCENARIO_SELECTION, SCENARIO_SELECTION_GRIDDED_AFTER_METADATA = return_marker_information(
+    m="VLLO", fixed_metadata=FIXED_METADATA
 )
 
 
@@ -100,10 +102,15 @@ except (FileNotFoundError, NameError):
         cmip7_dir = Path(__file__).resolve().parent
         settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
     except (FileNotFoundError, NameError):
-        # Fallback for interactive/Jupyter mode, where 'file location' does not exist
-        cmip7_dir = Path().resolve()  # one up
-        settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
-
+        try:
+            # Fallback for interactive/Jupyter mode, where 'file location' does not exist
+            cmip7_dir = Path().resolve()  # one up
+            settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+        except (FileNotFoundError, NameError):
+            # another fallback
+            cmip7_dir = Path().resolve() / "notebooks" / "cmip7"
+            settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+        
 
 
 # Scenarios pre-gridding
@@ -125,7 +132,7 @@ grid_file_location = settings.gridding_path
 # CMIP7 gridded emissions
 # cmip7_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{GRIDDING_VERSION}")
 # cmip7_data_location = Path(f"C:/Users/kikstra/documents/GitHub/concordia/results/{GRIDDING_VERSION}") # gridding output
-cmip7_data_location = settings.out_path / GRIDDING_VERSION
+cmip7_data_location = settings.out_path / GRIDDING_VERSION / "final"
 
 plots_path = cmip7_data_location / "plots"
 plots_path.mkdir(exist_ok=True, parents=True)
@@ -140,8 +147,7 @@ SECTORS_ANTHRO = [
     '**Solvents Production and Application',
     '**Transportation Sector',
     '**Waste',
-    '**Other non-Land CDR',
-    '**BECCS'
+    '**Other Capture and Removal'
 ]
 SECTORS_AIR = [
     '**Aircraft'
@@ -206,8 +212,10 @@ def df_to_wide_timeseries(da):
 
 # %%
 # load a CMIP7 sample file
-cmip7_data_file = f"CO2-em-anthro_input4MIPs_emissions_{CMIP_ERA}_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
-
+if FIXED_METADATA:
+    cmip7_data_file = f"CO2-em-anthro_input4MIPs_emissions_{CMIP_ERA}_IIASA-{SCENARIO_SELECTION_GRIDDED_AFTER_METADATA}_gn_202201-210012.nc"
+else:
+    cmip7_data_file = f"CO2-em-anthro_input4MIPs_emissions_{CMIP_ERA}_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
 scen_ds = read_nc_file(
     f = cmip7_data_file,
     loc = cmip7_data_location

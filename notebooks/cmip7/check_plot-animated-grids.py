@@ -54,10 +54,12 @@ lock = SerializableLock()
 # GRIDDING_VERSION = "config_cmip7_v0_2_WSTfix_remind" # jarmo 21.08.2025 (third go, with updated hist, with fixed Waste)
 # #GRIDDING_VERSION = "config_cmip7_v0_3_GCAM"
 # path_scen_cmip7 = Path(f"C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v0_2/{GRIDDING_VERSION}") # gridding output
-GRIDDING_VERSION = "config_cmip7_v0_2_CEDSnc_remind" # jarmo 31.08.2025 (v0.2 to share)
+# GRIDDING_VERSION = "config_cmip7_v0_2_CEDSnc_remind" # jarmo 31.08.2025 (v0.2 to share)
 # GRIDDING_VERSION = "config_cmip7_v0_2_CEDSnc_remind_only_CO2" # jarmo 30.08.2025 (fourth go, but with CDR)
 #GRIDDING_VERSION = "config_cmip7_v0_3_GCAM"
-path_scen_cmip7 = Path(f"C:/Users/kikstra/Documents/GitHub/concordia/results/{GRIDDING_VERSION}") # gridding output
+# path_scen_cmip7 = Path(f"C:/Users/kikstra/Documents/GitHub/concordia/results/{GRIDDING_VERSION}") # gridding output
+path_scen_cmip7 = Path("C:/Users/kikstra/Documents/GitHub/concordia/results/cmip7_esgf_v0_alpha_h/final")
+SCENARIO_SELECTION_GRIDDED_AFTER_METADATA = "scendraft2"
 
 # where to save plots of this script  
 plots_path = path_scen_cmip7 / "plots"
@@ -73,8 +75,7 @@ SECTORS_ANTHRO = [
     '**Solvents Production and Application',
     '**Transportation Sector',
     '**Waste',
-    '**Other non-Land CDR',
-    '**BECCS'
+    '**Other Capture and Removal'
 ]
 SECTORS_AIR = [
     '**Aircraft'
@@ -129,7 +130,13 @@ var = "CO2-em-anthro"
 
 # %%
 # load a CMIP7 scenario sample file
-scen_cmip7_data_file = f"{var}_input4MIPs_emissions_CMIP7_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
+FIXED_METADATA = True
+CMIP_ERA = "CMIP6Plus"
+
+if FIXED_METADATA:
+    scen_cmip7_data_file = f"{var}_input4MIPs_emissions_{CMIP_ERA}_IIASA-{SCENARIO_SELECTION_GRIDDED_AFTER_METADATA}_gn_202201-210012.nc"
+else:
+    scen_cmip7_data_file = f"{var}_input4MIPs_emissions_{CMIP_ERA}_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
 
 scen_ds = read_nc_file(
     f = scen_cmip7_data_file,
@@ -262,26 +269,44 @@ for s in [
         "Solvents Production and Application",
         "Transportation", 
         "Waste",
-        "Other non-Land CDR", 
-        "BECCS"
+        "Other Capture and Removal"
         ]:
     for g in [
+        "BC", 
+        "CO", 
         "CO2", 
-        "Sulfur"
+        "NOx", 
+        "OC", 
+        "SO2", # "Sulfur",
+        "CH4",
+        "N2O", 
+        "NH3", 
+        "NMVOC", # "VOC",
         ]:
 
-        var = f"{g}-em-anthro"
-        scen_cmip7_data_file = f"{var}_input4MIPs_emissions_CMIP7_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
-        scen_ds = read_nc_file(
-            f = scen_cmip7_data_file,
-            loc = path_scen_cmip7
-        )
+        try:
+            var = f"{g}-em-anthro"
+            if FIXED_METADATA:
+                scen_cmip7_data_file = f"{var}_input4MIPs_emissions_{CMIP_ERA}_IIASA-{SCENARIO_SELECTION_GRIDDED_AFTER_METADATA}_gn_202201-210012.nc"
+            else:
+                scen_cmip7_data_file = f"{var}_input4MIPs_emissions_{CMIP_ERA}_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
 
-        plot_gif_gas_sector(
-            ds = scen_ds,
-            sector = s,
-            gas = g,
-            times = scen_ds.time,
-            out_path = plots_path,
-            show = False
-        )
+            scen_ds = read_nc_file(
+                f = scen_cmip7_data_file,
+                loc = path_scen_cmip7
+            )
+
+            plot_gif_gas_sector(
+                ds = scen_ds,
+                sector = s,
+                gas = g,
+                times = scen_ds.time,
+                out_path = plots_path,
+                show = False
+            )
+        except FileNotFoundError:
+            continue
+
+# TODO:
+# - [ ] biomass burning
+# - [ ] aircraft

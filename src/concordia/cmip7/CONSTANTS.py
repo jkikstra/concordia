@@ -69,14 +69,23 @@ def find_voc_data_variable_string(voc_code, voc_list=GASES_ESGF_CEDS_VOC):
 
 PROXY_YEARS =  [2022, 2023, 2024, 2025, 2030, 2035, 2040, 2045, 2050, 2055, 2060, 2065, 2070, 2075, 2080, 2085, 2090, 2095, 2100]
 
-def return_marker_information(m, v="cmip7_esgf_v0_alpha"):
-    if m == "H":
-        GRIDDING_VERSION = f"{v}_h" # high scenario gcam test
-        MODEL_SELECTION = "GCAM 7.1 scenarioMIP"
-        SCENARIO_SELECTION = "SSP3 - High Emissions"
-    elif m == "VLLO":
+def return_marker_information(m, v="cmip7_esgf_v0_alpha", fixed_metadata=False):
+
+    if m == "VLLO":
         GRIDDING_VERSION = f"{v}_vllo" # vllo scenario remind test
         MODEL_SELECTION = "REMIND-MAgPIE 3.5-4.11"
         SCENARIO_SELECTION = "SSP1 - Very Low Emissions"
+        if fixed_metadata:
+            SCENARIO_SELECTION_GRIDDED_AFTER_METADATA = "scendraft1"
+    elif m == "H":
+        GRIDDING_VERSION = f"{v}_h" # high scenario gcam test
+        MODEL_SELECTION = "GCAM 7.1 scenarioMIP"
+        SCENARIO_SELECTION = "SSP3 - High Emissions"
+        if fixed_metadata:
+            SCENARIO_SELECTION_GRIDDED_AFTER_METADATA = "scendraft2"
+    if not fixed_metadata:
+        SCENARIO_SELECTION_GRIDDED_AFTER_METADATA = None
+    # if fixed_metadata:
+    #     MODEL_SELECTION = ""
 
-    return GRIDDING_VERSION, MODEL_SELECTION, SCENARIO_SELECTION
+    return GRIDDING_VERSION, MODEL_SELECTION, SCENARIO_SELECTION, SCENARIO_SELECTION_GRIDDED_AFTER_METADATA
