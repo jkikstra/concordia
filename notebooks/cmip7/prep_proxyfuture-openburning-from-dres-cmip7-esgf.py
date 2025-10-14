@@ -47,8 +47,21 @@ from concordia.settings import Settings
 import concordia.cmip7.utils_futureproxy_ceds_bb4cmip as uprox
 from concordia.cmip7.utils_futureproxy_ceds_bb4cmip import _normalize_time_slice
 
+
+
 # %%
 VERSION = CONFIG
+
+# %% 
+# TODO.
+
+from concordia.cmip7.CONSTANTS import GASES_ESGF_BB4CMIP_VOC, GASES_ESGF_BB4CMIP
+# TODO:
+# - [ ] Add VOC speciation
+#   - [ ] create a mapping of VOCs from GASES_ESGF_BB4CMIP (names) to GASES_ESGF_BB4CMIP_VOC (species)
+#   - [ ] process the percentages of VOCs as a share of NMVOCbulk here
+#   - [ ] 
+#   - [ ] 
 
 # %%
 # Select time windows to average over here. 

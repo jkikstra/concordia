@@ -115,7 +115,7 @@ After that, prepare the proxy files for future years:
 - [ ] Make `workflow-postprocess_add-missing-years-cmip7-ceds-esgf.py`: makes the year 2022 for ceds; just copy the 2022 files from CEDS, and add them to our scenario files in the same format as our scenario files.
 - [ ] Make `workflow-postprocess_add-missing-years-cmip7-bb4cmip7-esgf.py`: makes the year 2022 for bb4cmip7; **N.B. consider whether this also needs some "pattern-harmonisation" to make the move from 2021 to 2022 more smooth, as spatial patterns will be different; but fire location is of course uncertain.**
 
-### Checking and plotting
+### Visual data checking and plotting
 
 Main checking scripts:
 * `check_gridded-scenarios-global-sectoral-aggregation-compared-to-input.py`: checks global totals of output grids against input harmonized scenario
@@ -130,6 +130,20 @@ Other checking scripts that do not always need to be run:
 
 **TODO:**
 - [ ] check VOC speciation data (compare to CEDS)
+
+### Validation: data format checking for input4MIPs
+
+Docs are here for writing: https://input4mips-validation.readthedocs.io/en/latest/how-to-guides/how-to-write-a-single-valid-file/
+
+Docs are here for validation: https://input4mips-validation.readthedocs.io/en/latest/how-to-guides/how-to-validate-a-single-file/
+
+### Uploading using FTP
+
+Docs:
+
+1. How does uploaiding work: https://input4mips-validation.readthedocs.io/en/latest/how-to-guides/how-to-upload-to-ftp/
+2. Where to upload: https://github.com/PCMDI/input4MIPs_CVs/blob/4b59bf4694ddb8bf20f265adcf926046486069bd/docs/usage-data-producer.md#get-your-data-to-pcmdi 
+
 
 ## Other
 
@@ -168,6 +182,6 @@ Main checking scripts:
 - [ ;  :VLLO, ...:H] `check_gridded-scenarios-country-level-reaggregation-to-cedsCountry.py`: checks whether our output grids align with the input historical national emissions data of CEDS
 
 Other checking scripts that do not always need to be run:
-- [ ;  :VLLO, ...:H] `check_plot-animated-grids.py`: makes animated grids (is very useful, especially for presentations, but also takes very long)
+- [x;  x:VLLO, x:H] `check_plot-animated-grids.py`: makes animated grids (is very useful, especially for presentations, but also takes very long)
 - [ ] `check_gridded-scenarios-cmip7-vs-cmip6.py`: checks timeseries of our output grids to cmip6 scenario output grids 
 - [ ] `check_gridded-scenarios-Aircraft-latitude.py`: checks latitudinal profile of aircraft emissions

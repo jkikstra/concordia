@@ -116,7 +116,7 @@ from concordia.cmip7.CONSTANTS import return_marker_information, CMIP_ERA
 FIXED_METADATA = True
 
 GRIDDING_VERSION, MODEL_SELECTION, SCENARIO_SELECTION, SCENARIO_SELECTION_GRIDDED_AFTER_METADATA = return_marker_information(
-    m="VLLO", fixed_metadata=FIXED_METADATA
+    m="H", fixed_metadata=FIXED_METADATA
 )
 
 
@@ -268,7 +268,7 @@ var = "CO2-em-anthro"
 # %%
 # load a CMIP7 scenario sample file
 if FIXED_METADATA:
-    scen_cmip7_data_file = f"{var}_input4MIPs_emissions_{CMIP_ERA}_IIASA-{SCENARIO_SELECTION_GRIDDED_AFTER_METADATA}_gn_202201-210012.nc"
+    scen_cmip7_data_file = f"{var}_input4MIPs_emissions_{CMIP_ERA}_IIASA-IAMC-{SCENARIO_SELECTION_GRIDDED_AFTER_METADATA}_gn_202201-210012.nc"
 else:
     scen_cmip7_data_file = f"{var}_input4MIPs_emissions_{CMIP_ERA}_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
 
@@ -797,16 +797,16 @@ def plot_place_multisector_combined_timeseries(ceds_ds, scen_ds,
 
 # main gases
 GASES = [
-    "BC", 
-    "CO", 
-    "CO2", 
-    "NOx", 
-    "OC", 
-    "SO2", # "Sulfur",
-    "CH4",
-    "N2O", 
-    "NH3", 
-    "NMVOC", # "VOC",
+    # "BC", 
+    # "CO", 
+    # "CO2", 
+    # "NOx", 
+    # "OC", 
+    # "SO2", # "Sulfur",
+    # "CH4",
+    # "N2O", 
+    # "NH3", 
+    # "NMVOC", # "VOC",
 ]
 # supplemental speciated VOCs
 GASES_VOC = [
@@ -820,11 +820,11 @@ GASES_VOC = [
     # "VOC07_ethene",
     # "VOC08_propene",
     # "VOC09_ethyne",
-    # "VOC12_other_alke",
-    # "VOC13_benzene",
-    # "VOC14_toluene",
-    # "VOC15_xylene",
-    # "VOC16_trimethylb",
+    "VOC12_other_alke",
+    "VOC13_benzene",
+    "VOC14_toluene",
+    "VOC15_xylene",
+    "VOC16_trimethylb",
     # "VOC17_other_arom",
     # "VOC18_esters",
     # "VOC19_ethers",
@@ -854,8 +854,8 @@ def rename_CEDS_data_variable_name(ds, gas, type="em_anthro"):
     return ds.rename({f"{file_gas}_{type}": f"{gas}_{type}"})
 
 PLOTS = [
-    # 'maps',
-    'timeseries'
+    'maps',
+    # 'timeseries'
 ]
 
 PLOT_TIMESERIES_MULTISECTOR = False
@@ -917,7 +917,7 @@ for g in ALL_GASES:
     # load and organise data
     # load a CMIP7 scenario file
     if FIXED_METADATA:
-        scen_cmip7_data_file = f"{g_file}-{type_file}_input4MIPs_emissions_{CMIP_ERA}_IIASA-{SCENARIO_SELECTION_GRIDDED_AFTER_METADATA}_gn_202201-210012.nc"
+        scen_cmip7_data_file = f"{g_file}-{type_file}_input4MIPs_emissions_{CMIP_ERA}_IIASA-IAMC-{SCENARIO_SELECTION_GRIDDED_AFTER_METADATA}_gn_202201-210012.nc"
     else:
         scen_cmip7_data_file = f"{g_file}-{type_file}_input4MIPs_emissions_{CMIP_ERA}_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
 
@@ -1048,7 +1048,8 @@ def plot_maps_species_times(ds,
                               sector_file, 
                               times,
                               ncols=3, proj=ccrs.Robinson(),
-                              aircraft_level=0.305
+                              aircraft_level=0.305,
+                              shared_colormap=True
                               ): 
 
     nrows = len(times)
@@ -1070,6 +1071,57 @@ def plot_maps_species_times(ds,
         axes = axes.flatten() # make indexing easier
     else:
         axes = [axes]
+
+    # Calculate global min/max for shared colormap
+    if shared_colormap:
+        all_values = []
+        
+        for time, gas in product(times, species):
+            # Prepare data array the same way as in the plotting loop
+            if sector_file != "AIR-anthro":
+                da_temp = (
+                    ds
+                    .sel(time=time, method="nearest")
+                    .sum(dim="sector")
+                    .squeeze()  
+                )
+                v_temp = sector_file
+            else:
+                da_temp = (
+                    ds 
+                    .sel(time=time, method="nearest")
+                    .sum(dim="level")
+                    .squeeze()  
+                )
+                v_temp = "AIR_anthro"
+                
+            da_temp = da_temp[f'{gas}_em_{v_temp}'].squeeze()
+            
+            # Collect all valid (non-NaN) values
+            valid_values = da_temp.values[~np.isnan(da_temp.values)]
+            if len(valid_values) > 0:
+                all_values.extend(valid_values.flatten())
+        
+        # Calculate percentiles across all time slices
+        if len(all_values) > 0:
+            all_values = np.array(all_values)
+            global_vmin = float(np.percentile(all_values, 2))  # 2nd percentile
+            global_vmax = float(np.percentile(all_values, 99.5))  # 98th percentile
+        else:
+            global_vmin, global_vmax = 0.0, 1.0
+        
+        # Determine colormap settings based on global values
+        if global_vmin >= -1e-8:
+            global_cmap = "GnBu"
+            global_norm = colors.Normalize(vmin=global_vmin, vmax=global_vmax)
+            global_rob = False  # Don't use robust when we want shared colormap
+        else:
+            print(f"Negative values (global 2nd percentile: {global_vmin}) in the data for {species}-{sector_file}")
+            global_cmap, global_norm = shifted_white_colormap(
+                "coolwarm",
+                vmin=global_vmin, vmax=global_vmax
+            )
+            global_rob = False  # Don't use robust when we want shared colormap
 
     for i, (time, gas) in enumerate(product(times, species)):
         
@@ -1094,21 +1146,26 @@ def plot_maps_species_times(ds,
             
         da = da[f'{gas}_em_{v}'].squeeze()
 
-        # Use TwoSlopeNorm centered at 0 and custom cmap
-        vmin = float(da.min())
-        vmax = float(da.max())
-        # if vmin >= 0:
-        if vmin >= -1e-8:
-            cmap = "GnBu"
-            norm = None
-            rob = True
+        # Use either shared or individual colormap
+        if shared_colormap:
+            cmap = global_cmap
+            norm = global_norm
+            rob = global_rob
         else:
-            print(f"Negative values (lowest: {vmin}) in the data for {gas}-{sector_file}")
-            cmap, norm = shifted_white_colormap(
-                "coolwarm",
-                vmin=vmin, vmax=vmax
-            )
-            rob = False
+            # Original individual colormap logic
+            vmin = float(da.min())
+            vmax = float(da.max())
+            if vmin >= -1e-8:
+                cmap = "GnBu"
+                norm = colors.Normalize(vmin=vmin, vmax=vmax)
+                rob = False
+            else:
+                print(f"Negative values (lowest: {vmin}) in the data for {gas}-{sector_file}")
+                cmap, norm = shifted_white_colormap(
+                    "coolwarm",
+                    vmin=vmin, vmax=vmax
+                )
+                rob = False
 
         # Plot directly with xarray's .plot.pcolormesh
         da.plot.pcolormesh(
@@ -1136,16 +1193,16 @@ def plot_maps_species_times(ds,
 # Loop (2): plot totals 
 
 GASES = [
-    "BC", 
-    "CO", 
-    "CO2", 
-    "NOx", 
-    "OC", 
+    # "BC", 
+    # "CO", 
+    # "CO2", 
+    # "NOx", 
+    # "OC", 
     "SO2", # "Sulfur",
-    "CH4",
-    "N2O", 
-    "NH3", 
-    "NMVOC", # "VOC",
+    # "CH4",
+    # "N2O", 
+    # "NH3", 
+    # "NMVOC", # "VOC",
     ]
 
 # times = [cftime.DatetimeNoLeap(2023, mon, 16) for mon in range(1, 13)]
@@ -1155,7 +1212,7 @@ TIMES = [
     # cftime.DatetimeNoLeap(2023, 6, 15),
     cftime.DatetimeNoLeap(2023, 12, 16),
     cftime.DatetimeNoLeap(2050, 12, 16),
-    cftime.DatetimeNoLeap(2100, 12, 16)
+    # cftime.DatetimeNoLeap(2100, 12, 16)
 ]
 
 PLOTS = [
@@ -1181,7 +1238,7 @@ if 'maps-per-species' in PLOTS:
                 continue
 
             if FIXED_METADATA:
-                scen_cmip7_data_file = f"{g}-em-{sector_file}_input4MIPs_emissions_{CMIP_ERA}_IIASA-{SCENARIO_SELECTION_GRIDDED_AFTER_METADATA}_gn_202201-210012.nc"
+                scen_cmip7_data_file = f"{g}-em-{sector_file}_input4MIPs_emissions_{CMIP_ERA}_IIASA-IAMC-{SCENARIO_SELECTION_GRIDDED_AFTER_METADATA}_gn_202201-210012.nc"
             else:
                 scen_cmip7_data_file = f"{g}-em-{sector_file}_input4MIPs_emissions_{CMIP_ERA}_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
 
@@ -1194,7 +1251,8 @@ if 'maps-per-species' in PLOTS:
             fig = plot_maps_species_times(ds=scen_ds,
                                     species=g,
                                     sector_file=sector_file,
-                                    times=TIMES)
+                                    times=TIMES,
+                                    shared_colormap=True)
             
             # Save the figure
             filename = f"total_emissions_map_{g}_em_{sector_file}_{MODEL_SELECTION_GRIDDED}_{SCENARIO_SELECTION_GRIDDED}.png"
