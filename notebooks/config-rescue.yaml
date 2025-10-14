@@ -18,6 +18,11 @@ encoding:
   complevel: 2
 
 regionmappings:
+  REMIND-MAgPIE 3.5.0-4.10.1:
+    path: "$scenario_path/regionmappingH12.csv"
+    country_column: "CountryCode"
+    region_column: "RegionCode"
+    sep: ";"
   REMIND-MAgPIE 3.2.0-4.7.1:
     path: "$scenario_path/regionmappingH12.csv"
     country_column: "CountryCode"
