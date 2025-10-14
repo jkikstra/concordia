@@ -1,5 +1,6 @@
 # project specific
 notebooks/config.yaml
+notebooks/local-config-rescue.yaml
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
