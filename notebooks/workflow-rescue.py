@@ -75,7 +75,7 @@ ur = set_openscm_registry_as_default()
 settings = Settings.from_config(
     config_path="config-rescue.yaml",
     local_config_path="local-config-rescue.yaml",
-    version="TEST-JSK-2025-10-14",
+    version="JSK-2025-10-14-only-downscaling-tier2",
 )
 
 # %%
@@ -249,7 +249,8 @@ with ur.context("AR4GWP100"):
     )
 
 # model = model.loc[~ismatch(scenario="*Sensitivity*")]  # remove sensitivity cases; as run before
-model = model.loc[ismatch(scenario="*NPi*")]  # test only one scenario 
+# model = model.loc[ismatch(scenario="*NPi*")]  # test only one scenario 
+# model = model.loc[ismatch(scenario="*highOS-ARoff*")]  # test only one scenario 
 
 model.pix
 
