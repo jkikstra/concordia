@@ -3,7 +3,7 @@
 # # Overview
 #
 # This should create proxies for openburning based on BB4CMIP7
-# 
+#
 
 
 # %% [markdown]
@@ -12,10 +12,10 @@
 # 1. single-sector files (peat, awb, grassland)
 # 1. multiple-sector files (forest burning)
 # 1. VOC-speciation (not yet ready)
+#
+#
 
-
-
-# %% 
+# %%
 
 # data grid area:
 # gridcellarea: "D:\ESGF\DRES-CMIP-BB4CMIP7-2-1\atmos\fx\gridcellarea\gn\v20250612\gridcellarea_input4MIPs_emissions_CMIP_DRES-CMIP-BB4CMIP7-2-1_gn.nc"
@@ -72,7 +72,6 @@ PROXY_TIME_RANGES = [
 ]
 
 # %%
-
 try:
     # when running the script from a terminal or otherwise
     cmip7_dir = Path(__file__).resolve()
@@ -87,6 +86,12 @@ except (FileNotFoundError, NameError):
         cmip7_dir = Path().resolve()  # one up
         settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
 
+# %%
+cmip7_dir = "/Users/hoegner/Projects/CMIP7/concordia_cmip7_esgf_v0_alpha/input/gridding/esgf/bb4cmip7_voc"
+
+# %%
+settings.gridding_path
+
 # %% [markdown]
 # ### Unsmoothed data
 
@@ -98,7 +103,6 @@ os.environ.setdefault("HDF5_USE_FILE_LOCKING", "FALSE")
 
 
 # %%
-
 def get_bb4cmip7_location_percentage(variable):
     return Path(settings.gridding_path) / f"esgf/bb4cmip7/{variable}/gn/v20250612/{variable}_input4MIPs_emissions_CMIP_DRES-CMIP-BB4CMIP7-2-1_gn_175001-202312.nc"
 
@@ -316,7 +320,6 @@ for y in PROXY_TIME_RANGES:
 
             with ProgressBar():
                 ds_reordered.to_netcdf(outfile, mode="w", engine="h5netcdf", encoding=encoding)
-
 
 
 # %% [markdown]
