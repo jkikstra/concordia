@@ -7,7 +7,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.16.4
 #   kernelspec:
-#     display_name: concordia
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
@@ -75,7 +75,7 @@ ur = set_openscm_registry_as_default()
 settings = Settings.from_config(
     config_path="config-rescue.yaml",
     local_config_path="local-config-rescue.yaml",
-    version="TEST-2024-11-28",
+    version="TEST-JSK-2025-10-14",
 )
 
 # %%
@@ -187,6 +187,9 @@ smoothed = rescue_utils.Variants(
 )
 
 # %%
+settings.scenario_path
+
+# %%
 hist = (
     concat([hist_ceds, hist_global, hist_gfed])
     .droplevel(["model", "scenario"])
@@ -219,7 +222,8 @@ def patch_model_variable(var):
 with ur.context("AR4GWP100"):
     model = (
         pd.read_csv(
-            settings.scenario_path / "REMIND-MAgPIE-CEDS-RESCUE-Tier1-2024-10-11.csv",
+            # settings.scenario_path / "REMIND-MAgPIE-CEDS-RESCUE-Tier1-2024-10-11.csv", # as run before
+            settings.scenario_path / "REMIND-MAgPIE-CEDS-RESCUE-Tier2-2025-09-15.csv", # Test run Jarmo 14.10.2025            
             index_col=list(range(5)),
             sep=";",
         )
@@ -244,7 +248,7 @@ with ur.context("AR4GWP100"):
         )
     )
 
-model = model.loc[~ismatch(scenario="*Sensitivity*")]  # remove sensitivity cases
+# model = model.loc[~ismatch(scenario="*Sensitivity*")]  # remove sensitivity cases; as run before
 
 model.pix
 
