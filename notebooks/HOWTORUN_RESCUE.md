@@ -11,3 +11,6 @@ See [instructions](https://github.com/IAMconsortium/concordia?tab=readme-ov-file
 1. Run `notebooks/workflow-rescue.py` (it is jupytext)
     1. For each scenario file, change it where `model = (... settings.scenario_path / "REMIND-MAgPIE-CEDS-RESCUE-Tier2-2025-09-15.csv" ...)`
 1. Upload the files to a new folder under RESCUE - WP1, and share this (with PIK colleagues)
+
+
+Note: parallellisation using dask can create errors in running. It could therefore be advisable to only run 1 scenario at a time.

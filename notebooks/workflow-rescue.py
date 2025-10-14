@@ -249,6 +249,7 @@ with ur.context("AR4GWP100"):
     )
 
 # model = model.loc[~ismatch(scenario="*Sensitivity*")]  # remove sensitivity cases; as run before
+model = model.loc[ismatch(scenario="*NPi*")]  # test only one scenario 
 
 model.pix
 
