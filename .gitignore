@@ -15,10 +15,15 @@ __pycache__/
 # ipython notebooks (use jupytext --sync for conversion)
 notebooks/**/*.ipynb
 
+notebooks/gridding_data/*
+!/notebooks/gridding_data/*.py
+notebooks/Jarmo_files
+
 # Ignore output files
 data/out
 data/rescue
 data/rescue_old
+data/compare_wfd_inputs
 
 # Distribution / packaging
 .Python
@@ -123,3 +128,4 @@ venv.bak/
 /results
 
 /collab-report-comments
+/notebooks/local-draft-files
