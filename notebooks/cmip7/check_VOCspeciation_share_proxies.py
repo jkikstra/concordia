@@ -74,11 +74,9 @@ datasets = [xr.open_dataset(f) for f in files]
 # Get the variable name (assuming the same across all files)
 var_name = list(datasets[0].data_vars)[0]  # first variable
 
-data_arrays = [ds[var_name].isel(year=0, month=1, sector=0)
-               for ds in datasets]
+data_arrays = [ds[var_name].isel(year=0, month=1, sector=0) for ds in datasets]
 
 summed = xr.concat(data_arrays, dim="file").sum(dim="file", skipna=True)
-
 openb = summed.sum(dim="gas", skipna=True)
 
 # Flatten to 1D list of values (across lat-lon-sector gridcells)
@@ -99,7 +97,7 @@ datasets = [xr.open_dataset(f) for f in files]
 # Get the variable name (assuming the same across all files)
 var_name = list(datasets[0].data_vars)[0]  # first variable
 
-data_arrays = [ds[var_name].isel(year=0, month=0, sector=4) for ds in datasets]
+data_arrays = [ds[var_name].isel(year=0, month=0) for ds in datasets]
 
 summed = xr.concat(data_arrays, dim="file").sum(dim="file", skipna=True)
 anthro = summed.sum(dim="gas", skipna=True)
@@ -108,10 +106,13 @@ anthro = summed.sum(dim="gas", skipna=True)
 values_list = anthro.values.flatten().tolist()
 
 # %%
+data_arrays
+
+# %%
 len(np.unique(values_list))
 
 # %%
-plt.hist(np.unique(values_list));
+plt.hist(values_list);
 
 # %%
 import cartopy.feature as cfeature
@@ -190,5 +191,3 @@ for i in np.arange(1484, len(bulk.time)):
     test = bulk.isel(time=i).fillna(0)[var_name]
     print("testing")
     xr.testing.assert_allclose(test, summed)
-
-# %%
