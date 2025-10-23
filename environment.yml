@@ -24,6 +24,7 @@ dependencies:
 - seaborn
 - tqdm
 - jupytext
+- jupyterlab
 - colorlog
 - ipykernel
 
