@@ -20,7 +20,7 @@ def get_notebook_parameters(notebook_name: str, marker: str) -> dict[str, str]:
     """
     Get parameters for a given notebook
     """
-    if notebook_name == "workflow-cmip7-fast-track.py":
+    if notebook_name == "workflow_cmip7-fast-track.py":
         res = {"marker_to_run": marker}
 
     else:
@@ -85,7 +85,7 @@ def main():  # noqa: PLR0912
 
     # processing: run the norebook
     notebook_prefixes = [
-        "workflow-cmip7-fast-track"
+        "workflow_cmip7-fast-track"
     ]
     # # Skip this step
     # notebook_prefixes = []
