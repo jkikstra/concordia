@@ -62,11 +62,11 @@ except (FileNotFoundError, NameError):
             settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
 
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
-marker_to_run: str = "VLLO" # still run this for VLLO
+marker_to_run: str = "H" # still run this for VLLO
 
 # %%
 # Scenario information
-HARMONIZATION_VERSION, MODEL_SELECTION, SCENARIO_SELECTION = return_marker_information(
+HARMONIZATION_VERSION, MODEL_SELECTION, SCENARIO_SELECTION, _ = return_marker_information(
     m=marker_to_run
 )
 
@@ -90,9 +90,13 @@ ceds_data_location_voc = Path("C:/Users/kikstra/Downloads/temp_VOC")
 # gridded_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{HARMONIZATION_VERSION}")
 # weighted_data_location = Path(gridded_data_location, "weighted")
 
+# standard:
 gridded_data_location = settings.out_path / HARMONIZATION_VERSION
 weighted_data_location = settings.out_path / HARMONIZATION_VERSION / "weighted"
 weighted_data_location.mkdir(parents=True, exist_ok=True)
+# # late-inplace-fix:
+# gridded_data_location = settings.out_path / HARMONIZATION_VERSION / "weighted" / "final"
+# weighted_data_location = settings.out_path / HARMONIZATION_VERSION / "weighted" / "final"
 
 # %%
 
@@ -237,10 +241,12 @@ def get_correct_naming(file):
 
     return type, outfile, gas
 
-# for file in tqdm(files_main + files_voc, desc="Processing files"):
-# for file in tqdm([files_main[7]], desc="Processing files"):
-# for file in tqdm(files_main, desc="Processing files"):
-for file in tqdm(files_voc, desc="Processing files"):
+# %%
+for file in tqdm(files_main + files_voc, desc="Processing files"): # all
+# for file in tqdm([files_main[7]], desc="Processing files"): # example only (re)running 1 file
+# for file in tqdm(files_main, desc="Processing files"): # example only running main data
+# for file in tqdm(files_voc, desc="Processing files"): # example only running voc speciation data
+# for file in tqdm(files_voc[12:], desc="Processing files"):  # example (re)running voc speciation data starting from a certain point (e.g. if the script stopped halfway and you want to resume)
     type, outfile, gas = get_correct_naming(file)
 
     # match reference file
@@ -335,24 +341,24 @@ for file in tqdm(files_voc, desc="Processing files"):
     
 
 
-    # for diagnostics:
-    # convert to dataframes
-    df1 = gridded_global.to_dataframe(name="prefix").reset_index()
-    df1["gas"] = gas
-    df1 = df1.melt(id_vars=["time", "sector", "gas"], var_name="version", value_name="value")
+    # # for diagnostics:
+    # # convert to dataframes
+    # df1 = gridded_global.to_dataframe(name="prefix").reset_index()
+    # df1["gas"] = gas
+    # df1 = df1.melt(id_vars=["time", "sector", "gas"], var_name="version", value_name="value")
 
-    # intermediary step
-    # df2 = weighted_global.to_dataframe(name="postfix").reset_index()
-    # df2["gas"] = gas
-    # df2 = df2.melt(id_vars=["time", "sector", "gas"], var_name="version", value_name="value")
+    # # intermediary step
+    # # df2 = weighted_global.to_dataframe(name="postfix").reset_index()
+    # # df2["gas"] = gas
+    # # df2 = df2.melt(id_vars=["time", "sector", "gas"], var_name="version", value_name="value")
 
-    # post-fix
-    df3 = emissions_harmonised_global[var].to_dataframe(name="postfix").reset_index()
-    df3["gas"] = gas
-    df3 = df3.melt(id_vars=["time", "sector", "gas"], var_name="version", value_name="value")
+    # # post-fix
+    # df3 = emissions_harmonised_global[var].to_dataframe(name="postfix").reset_index()
+    # df3["gas"] = gas
+    # df3 = df3.melt(id_vars=["time", "sector", "gas"], var_name="version", value_name="value")
 
-    prefix.append(df1)
-    postfix.append(df3)
+    # prefix.append(df1)
+    # postfix.append(df3)
 
     # remove old file (from previous loop in processing)
     outfile.unlink(missing_ok=True)
@@ -360,58 +366,58 @@ for file in tqdm(files_voc, desc="Processing files"):
     encoding = {var: {"zlib": True, "complevel": 4}}
     weighted.to_netcdf(outfile, encoding=encoding)
 
-# %%
-# combine diagnostic results
-global_prefix = pd.concat(prefix, ignore_index=True)
-global_postfix = pd.concat(postfix, ignore_index=True)
+# # %%
+# # combine diagnostic results
+# global_prefix = pd.concat(prefix, ignore_index=True)
+# global_postfix = pd.concat(postfix, ignore_index=True)
 
-# %%
-global_prefix["time"] = pd.to_datetime(global_prefix["time"].astype(str))
-global_postfix["time"] = pd.to_datetime(global_postfix["time"].astype(str))
+# # %%
+# global_prefix["time"] = pd.to_datetime(global_prefix["time"].astype(str))
+# global_postfix["time"] = pd.to_datetime(global_postfix["time"].astype(str))
 
-# %%
-to_plot = pd.concat([global_prefix, global_postfix])
-out_csv = Path(weighted_data_location, "global_aggregates_for_checking.csv")
-to_plot.to_csv(out_csv, index=False)
+# # %%
+# to_plot = pd.concat([global_prefix, global_postfix])
+# out_csv = Path(weighted_data_location, "global_aggregates_for_checking.csv")
+# to_plot.to_csv(out_csv, index=False)
 
-# %%
-# plot postfix and prefix values
+# # %%
+# # plot postfix and prefix values
 
-sns.relplot(
-    data=to_plot,
-    kind="line",
-    x="time",
-    y="value",
-    hue="sector",
-    col="gas",
-    style="version",
-    col_wrap=3,
-    facet_kws={"sharey": False}
-)
-plt.show()
+# sns.relplot(
+#     data=to_plot,
+#     kind="line",
+#     x="time",
+#     y="value",
+#     hue="sector",
+#     col="gas",
+#     style="version",
+#     col_wrap=3,
+#     facet_kws={"sharey": False}
+# )
+# plt.show()
 
-# %%
-wide_df = to_plot.pivot_table(
-    index=["gas", "sector", "time"],
-    columns="version",
-    values="value"
-)
-wide_df["diff"] = wide_df["postfix"] - wide_df["prefix"]
-wide = wide_df.reset_index()
+# # %%
+# wide_df = to_plot.pivot_table(
+#     index=["gas", "sector", "time"],
+#     columns="version",
+#     values="value"
+# )
+# wide_df["diff"] = wide_df["postfix"] - wide_df["prefix"]
+# wide = wide_df.reset_index()
 
-# %%
-# plot diff (postfix - prefix)
+# # %%
+# # plot diff (postfix - prefix)
 
-sns.relplot(
-    data=wide,
-    kind="line",
-    x="time",
-    y="diff",
-    hue="sector",
-    col="gas",
-    col_wrap=3,
-    facet_kws={"sharey": False}
-)
-plt.show()
+# sns.relplot(
+#     data=wide,
+#     kind="line",
+#     x="time",
+#     y="diff",
+#     hue="sector",
+#     col="gas",
+#     col_wrap=3,
+#     facet_kws={"sharey": False}
+# )
+# plt.show()
 
 # %%

@@ -13,14 +13,6 @@
 # ---
 
 
-# %%
-# TODO:
-# now still, if possible
-# - [ ] filename: IIASA -> IIASA-IAMC (do by hand?)
-# future:
-# - [ ] check _FillValue better
-# - [ ] update authors?
-
 
 # %%
 import xarray as xr
@@ -72,11 +64,11 @@ except (FileNotFoundError, NameError):
             settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
 
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
-marker_to_run: str = "VLLO"
+marker_to_run: str = "H"
 
 # %%
 # Scenario information
-HARMONIZATION_VERSION, MODEL_SELECTION, SCENARIO_SELECTION = return_marker_information(
+HARMONIZATION_VERSION, MODEL_SELECTION, SCENARIO_SELECTION, _ = return_marker_information(
     m=marker_to_run
 )
 
@@ -321,8 +313,9 @@ def rename_variables_and_attributes(ds, ds_attrs=None, g=None, type="toceds-anth
 # For 1 scenario, this process should take about ~30 minutes on a laptop
 
 # anthro
+for g in gas_prefixes_anthro: # all files
 # for g in [gas_prefixes_anthro[8]]: # try one file
-for g in gas_prefixes_anthro:
+# for g in gas_prefixes_anthro[22:]: # (re)start from some file if the full script stopped somewhere during a previous run
     print(f"Processing anthro {g}")
     matching_file_post_fix = [f for f in files_anthro if f.name.startswith(g + '-')][0]
     matching_file_pre_fix = [f for f in files_anthro_before_postprocessing if f.name.startswith(g + '-')][0]
@@ -346,29 +339,31 @@ for g in gas_prefixes_anthro:
     ds.close()
     ds_attrs.close()
 
-# air and openburning
-for f in files_non_anthro:
-    g = f.name.split('-')[0]
+# # air and openburning
+# for f in files_non_anthro:
+#     g = f.name.split('-')[0]
 
-    ds = xr.open_dataset(f)
+#     ds = xr.open_dataset(f)
 
-    if "-AIR-" in f.name:
-        print(f"Processing AIR {g}")
-        type = "toceds-AIR"
-    if "-openburning_" in f.name:
-        print(f"Processing openburning {g}")
-        type = "tobb4cmip"
+#     if "-AIR-" in f.name:
+#         print(f"Processing AIR {g}")
+#         type = "toceds-AIR"
+#     if "-openburning_" in f.name:
+#         print(f"Processing openburning {g}")
+#         type = "tobb4cmip"
 
-    f_out = rename_files(f.name, g, type=type)
-    ds, var_name = rename_variables_and_attributes(ds, None, g, type=type)
+#     f_out = rename_files(f.name, g, type=type)
+#     ds, var_name = rename_variables_and_attributes(ds, None, g, type=type)
 
-    # write out to final folder
-    # Save with compression (this triggers computation)
-    encoding = {var_name: {"zlib": True, "complevel": 4}}
-    ds.to_netcdf(grid_location_out / f_out, encoding=encoding)
+#     # write out to final folder
+#     # Save with compression (this triggers computation)
+#     encoding = {var_name: {"zlib": True, "complevel": 4}}
+#     ds.to_netcdf(grid_location_out / f_out, encoding=encoding)
     
-    # Close datasets to free memory
-    ds.close()
+#     # Close datasets to free memory
+#     ds.close()
     
 ds
 
+
+# %%
