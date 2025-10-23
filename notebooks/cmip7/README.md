@@ -37,7 +37,7 @@ __Helper files__
 
 ### Configuration
 
-Dor each version, need to specify data paths for input and output in a file named something like `config_cmip7_{version}.yaml`, which is placed in the `notebooks/cmip7` folder. 
+For each version, need to specify data paths for input and output in a file named something like `config_cmip7_{version}.yaml`, which is placed in the `notebooks/cmip7` folder. 
 
 Specified are:
 * `variabledefs_path`: this CSV file is important. It specifies all species-sector combinations that are produced, and which method is used (global/country, which proxy file and proxy variable) and what output variable/file the data will be located in (column: "output_var").
