@@ -150,6 +150,20 @@ Some inspiration is however available:
 
 #### File transfer
 
+For version 0-3-0, the following steps were taken:
+
+1. ZIP the files, to compress, as netCDF files without compression can be very large
+2. upload using https://filesender.aco.net/ (web interface is available)
+3. share the download link with the Forcings TT chairs, especially Paul Durack and Zebedee Nicholls
+
+#### Directly using FTP
+
+Uploading ourselves using FTP 
+
+Some docs are however available:
+
+* How does uploaiding work: https://input4mips-validation.readthedocs.io/en/latest/how-to-guides/how-to-upload-to-ftp/
+* Where to upload: https://github.com/PCMDI/input4MIPs_CVs/blob/4b59bf4694ddb8bf20f265adcf926046486069bd/docs/usage-data-producer.md#get-your-data-to-pcmdi 
 
 ## Other
 
