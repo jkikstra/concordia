@@ -63,10 +63,11 @@ except (FileNotFoundError, NameError):
 
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
 marker_to_run: str = "H"
+use_dask: bool = True  # Set to False to load data directly into memory instead of using dask
 
 # %%
 # Scenario information
-HARMONIZATION_VERSION, MODEL_SELECTION, SCENARIO_SELECTION = return_marker_information(
+HARMONIZATION_VERSION, MODEL_SELECTION, SCENARIO_SELECTION, _ = return_marker_information(
     m=marker_to_run
 )
 
@@ -90,21 +91,27 @@ files_voc = [
 # %%
 # Define delayed function for parallel processing
 @delayed
-def process_single_file(file, files_main, files_voc, grid_file_location_fixed_anthro_reagg):
+def process_single_file(file, files_main, files_voc, grid_file_location_fixed_anthro_reagg, use_dask=True):
     """Process a single file: combine Energy and BECCS sectors"""
     
-    # Step 1: read in the file with dask chunks
-    ds = xr.open_dataset(file, chunks={
-        # "lat": 180, "lon": 360
-    })
+    # Step 1: read in the file with dask chunks or load directly into memory
+    if use_dask:
+        ds = xr.open_dataset(file, chunks={
+            # "lat": 180, "lon": 360
+        })
+    else:
+        # Standard lazy-loading (only read metadata into memory)
+        ds = xr.open_dataset(file)
+        # Optionally load data into memory immediately
+        ds = ds.load()
     
     # Determine the emission variable name based on file type
     if file in files_main:
         # Standard gas files have variables like "CO2_em_anthro", "CH4_em_anthro", etc.
-        var_name = [var for var in ds.data_vars if var.endswith("_em_anthro")][0]
+        var_name = [var for var in ds.data_vars if str(var).endswith("_em_anthro")][0]
     elif file in files_voc:
         # VOC files have variables like "VOC01_alcohols_em_speciated_VOC_anthro"
-        var_name = [var for var in ds.data_vars if var.endswith("_em_speciated_VOC_anthro")][0]
+        var_name = [var for var in ds.data_vars if str(var).endswith("_em_speciated_VOC_anthro")][0]
     
     # Step 2: sum sectors "Energy" and "BECCS", call the new sector "Energy"
     if "Energy" in ds.sector.values and "BECCS" in ds.sector.values:
@@ -113,7 +120,7 @@ def process_single_file(file, files_main, files_voc, grid_file_location_fixed_an
         energy_data = ds.sel(sector="Energy")
         beccs_data = ds.sel(sector="BECCS")
         
-        # Sum them together (lazy computation with dask)
+        # Sum them together (lazy computation with dask or direct computation without)
         combined_energy = energy_data[var_name] + beccs_data[var_name]
         
         # Create new dataset without BECCS sector
@@ -174,17 +181,114 @@ def process_single_file(file, files_main, files_voc, grid_file_location_fixed_an
     
     return f"Processed {file.name}"
 
+# Non-dask version of the same function for sequential processing
+def process_single_file_sync(file, files_main, files_voc, grid_file_location_fixed_anthro_reagg, use_dask=False):
+    """Process a single file synchronously: combine Energy and BECCS sectors"""
+    # Step 1: read in the file directly into memory
+    ds = xr.open_dataset(file)
+    ds = ds.load()  # Load data into memory immediately
+    
+    # Determine the emission variable name based on file type
+    if file in files_main:
+        # Standard gas files have variables like "CO2_em_anthro", "CH4_em_anthro", etc.
+        var_name = [var for var in ds.data_vars if str(var).endswith("_em_anthro")][0]
+    elif file in files_voc:
+        # VOC files have variables like "VOC01_alcohols_em_speciated_VOC_anthro"
+        var_name = [var for var in ds.data_vars if str(var).endswith("_em_speciated_VOC_anthro")][0]
+    
+    # Step 2: sum sectors "Energy" and "BECCS", call the new sector "Energy"
+    if "Energy" in ds.sector.values and "BECCS" in ds.sector.values:
+        
+        # Extract Energy and BECCS data
+        energy_data = ds.sel(sector="Energy")
+        beccs_data = ds.sel(sector="BECCS")
+        
+        # Sum them together (direct computation)
+        combined_energy = energy_data[var_name] + beccs_data[var_name]
+        
+        # Create new dataset without BECCS sector
+        sectors_to_keep = [s for s in ds.sector.values if s != "BECCS"]
+        ds_filtered = ds.sel(sector=sectors_to_keep)
+        
+        # Replace Energy sector data with combined data
+        ds_filtered[var_name].loc[dict(sector="Energy")] = combined_energy
+        
+    elif "Energy" in ds.sector.values:
+        # Only Energy exists, keep as is
+        ds_filtered = ds
+        print(f"Note: {file.name} has Energy but no BECCS sector")
+    elif "BECCS" in ds.sector.values:
+        # Only BECCS exists, rename it to Energy
+        ds_filtered = ds.rename({"BECCS": "Energy"})
+        print(f"Note: {file.name} has BECCS but no Energy sector - renamed BECCS to Energy")
+    else:
+        # Neither exists, keep as is
+        ds_filtered = ds
+        print(f"Warning: {file.name} has neither Energy nor BECCS sectors")
+    
+    # Step 2.5: Rename "Other non-Land CDR" to "Other Capture and Removal"
+    if "Other non-Land CDR" in ds_filtered.sector.values:
+        # Create new sector coordinate values with the renamed sector
+        new_sector_values = []
+        for sector in ds_filtered.sector.values:
+            if sector == "Other non-Land CDR":
+                new_sector_values.append("Other Capture and Removal")
+            else:
+                new_sector_values.append(sector)
+        
+        # Assign the new coordinate values
+        ds_filtered = ds_filtered.assign_coords(sector=new_sector_values)
+        print(f"Renamed 'Other non-Land CDR' to 'Other Capture and Removal' in {file.name}")
+    
+    # Update the sector coordinate attributes for all changes
+    if 'ids' in ds_filtered.sector.attrs:
+        # Create new ids mapping with updated sector names
+        new_ids_list = []
+        for i, sector in enumerate(ds_filtered.sector.values):
+            new_ids_list.append(f"{i}: {sector}")
+        
+        # Update the ids attribute
+        ds_filtered.sector.attrs['ids'] = "; ".join(new_ids_list)
+        print(f"Updated sector ids for {file.name}")
+    
+    # Step 3: write out in `grid_file_location_fixed_anthro_reagg` with the same file name
+    output_file = grid_file_location_fixed_anthro_reagg / file.name
+    
+    # Save with compression
+    encoding = {var_name: {"zlib": True, "complevel": 4}}
+    ds_filtered.to_netcdf(output_file, encoding=encoding)
+    
+    # Close datasets to free memory
+    ds.close()
+    ds_filtered.close()
+    
+    return f"Processed {file.name}"
+
 # Create delayed tasks for all files
 print("Creating delayed tasks...")
+use_dask=False
 delayed_tasks = [
-    process_single_file(file, files_main, files_voc, grid_file_location_fixed_anthro_reagg) 
+    process_single_file(file, files_main, files_voc, grid_file_location_fixed_anthro_reagg, use_dask)
     for file in files_main + files_voc
 ]
 
-# Execute all tasks in parallel with progress bar
-print(f"Processing {len(delayed_tasks)} files in parallel...")
-with ProgressBar():
-    results = compute(*delayed_tasks)
+
+# Execute all tasks
+if use_dask:
+    # Execute all tasks in parallel with progress bar using dask
+    print(f"Processing {len(delayed_tasks)} files in parallel with dask...")
+    with ProgressBar():
+        results = compute(*delayed_tasks)
+else:
+    # Execute tasks sequentially without dask
+    print(f"Processing {len(delayed_tasks)} files sequentially (no dask)...")
+    results = []
+    for i, task in enumerate(delayed_tasks):
+        print(f"Processing file {i+1}/{len(delayed_tasks)}")
+        # For non-dask mode, we need to call the function directly without @delayed
+        file = (files_main + files_voc)[i]
+        result = process_single_file_sync(file, files_main, files_voc, grid_file_location_fixed_anthro_reagg, use_dask)
+        results.append(result)
 
 # Took ~20 mins on Jarmo's laptop for main+VOC, running it for two scenarios in separate kernels, at the same time. 
 print("All files processed successfully!")
