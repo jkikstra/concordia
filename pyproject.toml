@@ -49,6 +49,11 @@ test = [
   "nbformat",
   "nbconvert",
 ]
+cmip7 = [
+  "iris", # for validation script
+  "input4mips_validation", # for validation script
+  "input4mips-validation-locked" # for uploading
+]
 
 [tool.setuptools_scm]
 fallback_version = "999"

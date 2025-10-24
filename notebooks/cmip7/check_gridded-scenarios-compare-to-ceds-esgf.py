@@ -107,13 +107,56 @@ lock = SerializableLock()
 # GRIDDING_VERSION = "config_cmip7_v0_2_WSTfix_remind" # jarmo 21.08.2025 (third go, with updated hist, with fixed Waste)
 # #GRIDDING_VERSION = "config_cmip7_v0_3_GCAM"
 # path_scen_cmip7 = Path(f"C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v0_2/{GRIDDING_VERSION}") # gridding output
-GRIDDING_VERSION = "config_cmip7_v0_2_CEDSnc_remind" # jarmo 31.08.2025 (fourth go, based on Annika's CEDS-ESGF fixes, but with CDR)
+# GRIDDING_VERSION = "config_cmip7_v0_2_CEDSnc_remind" # jarmo 31.08.2025 (fourth go, based on Annika's CEDS-ESGF fixes, but with CDR)
 # GRIDDING_VERSION = "config_cmip7_v0_2_CEDSnc_remind_only_CO2" # jarmo 30.08.2025 (fourth go, but with CDR)
-#GRIDDING_VERSION = "config_cmip7_v0_3_GCAM"
-path_scen_cmip7 = Path(f"C:/Users/kikstra/Documents/GitHub/concordia/results/{GRIDDING_VERSION}") # gridding output
+# GRIDDING_VERSION = "config_cmip7_v0_3_GCAM"
+
+from concordia.cmip7.CONSTANTS import return_marker_information, CMIP_ERA, GASES_ESGF_CEDS_VOC
+
+FIXED_METADATA = True
+
+# TODO:
+# - [ ] delete all this "fixed_metadata" stuff everywhere when preparing for 0-4-0
+GRIDDING_VERSION, MODEL_SELECTION, SCENARIO_SELECTION, SCENARIO_SELECTION_GRIDDED_AFTER_METADATA = return_marker_information(
+    m="H", fixed_metadata=FIXED_METADATA
+)
+
+
+# %%
+from concordia.cmip7.CONSTANTS import CONFIG
+from concordia.settings import Settings
+import concordia.cmip7.utils_futureproxy_ceds_bb4cmip as uprox
+VERSION = CONFIG
+try:
+    # when running the script from a terminal or otherwise
+    cmip7_dir = Path(__file__).resolve()
+    settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+except (FileNotFoundError, NameError):
+    try:
+        # when running the script from a terminal or otherwise
+        cmip7_dir = Path(__file__).resolve().parent
+        settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+    except (FileNotFoundError, NameError):
+        try:
+            # Fallback for interactive/Jupyter mode, where 'file location' does not exist
+            cmip7_dir = Path().resolve()  # one up
+            settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+        except (FileNotFoundError, NameError):
+            # if Path().resolve somehow goes to the root of this repository
+            cmip7_dir = Path().resolve() / "notebooks" / "cmip7"  # one up
+            settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+
+# %%
+
+
+path_scen_cmip7 = settings.out_path / GRIDDING_VERSION / "final"
+# path_scen_cmip7 = Path(f"C:/Users/kikstra/Documents/GitHub/concordia/results/{GRIDDING_VERSION}") # gridding output
 
 # CEDS (CMIP7)
-path_ceds_cmip7 = Path(f"C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/ESGF/CEDS/CMIP7_anthro") 
+path_ceds_cmip7 = settings.gridding_path / "esgf" / "ceds" / "CMIP7_anthro"
+path_ceds_cmip7_voc = settings.gridding_path / "esgf" / "ceds" / "CMIP7_anthro_VOC" # on sharepoint; on windows path is too long for Jarmo
+path_ceds_cmip7_voc = Path("C:/Users/kikstra/Downloads/temp_VOC") # copied the files here to avoid 'long path' error
+# path_ceds_cmip7 = Path(f"C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/ESGF/CEDS/CMIP7_anthro") 
 
 # where to save plots of this script  
 plots_path = path_scen_cmip7 / "plots"
@@ -129,8 +172,7 @@ SECTORS_ANTHRO = [
     '**Solvents Production and Application',
     '**Transportation Sector',
     '**Waste',
-    '**Other non-Land CDR',
-    '**BECCS'
+    '**Other Capture and Removal'
 ]
 SECTORS_AIR = [
     '**Aircraft'
@@ -151,10 +193,7 @@ sector_dict = {
 }
 
 # %%
-MODEL_SELECTION = "REMIND-MAgPIE 3.5-4.11"
-SCENARIO_SELECTION = "SSP1 - Very Low Emissions"
-#MODEL_SELECTION = "GCAM 7.1 scenarioMIP"
-#SCENARIO_SELECTION = "SSP3 - High Emissions"
+
 MODEL_SELECTION_GRIDDED = MODEL_SELECTION.replace(" ", "-")
 SCENARIO_SELECTION_GRIDDED = SCENARIO_SELECTION.replace(" ", "-")
 
@@ -190,7 +229,9 @@ def ds_reformat_cmip6_to_cmip7(ds):
 
 
 # %%
-def read_nc_file(f, loc, reorder_list=None, rename_sectors_cmip6=None, chunks={"time": 1}):
+def read_nc_file(f, loc, reorder_list=None, rename_sectors_cmip6=None, chunks={
+    # "time": 1
+}):
     ds = xr.open_dataset(
         loc / f,
         engine="netcdf4",
@@ -228,7 +269,11 @@ var = "CO2-em-anthro"
 
 # %%
 # load a CMIP7 scenario sample file
-scen_cmip7_data_file = f"{var}_input4MIPs_emissions_CMIP7_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
+if FIXED_METADATA:
+    scen_cmip7_data_file = f"{var}_input4MIPs_emissions_{CMIP_ERA}_IIASA-IAMC-{SCENARIO_SELECTION_GRIDDED_AFTER_METADATA}_gn_202201-210012.nc"
+else:
+    scen_cmip7_data_file = f"{var}_input4MIPs_emissions_{CMIP_ERA}_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
+
 
 scen_ds = read_nc_file(
     f = scen_cmip7_data_file,
@@ -265,6 +310,7 @@ def shifted_white_colormap(cmap_name="GnBu", vmin=None, vmax=None, vcenter=0):
 
 
 def plot_ceds_vs_scenario_comparison(ceds_da, scen_da, gas, sectors, time_slice,
+                                     anthro_bb_air = "CEDS_anthro", # CEDS_anthro, BB4CMIP7, CEDS_AIR
                                      figsize_per_panel=(4, 3), proj=ccrs.Robinson(),
                                      colour_scale_max_percentile = 98,
                                      empty_treatment="fill_zeroes" # alternative: "skip"
@@ -320,9 +366,9 @@ def plot_ceds_vs_scenario_comparison(ceds_da, scen_da, gas, sectors, time_slice,
     diff_da = diff_da.isel(time=np.sort(unique_indices))
     
     # Column titles
-    col_titles = ['CEDS Data', 
+    col_titles = [f'{anthro_bb_air} Data', 
                   f'{gas} CMIP7 Scenario', 
-                  'Difference (CEDS - Scenario)', 
+                  f'Difference ({anthro_bb_air} - Scenario)', 
                   'Percentage Difference (%)']
     
     for row, sector in enumerate(sectors):
@@ -336,7 +382,7 @@ def plot_ceds_vs_scenario_comparison(ceds_da, scen_da, gas, sectors, time_slice,
         if empty_treatment=="skip":
             # Skip missing sectors (uncomment to use)
             if not sector_in_ceds or not sector_in_scen:
-                print(f"Skipping sector '{sector}' - missing in {'CEDS' if not sector_in_ceds else 'scenario'} data")
+                print(f"Skipping sector '{sector}' - missing in {f'{anthro_bb_air}' if not sector_in_ceds else 'scenario'} data")
                 # Skip this row by plotting empty axes
                 for col in range(ncols):
                     ax = axes[row, col]
@@ -352,7 +398,7 @@ def plot_ceds_vs_scenario_comparison(ceds_da, scen_da, gas, sectors, time_slice,
             if sector_in_ceds:
                 ceds_sector = ceds_da.sel(sector=sector).isel(time=closest_time_idx).squeeze()
             else:
-                print(f"Warning: Sector '{sector}' not found in CEDS data, using zeros")
+                print(f"Warning: Sector '{sector}' not found in {anthro_bb_air} data, using zeros")
                 # Create zero array with same spatial dimensions as other data
                 template_sector = ceds_da.isel(sector=0, time=closest_time_idx).squeeze()
                 ceds_sector = xr.zeros_like(template_sector)
@@ -369,7 +415,11 @@ def plot_ceds_vs_scenario_comparison(ceds_da, scen_da, gas, sectors, time_slice,
         diff_sector = ceds_sector - scen_sector
         
         # Get the actual data arrays
-        var_name = f'{gas}_em_anthro'
+        if anthro_bb_air == "CEDS_anthro":
+            var_name = f'{gas}_em_anthro'
+        elif anthro_bb_air == "BB4CMIP7":
+            print("Biomass burning vetting plots have not yet been implemented.")
+            continue
         ceds_values = ceds_sector[var_name] if var_name in ceds_sector else ceds_sector[list(ceds_sector.data_vars)[0]]
         scen_values = scen_sector[var_name] if var_name in scen_sector else scen_sector[list(scen_sector.data_vars)[0]]  
         diff_values = diff_sector[var_name] if var_name in diff_sector else diff_sector[list(diff_sector.data_vars)[0]]
@@ -477,7 +527,8 @@ def plot_ceds_vs_scenario_comparison(ceds_da, scen_da, gas, sectors, time_slice,
 def plot_place_timeseries(ceds_ds, scen_ds, 
                           lat=39.9042, lon=116.4074,
                           place='Beijing',
-                          gas='CO', sector='Energy'):
+                          gas='CO', sector='Energy',
+                          type="em_anthro"):
     """
     Plot timeseries for PLACE (e.g. Beijing) gridpoint comparing CEDS and scenario data
     
@@ -502,7 +553,7 @@ def plot_place_timeseries(ceds_ds, scen_ds,
     ).sel(sector=sector)
     
     # Get the variable name
-    var_name = f'{gas}_em_anthro'
+    var_name = f'{gas}_{type}'
     
     # Extract the timeseries data
     ceds_ts = ceds_place[var_name]
@@ -542,7 +593,8 @@ def plot_place_timeseries(ceds_ds, scen_ds,
 def plot_place_area_average_timeseries(ceds_ds, scen_ds, gas='CO', sector='Energy',
                                        lat=39.9042, lon=116.4074,
                                        place='Beijing',
-                                       lat_range=1.0, lon_range=1.0):
+                                       lat_range=1.0, lon_range=1.0,
+                                       type="em_anthro"):
     """
     Plot timeseries for PLACE (e.g., Beijing) area (average of nearby gridpoints)
     
@@ -570,7 +622,7 @@ def plot_place_area_average_timeseries(ceds_ds, scen_ds, gas='CO', sector='Energ
     )
     
     # Get variable name
-    var_name = f'{gas}_em_anthro'
+    var_name = f'{gas}_{type}'
     
     # Average over the spatial area
     ceds_ts = ceds_area[var_name].mean(dim=['lat', 'lon'])
@@ -605,7 +657,8 @@ def plot_place_area_average_timeseries(ceds_ds, scen_ds, gas='CO', sector='Energ
 def plot_place_multisector_timeseries(ceds_ds, scen_ds, 
                                       lat=39.9042, lon=116.4074,
                                       place='Beijing',
-                                      gas='CO', sectors=None):
+                                      gas='CO', sectors=None,
+                                      type="em_anthro"):
     """
     Plot timeseries for multiple sectors at a specific location
     
@@ -632,7 +685,7 @@ def plot_place_multisector_timeseries(ceds_ds, scen_ds,
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
     
     # Variable name
-    var_name = f'{gas}_em_anthro'
+    var_name = f'{gas}_{type}'
     
     # Colors for different sectors
     colors = cm.get_cmap('tab10')(np.linspace(0, 1, len(sectors)))
@@ -741,19 +794,54 @@ def plot_place_multisector_combined_timeseries(ceds_ds, scen_ds,
 # ### Comparison with CEDS: maps and timeseries, per sector, per species
 
 
-
 # %%
 # Loop (1) 
+# NOTE: plotting all gases may take a very long time.
 
+# TODO: 
+# - [ ] replace this as parameters cells, which can be run from a 'plotting' driver script
+# main gases
 GASES = [
-    "BC", 
-    "CO", 
-    "CO2", 
-    "NOx", "OC", 
-    "Sulfur",
-    "CH4","N2O", "NH3", 
-    "VOC"
-         ]
+    "BC",
+    "CO",
+    "CO2",
+    "NOx",
+    "OC",
+    "SO2", # "Sulfur",
+    "CH4",
+    "N2O",
+    "NH3",
+    "NMVOC", # "VOC",
+]
+# supplemental speciated VOCs
+GASES_VOC = [
+    # "VOC01_alcohols",
+    # "VOC02_ethane",
+    # "VOC03_propane",
+    # "VOC04_butanes",
+    # "VOC05_pentanes",
+    # "VOC06_hexanes_pl",
+    # "VOC07_ethene",
+    # "VOC08_propene",
+    # "VOC09_ethyne",
+    # "VOC12_other_alke",
+    # "VOC13_benzene",
+    # "VOC14_toluene",
+    # "VOC15_xylene",
+    # "VOC16_trimethylb",
+    # "VOC17_other_arom",
+    # "VOC18_esters",
+    # "VOC19_ethers",
+    # "VOC20_chlorinate",
+    # "VOC21_methanal",
+    # "VOC22_other_alka",
+    # "VOC23_ketones",
+    # "VOC24_acids",
+    # "VOC25_other_voc"
+]
+# GASES_VOC = [voc.replace("_em_speciated_VOC_anthro", "") for voc in GASES_ESGF_CEDS_VOC] # all VOC species
+
+ALL_GASES = GASES + GASES_VOC
 
 # Mapping for gases where the file name differs from the analysis name
 GAS_FILE_MAPPING = {
@@ -766,10 +854,18 @@ def get_file_gas_name_CEDS(gas):
     return GAS_FILE_MAPPING.get(gas, gas)
 
 # Function to get the correct variable name in the dataset
-def rename_CEDS_data_variable_name(ds, gas):
+def rename_CEDS_data_variable_name(ds, gas, type="em_anthro"):
     file_gas = get_file_gas_name_CEDS(gas)
-    return ds.rename({f"{file_gas}_em_anthro": f"{gas}_em_anthro"})
-    
+    return ds.rename({f"{file_gas}_{type}": f"{gas}_{type}"})
+
+PLOTS = [
+    'maps',
+    # 'timeseries'
+]
+
+PLOT_TIMESERIES_MULTISECTOR = False
+
+
 SECTORS = [
     "Agriculture",
     "Energy",
@@ -779,10 +875,10 @@ SECTORS = [
     "Solvents production and application",
     "Waste",
     "International Shipping",
-    "Other non-Land CDR",
-    "BECCS"
+    "Other Capture and Removal"
 ]
-# times = [cftime.DatetimeNoLeap(2023, mon, 16) for mon in range(1, 13)]
+
+# used in 'maps'
 TIMES = [
     # cftime.DatetimeNoLeap(2023, 1, 16),
     # cftime.DatetimeNoLeap(2023, 2, 15),
@@ -790,16 +886,46 @@ TIMES = [
     cftime.DatetimeNoLeap(2023, 12, 16)
 ]
 
-PLOTS = [
-    'maps',
-    'timeseries'
-]
+# used in 'timeseries'
+# Define locations dictionary with coordinates
+LOCATIONS = {
+    'Beijing': (39.9042, 116.4074),
+    # "Laxenburg": (48.0689, 16.3555),
+    "Nuuk": (64.1743, -51.7373),
+    # 'Geneva': (46.2044, 6.1432),
+    'Delhi': (28.6139, 77.2090),
+    'Spain': (40.4637, 3.7492), # central spain, close to Madrid
+    # 'New_York': (40.7128, -74.0060),
+    'London': (51.5074, -0.1278),
+    # 'Tokyo': (35.6762, 139.6503),
+    # 'São_Paulo': (-23.5505, -46.6333),
+    'Lagos': (6.5244, 3.3792),
+    'Mumbai': (19.0760, 72.8777),
+    'Rural_Amazon': (-3.4653, -62.2159),  # Remote area in Amazon
+    'North_Atlantic': (45.0, -30.0),     # Shipping route
+    'South_China_Sea': (12.0, 113.0)     # Shipping route
+}
 
-for g in GASES:
+
+for g in ALL_GASES:
+
+    if g in GASES:
+        type = "em_anthro"
+        supplemental = ""
+    elif g in GASES_VOC:
+        type = "em_speciated_VOC_anthro"
+        supplemental = "-supplemental"
+    
+    type_file = type.replace("_", "-")
+    g_file = g.replace("_","-")
     
     # load and organise data
     # load a CMIP7 scenario file
-    scen_cmip7_data_file = f"{g}-em-anthro_input4MIPs_emissions_CMIP7_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
+    if FIXED_METADATA:
+        scen_cmip7_data_file = f"{g_file}-{type_file}_input4MIPs_emissions_{CMIP_ERA}_IIASA-IAMC-{SCENARIO_SELECTION_GRIDDED_AFTER_METADATA}_gn_202201-210012.nc"
+    else:
+        scen_cmip7_data_file = f"{g_file}-{type_file}_input4MIPs_emissions_{CMIP_ERA}_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
+
 
     scen_ds = read_nc_file(
         f = scen_cmip7_data_file,
@@ -807,15 +933,16 @@ for g in GASES:
     )
 
     # load a CMIP7 CEDS file
-    file_gas_ceds = get_file_gas_name_CEDS(g) # for different naming VOC and Sulfur
-    ceds_cmip7_data_file = f"{file_gas_ceds}-em-anthro_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn_200001-202312.nc"
+    file_gas_ceds = get_file_gas_name_CEDS(g_file) # for different naming VOC and Sulfur
+    ceds_cmip7_data_file = f"{file_gas_ceds}-{type_file}_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18{supplemental}_gn_200001-202312.nc"
 
+    ceds_loc = path_ceds_cmip7_voc if g in GASES_VOC else path_ceds_cmip7
     ceds_ds = read_nc_file(
         f = ceds_cmip7_data_file,
-        loc = path_ceds_cmip7,  
+        loc = ceds_loc,  
         rename_sectors_cmip6 = True
     )
-    ceds_ds = rename_CEDS_data_variable_name(ceds_ds, g) # rename data variable too, for different naming VOC and Sulfur
+    ceds_ds = rename_CEDS_data_variable_name(ceds_ds, g, type) # rename data variable too, for different naming VOC and Sulfur
 
     ceds_da = ceds_ds.sel(time=TIMES,
                 method="nearest",
@@ -866,23 +993,6 @@ for g in GASES:
         plt.show()  
     
     if 'timeseries' in PLOTS:
-        # Define locations dictionary with coordinates
-        LOCATIONS = {
-            'Beijing': (39.9042, 116.4074),
-            'Geneva': (46.2044, 6.1432),
-            'Delhi': (28.6139, 77.2090),
-            'Spain': (40.4637, 3.7492), # central spain, close to Madrid
-            # 'New_York': (40.7128, -74.0060),
-            # 'London': (51.5074, -0.1278),
-            # 'Tokyo': (35.6762, 139.6503),
-            # 'São_Paulo': (-23.5505, -46.6333),
-            # 'Lagos': (6.5244, 3.3792),
-            # 'Mumbai': (19.0760, 72.8777),
-            'Rural_Amazon': (-3.4653, -62.2159),  # Remote area in Amazon
-            'North_Atlantic': (45.0, -30.0),     # Shipping route
-            # 'South_China_Sea': (12.0, 113.0)     # Shipping route
-        }
-        
         for sec in SECTORS:
             for place, (lat, lon) in LOCATIONS.items():
                 print(f"\nGenerating plots for {place} ({lat:.2f}°, {lon:.2f}°) - {g} {sec}")
@@ -892,7 +1002,8 @@ for g in GASES:
                     fig1, ax1 = plot_place_timeseries(ceds_ds, scen_ds, 
                                         lat=lat, lon=lon,
                                         place=place,
-                                        gas=g, sector=sec)
+                                        gas=g, sector=sec,
+                                        type=type)
                     plt.savefig(plots_path / f"{place}_timeseries_{g}_{sec}.png", 
                                 dpi=300, 
                                 bbox_inches='tight')
@@ -903,7 +1014,8 @@ for g in GASES:
                                         lat=lat, lon=lon,
                                         place=place,
                                         gas=g, sector=sec,
-                                        lat_range=2.0, lon_range=2.0)
+                                        lat_range=2.0, lon_range=2.0,
+                                        type=type)
                     plt.savefig(plots_path / f"{place}_area_timeseries_{g}_{sec}.png", 
                                 dpi=300, 
                                 bbox_inches='tight')
@@ -912,24 +1024,25 @@ for g in GASES:
                 except Exception as e:
                     print(f"Error plotting {place} {g} {sec}: {e}")
                     continue
+        if PLOT_TIMESERIES_MULTISECTOR:
+            # Also create multi-sector plots for each location
+            print(f"\nGenerating multi-sector plots for {g}")
+            for place, (lat, lon) in LOCATIONS.items():
+                try:
+                    # Multi-sector combined plot
+                    fig3, ax3 = plot_place_multisector_combined_timeseries(
+                        ceds_ds, scen_ds, 
+                        lat=lat, lon=lon, place=place,
+                        gas=g, sectors=SECTORS,
+                                        type=type
+                    )
+                    plt.savefig(plots_path / f"{place}_multisector_combined_{g}.png", 
+                                dpi=300, bbox_inches='tight')
+                    plt.show()
                     
-        # Also create multi-sector plots for each location
-        print(f"\nGenerating multi-sector plots for {g}")
-        for place, (lat, lon) in LOCATIONS.items():
-            try:
-                # Multi-sector combined plot
-                fig3, ax3 = plot_place_multisector_combined_timeseries(
-                    ceds_ds, scen_ds, 
-                    lat=lat, lon=lon, place=place,
-                    gas=g, sectors=SECTORS
-                )
-                plt.savefig(plots_path / f"{place}_multisector_combined_{g}.png", 
-                            dpi=300, bbox_inches='tight')
-                plt.show()
-                
-            except Exception as e:
-                print(f"Error plotting multi-sector {place} {g}: {e}")
-                continue
+                except Exception as e:
+                    print(f"Error plotting multi-sector {place} {g}: {e}")
+                    continue
 
 
 # %%
@@ -940,7 +1053,8 @@ def plot_maps_species_times(ds,
                               sector_file, 
                               times,
                               ncols=3, proj=ccrs.Robinson(),
-                              aircraft_level=0.305
+                              aircraft_level=0.305,
+                              shared_colormap=True
                               ): 
 
     nrows = len(times)
@@ -962,6 +1076,57 @@ def plot_maps_species_times(ds,
         axes = axes.flatten() # make indexing easier
     else:
         axes = [axes]
+
+    # Calculate global min/max for shared colormap
+    if shared_colormap:
+        all_values = []
+        
+        for time, gas in product(times, species):
+            # Prepare data array the same way as in the plotting loop
+            if sector_file != "AIR-anthro":
+                da_temp = (
+                    ds
+                    .sel(time=time, method="nearest")
+                    .sum(dim="sector")
+                    .squeeze()  
+                )
+                v_temp = sector_file
+            else:
+                da_temp = (
+                    ds 
+                    .sel(time=time, method="nearest")
+                    .sum(dim="level")
+                    .squeeze()  
+                )
+                v_temp = "AIR_anthro"
+                
+            da_temp = da_temp[f'{gas}_em_{v_temp}'].squeeze()
+            
+            # Collect all valid (non-NaN) values
+            valid_values = da_temp.values[~np.isnan(da_temp.values)]
+            if len(valid_values) > 0:
+                all_values.extend(valid_values.flatten())
+        
+        # Calculate percentiles across all time slices
+        if len(all_values) > 0:
+            all_values = np.array(all_values)
+            global_vmin = float(np.percentile(all_values, 2))  # 2nd percentile
+            global_vmax = float(np.percentile(all_values, 99.5))  # 98th percentile
+        else:
+            global_vmin, global_vmax = 0.0, 1.0
+        
+        # Determine colormap settings based on global values
+        if global_vmin >= -1e-8:
+            global_cmap = "GnBu"
+            global_norm = colors.Normalize(vmin=global_vmin, vmax=global_vmax)
+            global_rob = False  # Don't use robust when we want shared colormap
+        else:
+            print(f"Negative values (global 2nd percentile: {global_vmin}) in the data for {species}-{sector_file}")
+            global_cmap, global_norm = shifted_white_colormap(
+                "coolwarm",
+                vmin=global_vmin, vmax=global_vmax
+            )
+            global_rob = False  # Don't use robust when we want shared colormap
 
     for i, (time, gas) in enumerate(product(times, species)):
         
@@ -986,21 +1151,26 @@ def plot_maps_species_times(ds,
             
         da = da[f'{gas}_em_{v}'].squeeze()
 
-        # Use TwoSlopeNorm centered at 0 and custom cmap
-        vmin = float(da.min())
-        vmax = float(da.max())
-        # if vmin >= 0:
-        if vmin >= -1e-8:
-            cmap = "GnBu"
-            norm = None
-            rob = True
+        # Use either shared or individual colormap
+        if shared_colormap:
+            cmap = global_cmap
+            norm = global_norm
+            rob = global_rob
         else:
-            print(f"Negative values (lowest: {vmin}) in the data for {gas}-{sector_file}")
-            cmap, norm = shifted_white_colormap(
-                "coolwarm",
-                vmin=vmin, vmax=vmax
-            )
-            rob = False
+            # Original individual colormap logic
+            vmin = float(da.min())
+            vmax = float(da.max())
+            if vmin >= -1e-8:
+                cmap = "GnBu"
+                norm = colors.Normalize(vmin=vmin, vmax=vmax)
+                rob = False
+            else:
+                print(f"Negative values (lowest: {vmin}) in the data for {gas}-{sector_file}")
+                cmap, norm = shifted_white_colormap(
+                    "coolwarm",
+                    vmin=vmin, vmax=vmax
+                )
+                rob = False
 
         # Plot directly with xarray's .plot.pcolormesh
         da.plot.pcolormesh(
@@ -1028,16 +1198,16 @@ def plot_maps_species_times(ds,
 # Loop (2): plot totals 
 
 GASES = [
-    "BC", 
-    "CO", 
-    "CO2", 
-    "NOx", 
-    "OC", 
-    "Sulfur",
-    "CH4",
-    "N2O", 
-    "NH3", 
-    "VOC"
+    # "BC", 
+    # "CO", 
+    # "CO2", 
+    # "NOx", 
+    # "OC", 
+    "SO2", # "Sulfur",
+    # "CH4",
+    # "N2O", 
+    # "NH3", 
+    # "NMVOC", # "VOC",
     ]
 
 # times = [cftime.DatetimeNoLeap(2023, mon, 16) for mon in range(1, 13)]
@@ -1047,7 +1217,7 @@ TIMES = [
     # cftime.DatetimeNoLeap(2023, 6, 15),
     cftime.DatetimeNoLeap(2023, 12, 16),
     cftime.DatetimeNoLeap(2050, 12, 16),
-    cftime.DatetimeNoLeap(2100, 12, 16)
+    # cftime.DatetimeNoLeap(2100, 12, 16)
 ]
 
 PLOTS = [
@@ -1072,7 +1242,11 @@ if 'maps-per-species' in PLOTS:
                 print(f"{g}-em-{sector_file} not available")
                 continue
 
-            scen_cmip7_data_file = f"{g}-em-{sector_file}_input4MIPs_emissions_CMIP7_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
+            if FIXED_METADATA:
+                scen_cmip7_data_file = f"{g}-em-{sector_file}_input4MIPs_emissions_{CMIP_ERA}_IIASA-IAMC-{SCENARIO_SELECTION_GRIDDED_AFTER_METADATA}_gn_202201-210012.nc"
+            else:
+                scen_cmip7_data_file = f"{g}-em-{sector_file}_input4MIPs_emissions_{CMIP_ERA}_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
+
 
             scen_ds = read_nc_file(
                 f = scen_cmip7_data_file,
@@ -1082,7 +1256,8 @@ if 'maps-per-species' in PLOTS:
             fig = plot_maps_species_times(ds=scen_ds,
                                     species=g,
                                     sector_file=sector_file,
-                                    times=TIMES)
+                                    times=TIMES,
+                                    shared_colormap=True)
             
             # Save the figure
             filename = f"total_emissions_map_{g}_em_{sector_file}_{MODEL_SELECTION_GRIDDED}_{SCENARIO_SELECTION_GRIDDED}.png"
@@ -1093,3 +1268,4 @@ if 'maps-per-species' in PLOTS:
             # close figure to free memory
             plt.close(fig)
     
+# %%

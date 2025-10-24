@@ -33,6 +33,15 @@ from concordia.cmip7 import utils as cmip7_utils
 
 IAMC_COLS = ["model", "scenario", "region", "variable", "unit"] 
 
+# %%
+from concordia.cmip7.CONSTANTS import return_marker_information, CMIP_ERA
+
+FIXED_METADATA = True
+
+GRIDDING_VERSION, MODEL_SELECTION, SCENARIO_SELECTION, SCENARIO_SELECTION_GRIDDED_AFTER_METADATA = return_marker_information(
+    m="VLLO", fixed_metadata=FIXED_METADATA
+)
+
 
 # %%
 lock = SerializableLock()
@@ -69,29 +78,61 @@ lock = SerializableLock()
 # # Paths, definitions
 
 # %%
-GRIDDING_VERSION = "config_cmip7_v0_2" # jarmo 10.08.2025 (first go, with hist 022)
-GRIDDING_VERSION = "config_cmip7_v0_2_newhistory_remind" # jarmo 10.08.2025 (second go, with updated hist)
-GRIDDING_VERSION = "config_cmip7_v0_2_WSTfix_remind" # jarmo 21.08.2025 (third go, with updated hist, with fixed Waste)
-GRIDDING_VERSION = "config_cmip7_v0_2_CEDS_proxies" # annika 27.08.2025 (with proxies derived from CEDS directly for anthro)
-GRIDDING_VERSION = "config_cmip7_v0_2_CEDS_proxies_new_AIR" # annika 28.08.2025 (now also for aircraft)
-GRIDDING_VERSION = "config_cmip7_v0_2_CEDS_proxies_compressed" # annika 28.08.2025 (including encoding for compression)
-GRIDDING_VERSION = "config_cmip7_v0_2_newhistory_remind" # with updated CDR utils
+# GRIDDING_VERSION = "config_cmip7_v0_2" # jarmo 10.08.2025 (first go, with hist 022)
+# GRIDDING_VERSION = "config_cmip7_v0_2_newhistory_remind" # jarmo 10.08.2025 (second go, with updated hist)
+# GRIDDING_VERSION = "config_cmip7_v0_2_WSTfix_remind" # jarmo 21.08.2025 (third go, with updated hist, with fixed Waste)
+# GRIDDING_VERSION = "config_cmip7_v0_2_CEDS_proxies" # annika 27.08.2025 (with proxies derived from CEDS directly for anthro)
+# GRIDDING_VERSION = "config_cmip7_v0_2_CEDS_proxies_new_AIR" # annika 28.08.2025 (now also for aircraft)
+# GRIDDING_VERSION = "config_cmip7_v0_2_CEDS_proxies_compressed" # annika 28.08.2025 (including encoding for compression)
+# GRIDDING_VERSION = "config_cmip7_v0_2_newhistory_remind" # with updated CDR utils
+
+# see above in return_marker_information for GRIDDING_VERSION
+
+from concordia.cmip7.CONSTANTS import CONFIG
+from concordia.settings import Settings
+import concordia.cmip7.utils_futureproxy_ceds_bb4cmip as uprox
+VERSION = CONFIG
+try:
+    # when running the script from a terminal or otherwise
+    cmip7_dir = Path(__file__).resolve()
+    settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+except (FileNotFoundError, NameError):
+    try:
+        # when running the script from a terminal or otherwise
+        cmip7_dir = Path(__file__).resolve().parent
+        settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+    except (FileNotFoundError, NameError):
+        try:
+            # Fallback for interactive/Jupyter mode, where 'file location' does not exist
+            cmip7_dir = Path().resolve()  # one up
+            settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+        except (FileNotFoundError, NameError):
+            # another fallback
+            cmip7_dir = Path().resolve() / "notebooks" / "cmip7"
+            settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+        
+
 
 # Scenarios pre-gridding
-# scenario_data_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_2/input/scenarios/August 08 submission/" # harmonized in emissions_harmonization_historical
-scenario_data_location = "/home/hoegner/Projects/CMIP7/input/scenarios/"
 
-harmonized_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{GRIDDING_VERSION}")
-#harmonized_data_location = Path(f"C:/Users/kikstra/documents/GitHub/concordia/results/{GRIDDING_VERSION}") # (re-) harmonized by concordia
+# scenario_data_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_esgf_v0_alpha/input/scenarios/September 17 submission test/" # harmonized in emissions_harmonization_historical
+# scenario_data_location = "/home/hoegner/Projects/CMIP7/input/scenarios/"
+scenario_data_location = settings.scenario_path # harmonized in emissions_harmonization_historical
+
+# harmonized_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{GRIDDING_VERSION}")
+# harmonized_data_location = Path(f"C:/Users/kikstra/documents/GitHub/concordia/results/{GRIDDING_VERSION}") # (re-) harmonized by concordia
+harmonized_data_location = settings.out_path / GRIDDING_VERSION # (re-) harmonized by concordia
 
 # gridded emissions
 # gridding input files
-grid_file_location = "/home/hoegner/Projects/CMIP7/input/gridding/"
-# grid_file_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_2/input/gridding/"
+# grid_file_location = "/home/hoegner/Projects/CMIP7/input/gridding/"
+# grid_file_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_esgf_v0_alpha/input/gridding/"
+grid_file_location = settings.gridding_path
 
 # CMIP7 gridded emissions
-cmip7_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{GRIDDING_VERSION}")
+# cmip7_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{GRIDDING_VERSION}")
 # cmip7_data_location = Path(f"C:/Users/kikstra/documents/GitHub/concordia/results/{GRIDDING_VERSION}") # gridding output
+cmip7_data_location = settings.out_path / GRIDDING_VERSION / "final"
 
 plots_path = cmip7_data_location / "plots"
 plots_path.mkdir(exist_ok=True, parents=True)
@@ -106,8 +147,7 @@ SECTORS_ANTHRO = [
     '**Solvents Production and Application',
     '**Transportation Sector',
     '**Waste',
-    '**Other non-Land CDR',
-    '**BECCS'
+    '**Other Capture and Removal'
 ]
 SECTORS_AIR = [
     '**Aircraft'
@@ -128,10 +168,8 @@ sector_dict = {
 }
 
 # %%
-MODEL_SELECTION = "REMIND-MAgPIE 3.5-4.11"
-SCENARIO_SELECTION = "SSP1 - Very Low Emissions"
-#MODEL_SELECTION = "GCAM 7.1 scenarioMIP"
-#SCENARIO_SELECTION = "SSP3 - High Emissions"
+# see above in return_marker_information
+
 MODEL_SELECTION_GRIDDED = MODEL_SELECTION.replace(" ", "-")
 SCENARIO_SELECTION_GRIDDED = SCENARIO_SELECTION.replace(" ", "-")
 
@@ -174,8 +212,10 @@ def df_to_wide_timeseries(da):
 
 # %%
 # load a CMIP7 sample file
-cmip7_data_file = f"CO2-em-anthro_input4MIPs_emissions_CMIP7_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
-
+if FIXED_METADATA:
+    cmip7_data_file = f"CO2-em-anthro_input4MIPs_emissions_{CMIP_ERA}_IIASA-{SCENARIO_SELECTION_GRIDDED_AFTER_METADATA}_gn_202201-210012.nc"
+else:
+    cmip7_data_file = f"CO2-em-anthro_input4MIPs_emissions_{CMIP_ERA}_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
 scen_ds = read_nc_file(
     f = cmip7_data_file,
     loc = cmip7_data_location
@@ -765,3 +805,5 @@ for sec in sectors:
         Path(plots_path, f"sectoral_reaggregated_gridded_{MODEL_SELECTION_GRIDDED}_{SCENARIO_SELECTION_GRIDDED}_{sec}.png"),
         bbox_inches="tight"
     )
+
+# %%

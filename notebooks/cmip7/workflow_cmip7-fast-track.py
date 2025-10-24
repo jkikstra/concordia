@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.7
+#       jupytext_version: 1.16.4
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -27,8 +27,7 @@
 # Specify which scenario file to read in
 
 # %%
-# HISTORY_FILE = "cmip7_history_0022.csv"  # needed to be updated, with country-level updated emissions
-HISTORY_FILE = "cmip7_history_countrylevel_250721.csv" # has the update, but misses the 'World' region
+HISTORY_FILE = "cmip7_history_countrylevel_250918.csv"
 
 # %%
 # SCENARIO_FILE = "check_harmonisation_regions_REMIND.csv" # example (ALREADY HARMONIZED) REMIND scenario (used in v0 UKESM testing)
@@ -44,10 +43,10 @@ HISTORY_FILE = "cmip7_history_countrylevel_250721.csv" # has the update, but mis
 
 
 # VLLO:
-SCENARIO_FILE = "harmonised-gridding_REMIND-MAgPIE 3.5-4.11.csv" # example (ALREADY HARMONIZED) REMIND scenario (used from 08.08.2025 for v0_2 
-SCENARIO_SELECTION = "SSP1 - Very Low Emissions"
+# SCENARIO_FILE = "harmonised-gridding_REMIND-MAgPIE 3.5-4.11.csv" # example (ALREADY HARMONIZED) REMIND scenario (used from 08.08.2025 for v0_2 
+# SCENARIO_SELECTION = "SSP1 - Very Low Emissions"
 
-# H: 
+# # H: 
 # SCENARIO_FILE = "harmonised-gridding_GCAM 7.1 scenarioMIP.csv"
 # SCENARIO_SELECTION = "SSP3 - High Emissions"
 
@@ -56,16 +55,13 @@ SCENARIO_SELECTION = "SSP1 - Very Low Emissions"
 
 # %%
 # Settings
-SETTINGS_FILE = "config_cmip7_v0_2.yaml" # iteration round 2 
+SETTINGS_FILE = "config_cmip7_esgf_v0_alpha.yaml" # preparing for first upload to ESGF 
 
 # versioning
 # HARMONIZATION_VERSION = "config_cmip7_v0_testing_remind"
 # HARMONIZATION_VERSION = "config_cmip7_v0_testing_aim"
 # HARMONIZATION_VERSION = "config_cmip7_v0_testing_ukesm_remind"
 # HARMONIZATION_VERSION = "config_cmip7_v0_1_testing_ukesm_remind"
-
-sub_version = "_newhistory_remind"
-HARMONIZATION_VERSION = f"config_cmip7_v0_2{sub_version}"
 
 # %% [markdown]
 # ## Importing packages
@@ -91,7 +87,7 @@ import dask.dataframe as dd
 import pandas as pd
 import pycountry
 from dask.distributed import Client
-from pandas_indexing import concat, isin, ismatch, semijoin, assignlevel
+from pandas_indexing import concat, isin, ismatch, semijoin, assignlevel, extractlevel
 from pandas_indexing.units import set_openscm_registry_as_default
 from ptolemy.raster import IndexRaster
 
@@ -104,7 +100,17 @@ from concordia.cmip7 import utils as cmip7_utils # update to cmip7 utils (e.g. f
 from concordia.settings import Settings
 from concordia.utils import MultiLineFormatter, extend_overrides
 from concordia.workflow import WorkflowDriver
+from concordia.cmip7.CONSTANTS import return_marker_information, CMIP_ERA
 
+# %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
+marker_to_run: str = "VLLO"
+
+# %%
+# Scenario information
+HARMONIZATION_VERSION, MODEL_SELECTION, SCENARIO_SELECTION = return_marker_information(
+    m=marker_to_run
+)
+SCENARIO_FILE = "harmonised-gridding_{MODEL_SELECTION}.csv"
 
 # %% [markdown]
 # Load unit registry from openSCM for translating units (e.g., to and from CO2eq)
@@ -207,75 +213,6 @@ for m, kwargs in settings.regionmappings.items():
 # regionmappings
 
 # %% [markdown]
-# # IAM: Read and process IAM data
-
-# %%
-Path(settings.scenario_path, SCENARIO_FILE)
-
-# %% [markdown]
-# ### Read in (currently just 1 scenario)
-
-# %%
-# v0_1 (second UKESM round)
-# Read in already-harmonized data
-iam_df = cmip7_utils.load_data(
-    Path(settings.scenario_path, SCENARIO_FILE)
-    # Path(settings.scenario_path, "harmonised-gridding_REMIND-MAgPIE 3.5-4.10.csv")
-)
-
-# filter only one scenario  
-iam_df = cmip7_utils.filter_scenario(iam_df, scenarios=SCENARIO_SELECTION) # TODO: remove this after test code is done
-
-# iam_df[iam_df['variable']=="Emissions|CH4|Energy Sector"]
-
-# %%
-IAMC_COLS = ["model", "scenario", "region", "variable", "unit"]
-HARMONIZED_YEAR_COLS = [col for col in iam_df.columns if col.isdigit() and settings.base_year <= int(col) <= 2100]
-
-# %%
-# # v0 (first UKESM round)
-# # keep only relevant columns
-# iam_df = iam_df.drop(columns=["stage"])[(IAMC_COLS + HARMONIZED_YEAR_COLS)]
-
-# v0_1 (second UKESM round)
-# keep only relevant columns
-iam_df = iam_df[(IAMC_COLS + HARMONIZED_YEAR_COLS)]
-# iam_df
-
-# %% [markdown]
-# ### Process (using pix - formatting)
-
-# %%
-from pandas_indexing import extractlevel
-# split the 'variable' column into the 'gas' and 'sector' columns
-iam_df = extractlevel(iam_df.set_index(IAMC_COLS), variable="Emissions|{gas}|{sector}", drop=True)
-
-# Reorder the MultiIndex of iam_df
-iam_df = iam_df.reorder_levels(['model', 'scenario', 'region', 'gas', 'sector', 'unit'])
-iam_df = iam_df.sort_index()
-
-# Update column type and name
-iam_df.columns = iam_df.columns.astype(int)
-iam_df.columns.name = 'year'
-iam_df = iam_df.dropna(axis=1)
-
-
-# %% [markdown]
-# ## Save the processed IAM data
-
-# %% [markdown]
-# ### Basic checks
-
-# %%
-cmip7_utils.check_na_in_columns(iam_df)
-
-# %% [markdown]
-# ### Save in wide format
-
-# %%
-cmip7_utils.save_data(df = iam_df.reset_index(), output_path = str(Path(version_path, "scenarios_processed.csv" )))
-
-# %% [markdown]
 # # History: Read and process historical data
 #
 
@@ -316,29 +253,74 @@ hist_new = pd.concat([
     hist_new_global_nonzero,
     hist_new_nonglobal_world
 ])
-hist_new
 
-# %%
-# old history reading like cmip7_history_0022.csv; now becoming outdated
-# hist = (
-#     pd.read_csv(settings.history_path / HISTORY_FILE)
-#     .drop(columns=['model', 'scenario'])
-#     .rename(columns={"region": "country"})
-# )
-
-# hist = extractlevel(hist.set_index(['country', 'variable', 'unit']), variable="Emissions|{gas}|{sector}", drop=True)
-
-# # Reorder the MultiIndex of hist
-# hist = hist.reorder_levels(['country', 'gas', 'sector', 'unit'])
-# hist = hist.sort_index()
-
-# # Update column type and name
-# hist.columns = hist.columns.astype(int)
-# hist.columns.name = 'year'
-# hist
-
-# %%
 hist = hist_new
+hist
+
+# %% [markdown]
+# # IAM: Read and process IAM data
+
+# %%
+Path(settings.scenario_path, SCENARIO_FILE)
+
+# %% [markdown]
+# ### Read in (currently just 1 scenario)
+
+# %%
+# Read in already-harmonized data
+iam_df = cmip7_utils.load_data(
+    Path(settings.scenario_path, SCENARIO_FILE)
+)
+
+# filter only one scenario  
+iam_df = cmip7_utils.filter_scenario(iam_df, scenarios=SCENARIO_SELECTION) # TODO: remove this after test code is done
+
+# %%
+# TODO: add historical data as 2022 (for bb4cmip; for CEDS we should drop it again)
+
+# %%
+IAMC_COLS = ["model", "scenario", "region", "variable", "unit"]
+HARMONIZED_YEAR_COLS = [col for col in iam_df.columns if col.isdigit() and settings.base_year <= int(col) <= 2100]
+
+# %%
+# keep only relevant columns
+iam_df = iam_df[(IAMC_COLS + HARMONIZED_YEAR_COLS)]
+
+# %%
+iam_df
+
+# %% [markdown]
+# ### Process (using pix - formatting)
+
+# %%
+from pandas_indexing import extractlevel
+# split the 'variable' column into the 'gas' and 'sector' columns
+iam_df = extractlevel(iam_df.set_index(IAMC_COLS), variable="Emissions|{gas}|{sector}", drop=True)
+
+# Reorder the MultiIndex of iam_df
+iam_df = iam_df.reorder_levels(['model', 'scenario', 'region', 'gas', 'sector', 'unit'])
+iam_df = iam_df.sort_index()
+
+# Update column type and name
+iam_df.columns = iam_df.columns.astype(int)
+iam_df.columns.name = 'year'
+iam_df = iam_df.dropna(axis=1)
+
+
+# %% [markdown]
+# ## Save the processed IAM data
+
+# %% [markdown]
+# ### Basic checks
+
+# %%
+cmip7_utils.check_na_in_columns(iam_df)
+
+# %% [markdown]
+# ### Save in wide format
+
+# %%
+cmip7_utils.save_data(df = iam_df.reset_index(), output_path = str(Path(version_path, "scenarios_processed.csv" )))
 
 # %% [markdown]
 # # Read Harmonization Overrides
@@ -354,7 +336,7 @@ harm_overrides = pd.read_excel(
     settings.scenario_path / "harmonization_overrides.xlsx", # placeholder for now, empty now as already harmonized.
     index_col=list(range(3)),
 ).method
-# harm_overrides
+harm_overrides
 
 # %%
 # no need to reharmonise, so no rechoosing methods
@@ -380,8 +362,6 @@ harm_overrides = pd.read_excel(
 settings.scenario_path
 
 # %%
-# TODO: (bug) resolve 0 values in model scenario data for historical
-
 # New; updated SSP data from CMIP7 era (downloaded from: http://files.ece.iiasa.ac.at/ssp/downloads/ssp_basic_drivers_release_3.2.beta_full.xlsx, and then selected only the GDP|PPP variable)
 gdp_new = pd.read_csv(
         settings.scenario_path / "ssp_basic_drivers_release_3.2.beta_full_gdp.csv",
@@ -689,7 +669,7 @@ workflow = WorkflowDriver(
 
 # %%
 # save workflow info in easy-to-vet packets 
-workflow.save_info(path = Path("..", "data", "compare_wfd_inputs"), prefix=settings.version)
+workflow.save_info(path = Path("..", "..", "data", "compare_wfd_inputs"), prefix=settings.version)
 
 # %%
 # check regionmapping and scenarios
@@ -816,7 +796,314 @@ res = workflow.grid(
 # # END OF MAIN CODE
 
 # %% [markdown]
+# # Start of SUPPLEMENTAL DATA
+
+# %% [markdown]
+# # VOC speciation (CEDS, anthro)
+# **NOTE: currently takes long at ~20mins per VOC species ~= 8hrs for all 23 VOC species**
+
+# %%
+from dask.utils import SerializableLock
+lock = SerializableLock()
+
+# %%
+# Load VOC data
+
+from concordia.cmip7.CONSTANTS import GASES_ESGF_CEDS_VOC
+import xarray as xr
+
+anthro_voc = settings.proxy_path / "VOC_speciation"
+
+# load VOC (bulk) scenario file
+
+# anthro
+voc_anthro = xr.open_dataset(
+    settings.out_path / HARMONIZATION_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution}-{model}-{scenario}_{grid_label}_{start_date}-{end_date}.nc".format(
+    name="VOC-em-anthro",
+    model=MODEL_SELECTION.replace(" ", "-"),
+    scenario=SCENARIO_SELECTION.replace(" ", "-"),
+    **cmip7_utils.DS_ATTRS | {"version": settings.version}
+),
+chunks={},
+lock=lock
+)
+voc_anthro
+
+# AIR is not required.
+
+# TODO: add openburning (which has entirely different names/formatting)
+
+# %%
+# Calculate VOC-speciation data; keep the structure of the VOC (bulk) data
+
+from dask.diagnostics import ProgressBar
+
+PROXY_TIME_RANGE_VOC_CEDS = "2023"
+
+voc_spec_ratios_location = settings.proxy_path / "VOC_speciation"
+
+# loop through all CEDS em-anthro VOC-species from input4MIP files
+# 1. load share data
+# 2. create an "empty"/"template" dataset as a copy of voc_anthro
+# 3. fill with zeroes
+# 4. for each sector, 
+#   i. do multiplication
+#   ii. assign sector value
+# 5. Update/set other attributes
+
+for v in GASES_ESGF_CEDS_VOC:
+# for v in [GASES_ESGF_CEDS_VOC[2]]: # only run one to test
+# for v in GASES_ESGF_CEDS_VOC[0:9]: # run a few to test
+    print(f'Reading in shares of {v}')
+    # import file 
+    voc_share = xr.open_dataset(
+        voc_spec_ratios_location / f"{v}_{PROXY_TIME_RANGE_VOC_CEDS}.nc",
+        engine="netcdf4",
+        chunks={},
+        lock=lock
+    )
+
+    # create VOC_em speciated
+    # Alternative approach using xarray's alignment capabilities
+    
+    # Create a mapping from voc_anthro sectors to voc_share sectors
+    sector_mapping = {
+        'Agriculture': 'AGR',
+        'Energy': 'ENE',
+        'Industrial': 'IND',
+        'Transportation': 'TRA',
+        'Residential, Commercial, Other': 'RCO',
+        'Solvents production and application': 'SLV',
+        'Waste': 'WST',
+        'International Shipping': 'SHP'
+    }
+    
+    # Rename sectors in voc_anthro to match voc_share sector names where possible
+    anthro_to_share_sectors = {v: k for k, v in sector_mapping.items() if v in voc_share.sector.values and k in voc_anthro.sector.values}
+    
+    # Initialize result with same structure as voc_anthro
+    voc_spec = xr.Dataset(
+        coords=voc_anthro.coords,
+        attrs=voc_anthro.attrs.copy()
+    )
+    
+    # Initialize the data variable with zeros
+    voc_spec_data = xr.zeros_like(voc_anthro["VOC_em_anthro"])
+    
+    # Perform multiplication for matching sectors
+    # print(f'Calculations of emissions of {v}')
+    for share_sector, anthro_sector in anthro_to_share_sectors.items():
+        # Select data from both datasets for matching sectors
+        voc_bulk = voc_anthro["VOC_em_anthro"].sel(sector=anthro_sector)
+        
+        # Get emissions share for this sector and gas
+        share_data = voc_share["emissions_share"].sel(
+            sector=share_sector,
+            gas=voc_share.gas[0]  # Take first gas
+        )
+        
+        # Convert time coordinates to year/month for alignment
+        years = voc_bulk.time.dt.year
+        months = voc_bulk.time.dt.month
+        
+        # Find the index of the sector in the coordinate array
+        sector_idx = list(voc_anthro.sector.values).index(anthro_sector)
+        
+        # Perform multiplication for each time step
+        for time_idx, time_val in enumerate(voc_bulk.time.values):
+            year = years[time_idx].values
+            month = months[time_idx].values
+            
+            # Check if this year/month exists in voc_share
+            if year in share_data.year.values and month in share_data.month.values:
+                # Get the share data for this specific year/month
+                share_slice = share_data.sel(year=year, month=month)
+                
+                # Get the bulk VOC data for this time step
+                voc_slice = voc_bulk.isel(time=time_idx)
+                
+                # Multiply and assign to result
+                voc_spec_data[time_idx, :, :, sector_idx] = (voc_slice * share_slice).values
+    
+    # Add the computed data to the result dataset
+    gas_variable_name = voc_share.gas.values[0]
+
+    voc_spec[f"{gas_variable_name}"] = voc_spec_data
+    # TODO:
+    # - [ ] update long_name of data (follow CEDS long_name) 
+    # Add the bounds
+    voc_spec['lon_bnds'] = voc_anthro['lon_bnds']
+    voc_spec['time_bnds'] = voc_anthro['time_bnds']
+    voc_spec['lat_bnds'] = voc_anthro['lat_bnds']
+    
+    # Update attributes
+    voc_spec.attrs['variable_id'] = gas_variable_name
+    voc_spec.attrs['title'] = f"Speciated {gas_variable_name} emissions"
+
+    # save out
+    print(f'Writing out emissions of {v}')
+    outfile = settings.out_path / HARMONIZATION_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution}-{model}-{scenario}_{grid_label}_{start_date}-{end_date}.nc".format(
+        name=gas_variable_name.replace("_", "-"),
+        model=MODEL_SELECTION.replace(" ", "-"),
+        scenario=SCENARIO_SELECTION.replace(" ", "-"),
+        **cmip7_utils.DS_ATTRS | {"version": settings.version}
+    )
+
+    encoding = {
+        gas_variable_name: {
+            "zlib": True,
+            "complevel": 2
+        }
+    }
+    
+    with ProgressBar():
+        voc_spec.to_netcdf(outfile, mode="w", encoding=encoding, compute=True)
+
+
+# %% [markdown]
+# # END OF SUPPLEMENTAL DATA CODE
+
+
+# %% [markdown]
 # # ------------------------------------
+
+# %% [markdown]
+# # Investigate VOC speciation
+
+# %% [markdown]
+# ### Plot VOC shares
+
+# %%
+# Add this variable at the top of the plotting section
+RUN_INTERACTIVE_PLOTS = False  # Set to True to enable interactive plotting
+
+# %%
+# Only run plotting code if explicitly enabled
+if RUN_INTERACTIVE_PLOTS:
+    # Plot voc_share emissions data
+    import matplotlib.pyplot as plt
+    import matplotlib.colors as colors
+    import numpy as np
+
+    # Select data for a specific year, month, and sector for plotting
+    plot_data = voc_share['emissions_share'].sel(
+        year=2023, 
+        month=6,  # January
+        sector='IND'  # Industrial sector
+    ).squeeze()  # Remove singleton dimensions
+
+    # Select data for a specific year, month, and sector for plotting
+    plot_data = voc_anthro['VOC_em_anthro'].sel(
+        time="2023-06",
+        sector='Industrial'  # Industrial sector
+    ).squeeze()  # Remove singleton dimensions
+else:
+    print("Interactive plotting disabled. Set RUN_INTERACTIVE_PLOTS = True to enable.")
+
+# %%
+# Only run detailed plotting if enabled
+if RUN_INTERACTIVE_PLOTS:
+    # Create figure with subplots
+    fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+    fig.suptitle(f'VOC Emissions Share: {voc_share.gas.values[0]}', fontsize=16)
+
+    # Plot 1: Raw data
+    ax1 = axes[0, 0]
+    im1 = plot_data.plot(ax=ax1, cmap='viridis', add_colorbar=False)
+    ax1.set_title('Raw Emissions Share (Industrial, June 2023)')
+
+    # Add country borders using a simpler approach
+    try:
+        import cartopy.feature as cfeature
+        import cartopy.crs as ccrs
+        
+        # Create a new subplot with cartopy projection for this plot
+        fig.delaxes(ax1)  # Remove the original axes
+        ax1 = fig.add_subplot(2, 2, 1, projection=ccrs.PlateCarree())
+        
+        # Replot the data on the cartopy axes
+        im1 = plot_data.plot(ax=ax1, cmap='viridis', add_colorbar=False, transform=ccrs.PlateCarree())
+        ax1.set_title('Raw Emissions Share (Industrial, June 2023)')
+        
+        # Add country borders and coastlines
+        ax1.add_feature(cfeature.BORDERS, linewidth=0.5, color='white', alpha=0.8)
+        ax1.add_feature(cfeature.COASTLINE, linewidth=0.5, color='white', alpha=0.8)
+        ax1.set_global()
+        
+    except ImportError:
+        print("Cartopy not available - skipping country borders")
+        # Fallback: just plot without borders
+        im1 = plot_data.plot(ax=ax1, cmap='viridis', add_colorbar=False)
+        ax1.set_title('Raw Emissions Share (Industrial, June 2023)')
+
+    plt.colorbar(im1, ax=ax1, shrink=0.8)
+
+    # Plot 2: Log scale for better visibility of small values
+    ax2 = axes[0, 1]
+    # Add small value to avoid log(0)
+    log_data = np.log10(plot_data.where(plot_data > 0) + 1e-10)
+    im2 = log_data.plot(ax=ax2, cmap='plasma', add_colorbar=False)
+    ax2.set_title('Log10 Emissions Share')
+    plt.colorbar(im2, ax=ax2, shrink=0.8)
+
+    # Plot 3: Histogram of values
+    ax3 = axes[1, 0]
+    values = plot_data.values.flatten()
+    values = values[~np.isnan(values)]  # Remove NaN values
+    ax3.hist(values, bins=50, alpha=0.7, edgecolor='black')
+    ax3.set_xlabel('Emissions Share')
+    ax3.set_ylabel('Frequency')
+    ax3.set_title('Distribution of Emissions Share Values')
+    ax3.set_yscale('log')
+
+    # Plot 4: Summary statistics by sector
+    ax4 = axes[1, 1]
+    sector_means = []
+    sector_names = []
+    for sector in voc_share.sector.values:
+        sector_data = voc_share['emissions_share'].sel(
+            year=2023, month=1, sector=sector
+        ).values.flatten()
+        sector_data = sector_data[~np.isnan(sector_data)]
+        if len(sector_data) > 0:
+            sector_means.append(np.mean(sector_data))
+            sector_names.append(sector)
+
+    bars = ax4.bar(sector_names, sector_means)
+    ax4.set_xlabel('Sector')
+    ax4.set_ylabel('Mean Emissions Share')
+    ax4.set_title('Mean Emissions Share by Sector (2023, Jan)')
+    ax4.tick_params(axis='x', rotation=45)
+
+    # Color bars by value
+    if sector_means:  # Only if we have data
+        norm = colors.Normalize(min(sector_means), max(sector_means))
+        colors_list = plt.cm.viridis(norm(sector_means))
+        for bar, color in zip(bars, colors_list):
+            bar.set_color(color)
+
+    plt.tight_layout()
+    plt.show()
+
+# %%
+# Summary statistics - always run these as they're informational, not interactive
+if RUN_INTERACTIVE_PLOTS:
+    # Print summary statistics
+    print(f"\nSummary statistics for {voc_share.gas.values[0]}:")
+    print(f"Shape: {voc_share['emissions_share'].shape}")
+    print(f"Min value: {voc_share['emissions_share'].min().values:.2e}")
+    print(f"Max value: {voc_share['emissions_share'].max().values:.2e}")
+    print(f"Mean value: {voc_share['emissions_share'].mean().values:.2e}")
+    print(f"Non-zero fraction: {(voc_share['emissions_share'] > 0).sum().values / voc_share['emissions_share'].size:.3f}")
+
+    # Check for grid cells with 100% share
+    max_share = voc_share['emissions_share'].max().values
+    if max_share >= 0.99:
+        print(f"\nMaximum share found: {max_share:.3f}")
+        high_share_data = voc_share['emissions_share'].where(voc_share['emissions_share'] >= 0.99)
+        if high_share_data.count() > 0:
+            print("Grid cells with >99% share found!")
+
 
 # %% [markdown]
 # # Investigate GRIDS
@@ -825,39 +1112,41 @@ res = workflow.grid(
 # ### Look at a processed emissions file
 
 # %%
-import xarray as xr
+if RUN_INTERACTIVE_PLOTS:
+    import xarray as xr
+
+    result_grid = xr.open_dataset(Path("..", "results", 
+    "config_cmip7_v0_1_testing_ukesm_remind", 
+    "NOx-em-anthro_input4MIPs_emissions_CMIP7_IIASA-REMIND-MAgPIE-3.5-4.10-SSP1---Very-Low-Emissions_gn_202301-210012.nc"))
+
+    # View variable names
+    print(result_grid.data_vars)
+    # View coordinates
+    print(result_grid.coords)
+    # Pick the variable (one per nc file)
+    print(result_grid['NOx_em_anthro'])
+    # What years?
+    import numpy as np
+    print(np.unique(result_grid.coords['time'].values))
 
 # %%
-result_grid = xr.open_dataset(Path("..", "results", 
-"config_cmip7_v0_1_testing_ukesm_remind", 
-"NOx-em-anthro_input4MIPs_emissions_CMIP7_IIASA-REMIND-MAgPIE-3.5-4.10-SSP1---Very-Low-Emissions_gn_202301-210012.nc"))
+if RUN_INTERACTIVE_PLOTS:
+    import matplotlib.pyplot as plt
+    import matplotlib.colors as colors
 
-# %%
-# View variable names
-print(result_grid.data_vars)
-# View coordinates
-print(result_grid.coords)
-# Pick the variable (one per nc file)
-print(result_grid['NOx_em_anthro'])
-# What years?
-import numpy as np
-print(np.unique(result_grid.coords['time'].values))
+    # Extract data
+    data = result_grid['NOx_em_anthro'].sel(time='2020-01-16 00:00:00', sector='Transportation')
 
-# %%
-import matplotlib.pyplot as plt
-import matplotlib.colors as colors
+    # Compute 99th percentile
+    vmax = np.percentile(data.values, 99.5)
 
-# Extract data
-data = result_grid['NOx_em_anthro'].sel(time='2020-01-16 00:00:00', sector='Transportation')
+    # Plot with normalization: cap all higher values at the 99th percentile
+    norm = colors.Normalize(vmin=data.min(), vmax=vmax)
 
-# Compute 99th percentile
-vmax = np.percentile(data.values, 99.5)
-
-# Plot with normalization: cap all higher values at the 99th percentile
-norm = colors.Normalize(vmin=data.min(), vmax=vmax)
-
-# Plot
-plt.figure(figsize=(10, 5))
-data.plot(norm=norm, cmap='viridis')  # Or use any perceptual map: 'plasma', 'inferno', etc.
-plt.title("NOx Emissions (Transportation)")
-plt.show()
+    # Plot
+    plt.figure(figsize=(10, 5))
+    data.plot(norm=norm, cmap='viridis')  # Or use any perceptual map: 'plasma', 'inferno', etc.
+    plt.title("NOx Emissions (Transportation)")
+    plt.show()
+else:
+    print("Interactive plotting disabled. Set RUN_INTERACTIVE_PLOTS = True to enable NOx grid plots.")
