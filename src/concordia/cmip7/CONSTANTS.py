@@ -70,23 +70,48 @@ def find_voc_data_variable_string(voc_code, voc_list=GASES_ESGF_CEDS_VOC):
 
 PROXY_YEARS =  [2022, 2023, 2024, 2025, 2030, 2035, 2040, 2045, 2050, 2055, 2060, 2065, 2070, 2075, 2080, 2085, 2090, 2095, 2100]
 
-def return_marker_information(m, v="cmip7_esgf_v0_alpha", fixed_metadata=False):
+def return_marker_information(m, v="cmip7_esgf_v0_alpha", fixed_metadata=False, GRIDDING_VERSION=None, SCENARIO_SELECTION_GRIDDED_AFTER_METADATA=None):
 
-    if m == "VLLO":
-        GRIDDING_VERSION = f"{v}_vllo" # vllo scenario remind test
-        MODEL_SELECTION = "REMIND-MAgPIE 3.5-4.11"
-        SCENARIO_SELECTION = "SSP1 - Very Low Emissions"
-        if fixed_metadata:
-            SCENARIO_SELECTION_GRIDDED_AFTER_METADATA = "scendraft1"
-    elif m == "H":
-        GRIDDING_VERSION = f"{v}_h" # high scenario gcam test
-        MODEL_SELECTION = "GCAM 7.1 scenarioMIP"
-        SCENARIO_SELECTION = "SSP3 - High Emissions"
-        if fixed_metadata:
-            SCENARIO_SELECTION_GRIDDED_AFTER_METADATA = "scendraft2"
-    if not fixed_metadata:
-        SCENARIO_SELECTION_GRIDDED_AFTER_METADATA = None
-    # if fixed_metadata:
-    #     MODEL_SELECTION = ""
+    if v=="cmip7_esgf_v0_alpha":
+        # outdated naming,
+        # was only used for 0-3-0 release, when naming wasn't yet determined 
+        if m == "VLLO":
+            GRIDDING_VERSION = f"{v}_vllo" # vllo scenario remind test
+            MODEL_SELECTION = "REMIND-MAgPIE 3.5-4.11"
+            SCENARIO_SELECTION = "SSP1 - Very Low Emissions"
+            if fixed_metadata:
+                SCENARIO_SELECTION_GRIDDED_AFTER_METADATA = "scendraft1"
+        elif m == "H":
+            GRIDDING_VERSION = f"{v}_h" # high scenario gcam test
+            MODEL_SELECTION = "GCAM 7.1 scenarioMIP"
+            SCENARIO_SELECTION = "SSP3 - High Emissions"
+            if fixed_metadata:
+                SCENARIO_SELECTION_GRIDDED_AFTER_METADATA = "scendraft2"
+        if not fixed_metadata:
+            SCENARIO_SELECTION_GRIDDED_AFTER_METADATA = None
+
+    else:
+        # from 0-4-0 onwards
+        if m == "H":
+            MODEL_SELECTION = "GCAM 8s"
+            SCENARIO_SELECTION = "SSP3 - High Emissions"
+        if m == "HL":
+            MODEL_SELECTION = "WITCH 6.0"
+            SCENARIO_SELECTION = "SSP5 - Medium-Low Emissions_a"
+        if m == "M":
+            MODEL_SELECTION = "IMAGE 3.4"
+            SCENARIO_SELECTION = "SSP2 - Medium Emissions"
+        if m == "ML":
+            MODEL_SELECTION = "COFFEE 1.6"
+            SCENARIO_SELECTION = "SSP2 - Medium-Low Emissions"
+        if m == "L":
+            MODEL_SELECTION = "MESSAGEix-GLOBIOM-GAINS 2.1-M-R12"
+            SCENARIO_SELECTION = "SSP2 - Low Emissions_f"
+        if m == "LN":
+            MODEL_SELECTION = "AIM 3.0"
+            SCENARIO_SELECTION = "SSP2 - Low Overshoot" # should be updated to "SSP2 - Low Overshoot_a" (email from Shinichiro, weekend of 25.10.2025)
+        if m == "VL":
+            MODEL_SELECTION = "REMIND-MAgPIE 3.5-4.11"
+            SCENARIO_SELECTION = "SSP1 - Very Low Emissions"
 
     return GRIDDING_VERSION, MODEL_SELECTION, SCENARIO_SELECTION, SCENARIO_SELECTION_GRIDDED_AFTER_METADATA
