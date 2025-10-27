@@ -27,6 +27,7 @@ dependencies:
 - jupyterlab
 - colorlog
 - ipykernel
+- papermill
 
 # ptolemy dependencies
 - netcdf4
