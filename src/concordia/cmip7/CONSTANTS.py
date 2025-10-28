@@ -68,6 +68,7 @@ def return_marker_information(m, v="cmip7_esgf_v0_alpha", fixed_metadata=False, 
 
     else:
         # from 0-4-0 onwards
+        # exact naming discussion is here: https://github.com/CMIP-Data-Request/Harmonised-Public-Consultation/issues/108
         if m == "H":
             MODEL_SELECTION = "GCAM 8s"
             SCENARIO_SELECTION = "SSP3 - High Emissions"
@@ -85,7 +86,7 @@ def return_marker_information(m, v="cmip7_esgf_v0_alpha", fixed_metadata=False, 
             SCENARIO_SELECTION = "SSP2 - Low Emissions_f"
         if m == "LN":
             MODEL_SELECTION = "AIM 3.0"
-            SCENARIO_SELECTION = "SSP2 - Low Overshoot" # should be updated to "SSP2 - Low Overshoot_a" (email from Shinichiro, weekend of 25.10.2025)
+            SCENARIO_SELECTION = "SSP2 - Low Overshoot_a" # (email from Shinichiro, weekend of 25.10.2025)
         if m == "VL":
             MODEL_SELECTION = "REMIND-MAgPIE 3.5-4.11"
             SCENARIO_SELECTION = "SSP1 - Very Low Emissions"
