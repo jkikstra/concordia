@@ -13,9 +13,9 @@ import tqdm.auto as tqdm
 from concordia.cmip7.utils_papermill import run_notebook
 
 def get_notebook_parameters(notebook_name: str,
+                            marker_to_run: str, # options: H, HL, M, ML, L, LN, VL
                             GRIDDING_VERSION: str | None = None, # defaults to `marker_to_run`, but here you can give another option
                             SETTINGS_FILE: str = "config_cmip7_v0-4-0.yaml", # preparing for first upload to ESGF 
-                            marker_to_run: str = "VL", # options: H, HL, M, ML, L, LN, VL
                             run_main: bool = True,
                             run_main_gridding: bool = True, # if false, we'll stop at only running the downscaling of main
                             run_anthro_supplemental_voc: bool = False,
@@ -97,14 +97,18 @@ def main():  # noqa: PLR0912
             if any(notebook.name.startswith(np) for np in notebook_prefixes):
 
 
-                GRIDDING_VERSION = "testing_driver"
+                GRIDDING_VERSION = f"testing_driver_{marker}"
+
+                # DO_GRIDDING_ONLY_FOR_THESE_SPECIES = None # all species
+                DO_GRIDDING_ONLY_FOR_THESE_SPECIES = ["CO2"] # test just one species
 
                 parameters = get_notebook_parameters(notebook.name,
+                                                     marker_to_run=marker,
                                                      run_main=True,
                                                      run_main_gridding=True,
                                                      GRIDDING_VERSION=GRIDDING_VERSION,
-                                                     DO_GRIDDING_ONLY_FOR_THESE_SPECIES=["Sulfur", "OC"]
-                                                     #  ... add here the parameters that we would like to change
+                                                     DO_GRIDDING_ONLY_FOR_THESE_SPECIES=DO_GRIDDING_ONLY_FOR_THESE_SPECIES
+                                                     #  ... add here other parameters that you might like to change
                                                      )
                 
                 if GRIDDING_VERSION is None:
