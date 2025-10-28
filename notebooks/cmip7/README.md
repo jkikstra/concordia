@@ -43,6 +43,11 @@ __Helper files__
 
 ## Current Main workflow
 
+**TODO:**
+- [ ] Clarify the use of the work-in-progress `scripts\cmip7\driver_workflow_cmip7-fast-track.py` to drive the scripts in this notebook 
+
+
+
 ### Configuration
 
 For each version, need to specify data paths for input and output in a file named something like `config_cmip7_{version}.yaml`, which is placed in the `notebooks/cmip7` folder. 

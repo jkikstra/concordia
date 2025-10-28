@@ -83,6 +83,19 @@ def main():  # noqa: PLR0912
     #     "H"
     # ]
 
+
+    # -----------------
+    # 0. CREATE PROXIES
+    # -----------------
+
+    # tbd.
+    # creates the inputs that are placed under "proxy_path"
+    # Should not need to be run every time.
+
+    # -----------------
+    # 1A. MAIN WORKFLOW
+    # -----------------
+
     # processing: run the notebook
     notebook_prefixes = [
         "workflow_cmip7-fast-track"
@@ -102,6 +115,12 @@ def main():  # noqa: PLR0912
                 # DO_GRIDDING_ONLY_FOR_THESE_SPECIES = None # all species
                 DO_GRIDDING_ONLY_FOR_THESE_SPECIES = ["CO2"] # test just one species
 
+                # TODO:
+                # check warning:
+                # Passed unknown parameter: GRIDDING_VERSION
+                # Passed unknown parameter: DO_GRIDDING_ONLY_FOR_THESE_SPECIES
+                # -> figure out where this happens
+
                 parameters = get_notebook_parameters(notebook.name,
                                                      marker_to_run=marker,
                                                      run_main=True,
@@ -110,7 +129,7 @@ def main():  # noqa: PLR0912
                                                      DO_GRIDDING_ONLY_FOR_THESE_SPECIES=DO_GRIDDING_ONLY_FOR_THESE_SPECIES
                                                      #  ... add here other parameters that you might like to change
                                                      )
-                
+
                 if GRIDDING_VERSION is None:
                     notebook_identification = f"{marker}"
                 else:
@@ -121,6 +140,26 @@ def main():  # noqa: PLR0912
                              parameters=parameters,
                              idn=notebook_identification # how to identify this run in the papermill notebook save folder?
                              )
+
+    # --------------------------------------------------------------
+    # 1B. SUPPLEMENTAL WORKFLOW (where not covered in MAIN WORKFLOW)
+    # --------------------------------------------------------------
+
+    # tbd.
+
+    # --------------------------------
+    # 2A. POST-PROCESSING (data fixes)
+    # --------------------------------
+
+    # tbd.
+
+    # ------------------------------------
+    # 2D. POST-PROCESSING (metadata fixes)
+    # ------------------------------------
+
+    # tbd.
+
+
 
 
     # TODO: run checks&plots automatically as well.
