@@ -112,8 +112,8 @@ def main():  # noqa: PLR0912
 
                 GRIDDING_VERSION = f"testing_driver_{marker}"
 
-                # DO_GRIDDING_ONLY_FOR_THESE_SPECIES = None # all species
-                DO_GRIDDING_ONLY_FOR_THESE_SPECIES = ["CO2"] # test just one species
+                DO_GRIDDING_ONLY_FOR_THESE_SPECIES = None # all species
+                # DO_GRIDDING_ONLY_FOR_THESE_SPECIES = ["CO2"] # test just one species
 
                 # TODO:
                 # check warning:
@@ -154,11 +154,16 @@ def main():  # noqa: PLR0912
     # tbd.
 
     # ------------------------------------
-    # 2D. POST-PROCESSING (metadata fixes)
+    # 2B. POST-PROCESSING (metadata fixes)
     # ------------------------------------
 
     # tbd.
 
+    # ------------------------------------
+    # 3. PLOTTING
+    # ------------------------------------
+
+    # tbd.
 
 
 
