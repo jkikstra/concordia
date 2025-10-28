@@ -28,37 +28,37 @@ base_year: 2023 # for first upload; don't provide the 2022 in the scenario data 
 # which generally refers to a specific commit hash
 regionmappings: 
   MESSAGEix-GLOBIOM-GAINS 2.1-M-R12:
-    path: "$regionmappings_path/region_definitions_MESSAGEix-GLOBIOM-GAINS 2.1-R12.csv"
+    path: "$regionmappings_path/region_definitions_MESSAGEix-GLOBIOM-GAINS 2.1-R12_shnsxm.csv" # checked, runs through
     country_column: "iso3"
     region_column: "name"
     sep: ","
   REMIND-MAgPIE 3.5-4.11:
-    path: "$regionmappings_path/region_definitions_REMIND-MAgPIE 3.5-4.11.csv"
+    path: "$regionmappings_path/region_definitions_REMIND-MAgPIE 3.5-4.11.csv" # checked, runs through
     country_column: "iso3"
     region_column: "name"
     sep: ","
   AIM 3.0:
-    path: "$regionmappings_path/region_definitions_AIM 3.0.csv"
+    path: "$regionmappings_path/region_definitions_AIM 3.0_ggyimnjeyshn.csv"  # checked, runs through
     country_column: "iso3"
     region_column: "name"
     sep: ","
   COFFEE 1.6:
-    path: "$regionmappings_path/region_definitions_COFFEE 1.6.csv"
+    path: "$regionmappings_path/region_definitions_COFFEE 1.6.csv" # checked, runs through
     country_column: "iso3"
     region_column: "name"
     sep: ","
   GCAM 8s:
-    path: "$regionmappings_path/region_definitions_GCAM 8s.csv"
+    path: "$regionmappings_path/region_definitions_GCAM 8s.csv" # checked, runs through
     country_column: "iso3"
     region_column: "name"
     sep: ","
   IMAGE 3.4:
-    path: "$regionmappings_path/region_definitions_IMAGE 3.4.csv"
+    path: "$regionmappings_path/region_definitions_IMAGE 3.4_sjm.csv" # checked, runs through
     country_column: "iso3"
     region_column: "name"
     sep: ","
   WITCH 6.0:
-    path: "$regionmappings_path/region_definitions_WITCH 6.0.csv"
+    path: "$regionmappings_path/region_definitions_WITCH 6.0.csv" # checked, runs through
     country_column: "iso3"
     region_column: "name"
     sep: ","
