@@ -38,13 +38,13 @@ scripts\cmip7\driver_workflow_cmip7-fast-track.py
 - Jarmo explains the current state of the full workflow to Marco and Annika, shows where resources are, and what is still planned
 
 29.10.2025: 
-- Marco and Annika attempt to run the main workflow
+- Marco and Annika attempt to run the main workflow (at least 2 high priority scenarios)
 - Jarmo cleans and updates post-processing scripts (including metadata; including variable names SO2/Sulfur; including filenames/scenarionames; including timesteps in netcdf)
-- Jarmo checks Annika's VOC PR
+- Jarmo checks Annika's VOC PR (check why some cells are not 0 or 1)
 - Jarmo creates ERW proxy
 
 30.10.2025: 
-- Meeting to do Q&A and distribute tasks
+- Meeting (online) to do Q&A and distribute tasks
 
 31.10.2025:
 - Jarmo works on a (semi-automatic) plotting suite
@@ -53,7 +53,7 @@ Tasks to be distributed:
 - consider ways to run (on unicc?), dealing with storage space issues
 - update 2022 handling
 - multiple-CDR handling
-- input4mips validation script
+- input4mips (metdadata) validation script
 
 -----------------------
 -----------------------
