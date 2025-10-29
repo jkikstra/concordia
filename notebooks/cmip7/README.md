@@ -79,8 +79,7 @@ Make sure that your data folder has the following:
   * "country_location_index_05.csv": coordinates of countries, from the RESCUE project
   * "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc": the grid cell area from the CEDS grid (available from ESGF; but located here because it is used widely as the grid for all current scenario work)
 * under `history_path`, you need:
-  * a file like `cmip7_history_countrylevel_250918.csv` produced in [emissions_harmonization_historical](https://github.com/iiasa/emissions_harmonization_historical), as [COUNTRY_LEVEL_HISTORY](https://github.com/iiasa/emissions_harmonization_historical/blob/28e6d69991205b3a824936538ec62358480d80ed/src/emissions_harmonization_historical/constants_5000.py#L126)
-  * a file like `cmip7_history_IAMregions_250918.csv` produced in [emissions_harmonization_historical](https://github.com/iiasa/emissions_harmonization_historical), as [history_for_harmonisation](https://github.com/iiasa/emissions_harmonization_historical/blob/28e6d69991205b3a824936538ec62358480d80ed/notebooks/5094_harmonisation.py#L146)
+  * a file like `cmip7_history_countrylevel_251024.csv` produced in [emissions_harmonization_historical](https://github.com/iiasa/emissions_harmonization_historical), as [COUNTRY_LEVEL_HISTORY](https://github.com/iiasa/emissions_harmonization_historical/blob/28e6d69991205b3a824936538ec62358480d80ed/src/emissions_harmonization_historical/constants_5000.py#L126)
 * under `regionmappings_path`, you need: 
   * a (set of) file(s) indicating which country belongs to which model-region. This is defined in [common-definitions](https://github.com/IAMconsortium/common-definitions/tree/main/definitions/region/native_regions) and produced in [emissions_harmonization_historical](https://github.com/iiasa/emissions_harmonization_historical/blob/main/notebooks/5010_create-region-mapping.py)
 * under `scenario_path`, you need:
