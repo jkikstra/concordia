@@ -130,15 +130,18 @@ def main():  # noqa: PLR0912
                                                      #  ... add here other parameters that you might like to change
                                                      )
 
+                # how to identify this run in the papermill notebook save folder
                 if GRIDDING_VERSION is None:
                     notebook_identification = f"{marker}"
                 else:
-                    notebook_identification = f"{GRIDDING_VERSION}_{marker}"
+                    notebook_identification = f"{GRIDDING_VERSION}" 
+
+                print(notebook.name)
 
                 run_notebook(notebook=notebook,
                              run_notebooks_dir=RUN_NOTEBOOKS_DIR,
                              parameters=parameters,
-                             idn=notebook_identification # how to identify this run in the papermill notebook save folder?
+                             idn=notebook_identification
                              )
 
     # --------------------------------------------------------------
