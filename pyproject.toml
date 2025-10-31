@@ -24,6 +24,7 @@ dependencies = [
   "pycountry",
   "python-slugify",
   "dominate",
+  "jupytext"
 ]
 dynamic = ["version"]
 

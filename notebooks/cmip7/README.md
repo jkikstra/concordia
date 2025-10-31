@@ -166,7 +166,7 @@ Uploading ourselves using FTP
 
 Some docs are however available:
 
-* How does uploaiding work: https://input4mips-validation.readthedocs.io/en/latest/how-to-guides/how-to-upload-to-ftp/
+* How does uploading work: https://input4mips-validation.readthedocs.io/en/latest/how-to-guides/how-to-upload-to-ftp/
 * Where to upload: https://github.com/PCMDI/input4MIPs_CVs/blob/4b59bf4694ddb8bf20f265adcf926046486069bd/docs/usage-data-producer.md#get-your-data-to-pcmdi 
 
 ## Other

@@ -55,6 +55,28 @@ Tasks to be distributed:
 - multiple-CDR handling
 - input4mips (metdadata) validation script
 
+### Update 30.10.2025
+
+#### Marco:
+Installing environment with mamba worked fine. Just added jupytext.
+
+main workflow:
+Running REMIND main workflow worked fine.
+
+post-processing:
+
+* post-processed spatial harmonization requires having the data locally.
+* post-processed reaggregation also worked
+* note: need to streamline 'GRDIDDING_VERSION' etc.
+* note: 'return_marker_information' -- needs to be streamlined also, take the right config as parameter
+
+Next to-do:
+* Plots; `check_gridded-scenarios-global-sectoral-aggregation-compared-to-input.py` & `check_gridded-scenarios-compare-to-ceds-esgf.py` (note: check if sectors are different, or not)
+* parameters & driver for post-processing; `workflow-postprocess_anthro-pattern-harmonisation.py` & `workflow-postprocess_anthro-reaggregate-CDR-sectors.py` 
+
+#### Annika:
+Ran driver, that worked. 
+
 -----------------------
 -----------------------
 **Legend of TODOs**:
