@@ -10,7 +10,7 @@ import xarray as xr
 # functions
 
 # From a grid to global anual totals
-def ds_to_annual_emissions_total(gridded_data, var_name, cell_area, keep_sectors=True):
+def ds_to_annual_emissions_total(gridded_data, var_name, cell_area, keep_sectors=True, sum_dims: list[str] | None = ["lat", "lon"]):
     """
     Convert gridded emissions in kg/m2/s to Mt/year.
     
@@ -35,11 +35,14 @@ def ds_to_annual_emissions_total(gridded_data, var_name, cell_area, keep_sectors
     area_weighted = cell_area * monthly
 
     # Sum over spatial dimensions: kg/cell/month --> kg/month (global)
-    sum_dims = ["lat", "lon"]
+    # sum_dims = ["lat", "lon"]
+    sum_dims_to_use = sum_dims.copy() if sum_dims else []
     if "level" in area_weighted.dims:
-        sum_dims.append("level") # altitude: for aircraft emissions datasets
-
-    kg_per_month = area_weighted.sum(dim=sum_dims)
+        sum_dims_to_use.append("level") # altitude: for aircraft emissions datasets
+    if sum_dims_to_use:
+        kg_per_month = area_weighted.sum(dim=sum_dims_to_use)
+    else:
+        kg_per_month = area_weighted
 
     # Convert to annual totals kg/month (global) --> kg/year (global)
     kg_per_year = kg_per_month.groupby("time.year").sum()
@@ -65,6 +68,7 @@ def plot_map(
     borders: bool = False,
     save_as: str | None = None,
     filename: str | None = None,
+    cmap: str = "GnBu",
     **kwargs,
 ):
     fig, axis = plt.subplots(
@@ -84,7 +88,7 @@ def plot_map(
         ax=axis,
         robust=robust,
         transform=ccrs.PlateCarree(),  # this is important!
-        cmap="GnBu",
+        cmap=cmap,
         **cbar_args,
         **kwargs,
     )
