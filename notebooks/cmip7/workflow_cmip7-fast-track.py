@@ -66,6 +66,7 @@ from dask.distributed import Client
 from pandas_indexing import isin, ismatch, assignlevel, extractlevel
 from pandas_indexing.units import set_openscm_registry_as_default
 from ptolemy.raster import IndexRaster
+import concordia._patches_ptolemy
 
 from aneris import logger
 from concordia import (
