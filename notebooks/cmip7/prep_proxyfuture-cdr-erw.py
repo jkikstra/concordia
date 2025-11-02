@@ -286,7 +286,7 @@ encoding = {
         'zlib': True,
         'complevel': 2,
         'shuffle': True,
-        # '_FillValue': np.nan
+        '_FillValue': np.nan
     },
     # 'lat': {'dtype': 'float64'},
     # 'lon': {'dtype': 'float64'},
