@@ -30,14 +30,17 @@ alt.renderers.enable('default')
 import seaborn as sns
 
 from concordia.cmip7 import utils as cmip7_utils
+from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total
 
 IAMC_COLS = ["model", "scenario", "region", "variable", "unit"] 
 
 # %%
 from concordia.cmip7.CONSTANTS import return_marker_information, CMIP_ERA
 
-GRIDDING_VERSION, MODEL_SELECTION, SCENARIO_SELECTION = return_marker_information(
-    m="VLLO"
+FIXED_METADATA = True
+
+GRIDDING_VERSION, MODEL_SELECTION, SCENARIO_SELECTION, SCENARIO_SELECTION_GRIDDED_AFTER_METADATA = return_marker_information(
+    m="VLLO", fixed_metadata=FIXED_METADATA
 )
 
 
@@ -100,10 +103,15 @@ except (FileNotFoundError, NameError):
         cmip7_dir = Path(__file__).resolve().parent
         settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
     except (FileNotFoundError, NameError):
-        # Fallback for interactive/Jupyter mode, where 'file location' does not exist
-        cmip7_dir = Path().resolve()  # one up
-        settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
-
+        try:
+            # Fallback for interactive/Jupyter mode, where 'file location' does not exist
+            cmip7_dir = Path().resolve()  # one up
+            settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+        except (FileNotFoundError, NameError):
+            # another fallback
+            cmip7_dir = Path().resolve() / "notebooks" / "cmip7"
+            settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+        
 
 
 # Scenarios pre-gridding
@@ -125,7 +133,7 @@ grid_file_location = settings.gridding_path
 # CMIP7 gridded emissions
 # cmip7_data_location = Path(f"/home/hoegner/GitHub/concordia/results/{GRIDDING_VERSION}")
 # cmip7_data_location = Path(f"C:/Users/kikstra/documents/GitHub/concordia/results/{GRIDDING_VERSION}") # gridding output
-cmip7_data_location = settings.out_path / GRIDDING_VERSION
+cmip7_data_location = settings.out_path / GRIDDING_VERSION / "final"
 
 plots_path = cmip7_data_location / "plots"
 plots_path.mkdir(exist_ok=True, parents=True)
@@ -140,8 +148,7 @@ SECTORS_ANTHRO = [
     '**Solvents Production and Application',
     '**Transportation Sector',
     '**Waste',
-    '**Other non-Land CDR',
-    '**BECCS'
+    '**Other Capture and Removal'
 ]
 SECTORS_AIR = [
     '**Aircraft'
@@ -206,8 +213,10 @@ def df_to_wide_timeseries(da):
 
 # %%
 # load a CMIP7 sample file
-cmip7_data_file = f"CO2-em-anthro_input4MIPs_emissions_{CMIP_ERA}_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
-
+if FIXED_METADATA:
+    cmip7_data_file = f"CO2-em-anthro_input4MIPs_emissions_{CMIP_ERA}_IIASA-{SCENARIO_SELECTION_GRIDDED_AFTER_METADATA}_gn_202201-210012.nc"
+else:
+    cmip7_data_file = f"CO2-em-anthro_input4MIPs_emissions_{CMIP_ERA}_IIASA-{MODEL_SELECTION_GRIDDED}-{SCENARIO_SELECTION_GRIDDED}_gn_202301-210012.nc"
 scen_ds = read_nc_file(
     f = cmip7_data_file,
     loc = cmip7_data_location
@@ -220,52 +229,6 @@ cell_area = areacella["areacella"]
 # ensure that dimensions match the sample CMIP7 file
 assert set(cell_area.dims).issubset(set(scen_ds.dims))
 
-
-# %%
-def ds_to_annual_emissions_total(gridded_data, var_name, cell_area, keep_sectors=True):
-    """
-    Convert gridded emissions in kg/m2/s to Mt/year.
-    
-    Parameters:
-    - gridded_data: xr.Dataset containing the emission variable
-    - var_name: str, name of the variable to convert
-    - cell_area: xr.DataArray of shape (lat, lon), in m2
-    - keep_sectors: bool, if True, retain sector info
-    
-    Returns:
-    - xr.DataArray of Mt/year, shape (year,) or (sector, year)
-    """
-    da = gridded_data[var_name]
-
-    # obtain the seconds in each month for which data is available
-    seconds_per_month = da.time.dt.days_in_month * 24 * 60 * 60
-
-    # kg/m2/s --> kg/m2/month
-    monthly = seconds_per_month * da
-
-    # weight with cell area
-    area_weighted = cell_area * monthly
-
-    # Sum over spatial dimensions
-    sum_dims = ["lat", "lon"]
-    if "level" in area_weighted.dims:
-        sum_dims.append("level")
-
-    kg_per_month = area_weighted.sum(dim=sum_dims)
-
-    # Convert to annual totals (kg/year)
-    kg_per_year = kg_per_month.groupby("time.year").sum()
-
-    # Convert to Mt/year
-    da_Mt_y = kg_per_year * 1e-9
-
-    if "sector" in da_Mt_y.dims and not keep_sectors:
-        da_Mt_y = da_Mt_y.sum(dim="sector")
-
-    # make sure variable is correctly named
-    da_Mt_y = da_Mt_y.rename(var_name)
-    
-    return da_Mt_y
 
 
 # %% [markdown]

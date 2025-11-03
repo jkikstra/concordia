@@ -137,9 +137,37 @@ DS_ATTRS = dict(
     references="See: https://github.com/IAMconsortium/concordia and https://github.com/iiasa/emissions_harmonization_historical for references",
     source="Scenarios generated as part of the ScenarioMIP-CMIP7 project, see https://wcrp-cmip.org/mips/scenariomip/",
     table_id="input4MIPs",
-    target_mip="CMIP6plus", # later: CMIP7
+    target_mip="CMIP6plus", # later: ScenarioMIP
     product="primary-emissions-data",
     start_date="202301",
+    end_date="210012",
+)
+
+
+DS_ATTRS_adhocfix = dict(
+    Conventions="CF-1.12", # follow the latest and greatest; https://cfconventions.org/Data/cf-conventions/cf-conventions-1.12/cf-conventions.html
+    activity_id="input4MIPs",
+    comment="Gridded emissions produced after harmonization and downscaling as part of the ScenarioMIP-CMIP7. See https://github.com/iiasa/emissions_harmonization_historical, https://github.com/IAMconsortium/concordia, and https://github.com/iiasa/aneris for documentation on the processes.",
+    contact="Jarmo S. Kikstra (kikstra@iiasa.ac.at), Annika Högner, Marco Zecchetto, and Zebedee Nicholls",
+    data_structure="grid",
+    dataset_category="emissions",
+    external_variables="gridcell_area",
+    frequency="mon",
+    further_info_url="https://wcrp-cmip.org/mips/scenariomip/",
+    grid="0.5x0.5 degree latitude x longitude",
+    grid_label="gn",
+    license="Creative Commons Attribution-ShareAlike 4.0 International License (https://creativecommons.org/licenses). Further information about this data, including some limitations, can be found via the further_info_url (recorded as a global attribute in this file). The data producers and data providers make no warranty, either express or implied, including, but not limited to, warranties of merchantability and fitness for a particular purpose. All liabilities arising from the supply of the information (including any liability arising in negligence) are excluded to the fullest extent permitted by law.",
+    institution="International Institue for Applied Systems Analysis - Integrated Assessment Modeling Consortium",
+    institution_id="IIASA-IAMC",
+    mip_era="CMIP6plus", # later: CMIP7
+    nominal_resolution="50 km",
+    realm="atmos",
+    references="See: https://github.com/IAMconsortium/concordia and https://github.com/iiasa/emissions_harmonization_historical for references",
+    source="Scenarios generated as part of the ScenarioMIP-CMIP7 project, see https://wcrp-cmip.org/mips/scenariomip/",
+    table_id="input4MIPs",
+    target_mip="CMIP6plus", # later: ScenarioMIP
+    product="primary-emissions-data",
+    start_date="202201",
     end_date="210012",
 )
 

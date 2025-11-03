@@ -9,6 +9,55 @@ import xarray as xr
 # %%
 # functions
 
+# From a grid to global anual totals
+def ds_to_annual_emissions_total(gridded_data, var_name, cell_area, keep_sectors=True, sum_dims: list[str] | None = ["lat", "lon"]):
+    """
+    Convert gridded emissions in kg/m2/s to Mt/year.
+    
+    Parameters:
+    - gridded_data: xr.Dataset containing the emission variable
+    - var_name: str, name of the variable to convert
+    - cell_area: xr.DataArray of shape (lat, lon), in m2
+    - keep_sectors: bool, if True, retain sector info
+    
+    Returns:
+    - xr.DataArray of Mt/year, shape (year,) or (sector, year)
+    """
+    da = gridded_data[var_name]
+
+    # obtain the seconds in each month for which data is available
+    seconds_per_month = da.time.dt.days_in_month * 24 * 60 * 60
+
+    # kg/m2/s --> kg/m2/month
+    monthly = seconds_per_month * da
+
+    # weight with cell area: kg/m2/month --> kg/cell/month
+    area_weighted = cell_area * monthly
+
+    # Sum over spatial dimensions: kg/cell/month --> kg/month (global)
+    # sum_dims = ["lat", "lon"]
+    sum_dims_to_use = sum_dims.copy() if sum_dims else []
+    if "level" in area_weighted.dims:
+        sum_dims_to_use.append("level") # altitude: for aircraft emissions datasets
+    if sum_dims_to_use:
+        kg_per_month = area_weighted.sum(dim=sum_dims_to_use)
+    else:
+        kg_per_month = area_weighted
+
+    # Convert to annual totals kg/month (global) --> kg/year (global)
+    kg_per_year = kg_per_month.groupby("time.year").sum()
+
+    # Convert to Mt/year
+    da_Mt_y = kg_per_year * 1e-9
+
+    if "sector" in da_Mt_y.dims and not keep_sectors:
+        da_Mt_y = da_Mt_y.sum(dim="sector")
+
+    # make sure variable is correctly named
+    da_Mt_y = da_Mt_y.rename(var_name)
+    
+    return da_Mt_y
+
 # Plot 1 map
 # - assumes you have a dataarray, not a dataset
 def plot_map(
@@ -19,6 +68,7 @@ def plot_map(
     borders: bool = False,
     save_as: str | None = None,
     filename: str | None = None,
+    cmap: str = "GnBu",
     **kwargs,
 ):
     fig, axis = plt.subplots(
@@ -38,7 +88,7 @@ def plot_map(
         ax=axis,
         robust=robust,
         transform=ccrs.PlateCarree(),  # this is important!
-        cmap="GnBu",
+        cmap=cmap,
         **cbar_args,
         **kwargs,
     )

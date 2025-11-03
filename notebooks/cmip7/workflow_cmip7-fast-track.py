@@ -14,82 +14,64 @@
 # ---
 
 # %%
+# With autoreload: changes are picked up automatically when changing a file/module that is imported, without having to restart the kernel.
 # %load_ext autoreload
 # %autoreload 2
 
 # %% [markdown]
 # # Workflow for CMIP7 ScenarioMIP emissions harmonization 
+# **Note:** currently built allowing for running only one scenario at a time.
 
 # %% [markdown]
 # ## Specify input scenario data and project settings
+# **Note:** these options below can also be changed and driven from a driver script. 
 
-# %% [markdown]
-# Specify which scenario file to read in
-
-# %%
-HISTORY_FILE = "cmip7_history_countrylevel_250918.csv"
-
-# %%
-# SCENARIO_FILE = "check_harmonisation_regions_REMIND.csv" # example (ALREADY HARMONIZED) REMIND scenario (used in v0 UKESM testing)
-
-
-
-
-# SCENARIO_FILE = "scenarios_scenariomip_COFFEE 1.6_SSP2 - Low Overshoot.csv" # example COFFEE scenario
-# SCENARIO_FILE = "scenarios_scenariomip_AIM 3.0_SSP2 - Low Emissions.csv" # example AIM scenario
-# SCENARIO_FILE = "scenarios_scenariomip_REMIND-MAgPIE 3.5-4.10_SSP2 - Low Emissions.csv" # example REMIND scenario; now 4.11
-# SCENARIO_FILE = "scenarios_scenariomip_MESSAGEix-GLOBIOM-GAINS 2.1-M-R12_SSP2 - Low Overshoot.csv" # example MESSAGE scenario
-# SCENARIO_FILE = "scenarios_scenariomip_allmodels_2025-03-05-messagegains.csv" # TODO: update later for all models. Location for this file is specified in the yaml file read into the `settings` object later on
-
-
-# VLLO:
-# SCENARIO_FILE = "harmonised-gridding_REMIND-MAgPIE 3.5-4.11.csv" # example (ALREADY HARMONIZED) REMIND scenario (used from 08.08.2025 for v0_2 
-# SCENARIO_SELECTION = "SSP1 - Very Low Emissions"
-
-# # H: 
-# SCENARIO_FILE = "harmonised-gridding_GCAM 7.1 scenarioMIP.csv"
-# SCENARIO_SELECTION = "SSP3 - High Emissions"
-
-# %% [markdown]
-# Specify settings
-
-# %%
+# %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
+HISTORY_FILE: str = "cmip7_history_countrylevel_251024.csv"
 # Settings
-SETTINGS_FILE = "config_cmip7_esgf_v0_alpha.yaml" # preparing for first upload to ESGF 
+# SETTINGS_FILE: str = "config_cmip7_esgf_v0_alpha.yaml" # was used for preparing for first upload to ESGF
+SETTINGS_FILE: str = "config_cmip7_v0-4-0.yaml" # for second ESGF version
 
-# versioning
-# HARMONIZATION_VERSION = "config_cmip7_v0_testing_remind"
-# HARMONIZATION_VERSION = "config_cmip7_v0_testing_aim"
-# HARMONIZATION_VERSION = "config_cmip7_v0_testing_ukesm_remind"
-# HARMONIZATION_VERSION = "config_cmip7_v0_1_testing_ukesm_remind"
+# Which scenario to run from the markers
+marker_to_run: str = "LN" # options: H, HL, M, ML, L, LN, VL
+
+GRIDDING_VERSION: str | None = None
+
+DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["CO2", "Sulfur"]
+# DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = ["CO2", "Sulfur"]
+
+# Which parts to run
+run_main: bool = True
+run_main_gridding: bool = True # if false, we'll stop at only running the downscaling of main
+run_anthro_supplemental_voc: bool = False
+run_openburning_supplemental_voc: bool = False # not yet implemented, for the future, see PR https://github.com/jkikstra/concordia/pull/14
+# run_anthro_supplemental_solidbiofuel: bool = False # not yet implemented, for the future
+
+# %%
+# validate that we're receiving what we're expecting
+print(f"\n\nGRIDDING_VERSION received: {GRIDDING_VERSION}\n\n")
+print(f"\n\nDO_GRIDDING_ONLY_FOR_THESE_SPECIES received: {DO_GRIDDING_ONLY_FOR_THESE_SPECIES}\n\n")
 
 # %% [markdown]
 # ## Importing packages
 
 # %%
 import aneris
-
-
 aneris.__file__
-
-# %%
 import concordia
-
-
 concordia.__file__
 
-# %%
 import logging
 from pathlib import Path
 
 import dask
-import dask.dataframe as dd
 import pandas as pd
 import pycountry
 from dask.distributed import Client
-from pandas_indexing import concat, isin, ismatch, semijoin, assignlevel, extractlevel
+from pandas_indexing import isin, ismatch, assignlevel, extractlevel
 from pandas_indexing.units import set_openscm_registry_as_default
 from ptolemy.raster import IndexRaster
+import concordia._patches_ptolemy
 
 from aneris import logger
 from concordia import (
@@ -98,19 +80,20 @@ from concordia import (
 )
 from concordia.cmip7 import utils as cmip7_utils # update to cmip7 utils (e.g. for dressing up netcdf)
 from concordia.settings import Settings
-from concordia.utils import MultiLineFormatter, extend_overrides
+from concordia.utils import MultiLineFormatter
 from concordia.workflow import WorkflowDriver
-from concordia.cmip7.CONSTANTS import return_marker_information, CMIP_ERA
+from concordia.cmip7.CONSTANTS import return_marker_information
 
-# %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
-marker_to_run: str = "VLLO"
 
 # %%
 # Scenario information
-HARMONIZATION_VERSION, MODEL_SELECTION, SCENARIO_SELECTION = return_marker_information(
+_, MODEL_SELECTION, SCENARIO_SELECTION, _ = return_marker_information(
+    v=SETTINGS_FILE,
     m=marker_to_run
 )
-SCENARIO_FILE = "harmonised-gridding_{MODEL_SELECTION}.csv"
+if GRIDDING_VERSION is None:
+    GRIDDING_VERSION = f"{marker_to_run}" # default to just the marker abbreviation if no versioning is provided
+SCENARIO_FILE = f"harmonised-gridding_{MODEL_SELECTION}.csv"
 
 # %% [markdown]
 # Load unit registry from openSCM for translating units (e.g., to and from CO2eq)
@@ -134,8 +117,30 @@ ur = set_openscm_registry_as_default()
 # - scenarios: input IAM trajectories
 
 # %%
-settings = Settings.from_config(version=HARMONIZATION_VERSION,
-                                local_config_path=Path(Path.cwd(),
+# Get the directory of the current file, works in both script and notebook contexts
+# When running through papermill, we need to find the original notebook location
+try:
+    # Try to get __file__ (works when running as script)
+    HERE = Path(__file__).parent
+except NameError:
+    # When running in notebook/papermill, use a more robust approach
+    # Find the concordia repository root and navigate to notebooks/cmip7
+    current_path = Path.cwd()
+    
+    # Look for the concordia root directory (contains pyproject.toml)
+    concordia_root = None
+    for parent in [current_path] + list(current_path.parents):
+        if (parent / "pyproject.toml").exists() and (parent / "src" / "concordia").exists():
+            concordia_root = parent
+            break
+    
+    if concordia_root is None:
+        raise RuntimeError("Could not find concordia repository root")
+    
+    HERE = concordia_root / "notebooks" / "cmip7"
+
+settings = Settings.from_config(version=GRIDDING_VERSION,
+                                local_config_path=Path(HERE,
                                                        SETTINGS_FILE))
 
 settings.base_year
@@ -188,17 +193,30 @@ settings.variabledefs_path
 variabledefs = VariableDefinitions.from_csv(settings.variabledefs_path)
 # variabledefs.data.head()
 
-# %%
-# variabledefs.data.loc[
-#     isin(sector="Energy Sector")
-# ]
+if DO_GRIDDING_ONLY_FOR_THESE_SPECIES is not None:
+    # filter only the species that we would like to run here
+    print(f"Filtering variable definitions to only include species: {DO_GRIDDING_ONLY_FOR_THESE_SPECIES}")
+    original_count = len(variabledefs.data)
+    
+    # Filter the data to keep only rows where gas is in DO_GRIDDING_ONLY_FOR_THESE_SPECIES
+    filtered_data = variabledefs.data.loc[
+        isin(gas=DO_GRIDDING_ONLY_FOR_THESE_SPECIES)
+    ]
+    
+    # Create a new VariableDefinitions object with the filtered data
+    variabledefs = VariableDefinitions(data=filtered_data)
+    
+    filtered_count = len(variabledefs.data)
+    print(f"Filtered from {original_count} to {filtered_count} variable definitions")
+    print(f"Unique gases in filtered data: {sorted(variabledefs.data.index.get_level_values('gas').unique())}")
+else:
+    print("Using all species from variable definitions")
+
+
 
 # %% [markdown]
 # ## Read region definitions (using RegionMapping class)
 #
-
-# %%
-settings.data_path
 
 # %%
 regionmappings = {}
@@ -210,52 +228,48 @@ for m, kwargs in settings.regionmappings.items():
     )
     regionmappings[m] = regionmapping
 
-# regionmappings
 
 # %% [markdown]
 # # History: Read and process historical data
 #
 
 # %%
-hist_new = (
+hist = (
     pd.read_csv(settings.history_path / HISTORY_FILE) # like "cmip7_history_countrylevel_250721.csv" 
     .drop(columns=['model', 'scenario'])
     .rename(columns={"region": "country"})
 )
 
-hist_new = extractlevel(hist_new.set_index(['country', 'variable', 'unit']), variable="Emissions|{gas}|{sector}", drop=True)
+hist = extractlevel(hist.set_index(['country', 'variable', 'unit']), variable="Emissions|{gas}|{sector}", drop=True)
 
 # Reorder the MultiIndex of hist
-hist_new = hist_new.reorder_levels(['country', 'gas', 'sector', 'unit'])
-hist_new = hist_new.sort_index()
+hist = hist.reorder_levels(['country', 'gas', 'sector', 'unit'])
+hist = hist.sort_index()
 
 # Update column type and name
-hist_new.columns = hist_new.columns.astype(int)
-hist_new.columns.name = 'year'
+hist.columns = hist.columns.astype(int)
+hist.columns.name = 'year'
 
 # History fixes:
 
 # only country-level emissions
-hist_new_nonglobal = hist_new.loc[~isin(country="global")]
-hist_new_nonglobal = hist_new_nonglobal.loc[~ismatch(sector=["**Shipping", "**Aircraft"])]# let's also make sure there's no shipping (10.08.2025: zero values present) and aircraft (10.08.2025: no data) anymore for country-level data 
+hist_nonglobal = hist.loc[~isin(country="global")]
+hist_nonglobal = hist_nonglobal.loc[~ismatch(sector=["**Shipping", "**Aircraft"])]# let's also make sure there's no shipping (10.08.2025: zero values present) and aircraft (10.08.2025: no data) anymore for country-level data 
 
 # keep international/bunkers emissions & rename to country='World'
-hist_new_global = hist_new.loc[isin(country="global")]
-hist_new_global_nonzero = hist_new_global[ismatch(sector=["**Shipping", "**Aircraft"])]
-hist_new_global_nonzero = hist_new_global_nonzero.rename(index=lambda v: v.replace("global", "World"))
+hist_global = hist.loc[isin(country="global")]
+hist_global_nonzero = hist_global[ismatch(sector=["**Shipping", "**Aircraft"])]
+hist_global_nonzero = hist_global_nonzero.rename(index=lambda v: v.replace("global", "World"))
 
 # calculate the sum of all countries for the other countries
-hist_new_nonglobal_world = assignlevel(hist_new_nonglobal.groupby(["gas", "sector", "unit"]).sum(), country="World").reorder_levels(["country","gas", "sector", "unit"])
+hist_nonglobal_world = assignlevel(hist_nonglobal.groupby(["gas", "sector", "unit"]).sum(), country="World").reorder_levels(["country","gas", "sector", "unit"])
 
 # recombine
-hist_new = pd.concat([
-    hist_new_nonglobal,
-    hist_new_global_nonzero,
-    hist_new_nonglobal_world
+hist = pd.concat([
+    hist_nonglobal,
+    hist_global_nonzero,
+    hist_nonglobal_world
 ])
-
-hist = hist_new
-hist
 
 # %% [markdown]
 # # IAM: Read and process IAM data
@@ -293,7 +307,6 @@ iam_df
 # ### Process (using pix - formatting)
 
 # %%
-from pandas_indexing import extractlevel
 # split the 'variable' column into the 'gas' and 'sector' columns
 iam_df = extractlevel(iam_df.set_index(IAMC_COLS), variable="Emissions|{gas}|{sector}", drop=True)
 
@@ -320,7 +333,8 @@ cmip7_utils.check_na_in_columns(iam_df)
 # ### Save in wide format
 
 # %%
-cmip7_utils.save_data(df = iam_df.reset_index(), output_path = str(Path(version_path, "scenarios_processed.csv" )))
+cmip7_utils.save_data(df = iam_df.reset_index(), 
+                      output_path = str(Path(version_path, "scenarios_processed.csv" )))
 
 # %% [markdown]
 # # Read Harmonization Overrides
@@ -338,8 +352,12 @@ harm_overrides = pd.read_excel(
 ).method
 harm_overrides
 
+# test that this is indeed empty, which is expected
+assert harm_overrides.empty
+
 # %%
-# no need to reharmonise, so no rechoosing methods
+# No need to reharmonise, so no rechoosing methods.
+# But if one must, it can be done using the extend_overrides() function like so:
 # harm_overrides = extend_overrides(
 #     harm_overrides,
 #     "constant_ratio",
@@ -545,23 +563,27 @@ countries_with_hist_and_gdp_and_regionmapping_data = pd.Index(sorted((
 ))) # as Index
 
 # show what we have
+print("Countries with GDP data (for downscaling):")
 print(len(countries_with_gdp_data))
+print("Countries with historical emissions data:")
 print(len(countries_with_hist_data))
+print("Countries in the IAM region mapping:")
 print(len(countries_with_regionmapping))
+print("Countries with data for all three above:")
 print(countries_with_hist_and_gdp_and_regionmapping_data)
 
-def select_only_countries_with_all_info(df,
-                                        countries=countries_with_hist_and_gdp_and_regionmapping_data):
-    df = (
-        df
-        .loc[
-            isin(
-                country=countries
-            )
-        ]
-    )
+# def select_only_countries_with_all_info(df,
+#                                         countries=countries_with_hist_and_gdp_and_regionmapping_data):
+#     df = (
+#         df
+#         .loc[
+#             isin(
+#                 country=countries
+#             )
+#         ]
+#     )
     
-    return df
+#     return df
 
 
 # %% [markdown]
@@ -574,6 +596,11 @@ iam_sectors = iam_df.index.get_level_values("sector").unique()
 missing = set(iam_sectors) - set(hist_sectors)
 print(missing)  # CDR sectors 
 
+expected_sectors_missing_cdr = {
+    'Enhanced Weathering', 'BECCS', 'Direct Air Capture', 'Ocean', 'Other CDR'
+}
+assert missing.issubset(expected_sectors_missing_cdr), f"Unexpected missing sectors found: {missing - expected_sectors_missing_cdr}"
+
 # %% [markdown]
 # ## Add zero CDR history
 
@@ -582,50 +609,39 @@ co2_template = hist.loc[isin(sector="Energy Sector", gas="CO2")] # pull co2-like
 # fill values with zero
 co2_template.loc[:] = 0
 
-# replace sector names
-beccs = co2_template.pix.assign(sector="BECCS")
-non_land_cdr = co2_template.pix.assign(sector="Other non-Land CDR")
+# add to history with replaced sector names
+for s in expected_sectors_missing_cdr:
+    hist = pd.concat([
+        hist,
+        co2_template.pix.assign(sector=s)
+    ])
 
-
-# %%
-# add to history
-hist = pd.concat([
-    hist,
-    beccs,
-    non_land_cdr
-])
-
-# %%
-# Check historical data coverage
 
 # %% [markdown]
 # # Set up technical bits for the workflow
+# **NOTE:** this may not work in all IDEs (it doesn't work in VSCode interactive window; workers don't start), but it does work in a standard jupyter lab instance
 
 # %%
 client = Client()
 # client.register_plugin(DaskSetWorkerLoglevel(logger().getEffectiveLevel()))
 client.forward_logging()
-
-# %%
 dask.distributed.gc.disable_gc_diagnosis()
+
 
 # %% [markdown]
 # # Define workflow
 
 # %%
-# TODO: 
-# - [ ] make this into a dataframe, and loop over models? --> right now the below section only works for 1 model at a time.
-
+# TODO (in the future): allow doing multiple models at once in a notebook --> right now the below section only works for 1 model at a time
 (model_name,) = iam_df.pix.unique("model")
 regionmapping = regionmappings[model_name]
 
-# scens_iam_wide.pix.unique("model")
 
 # %%
 # indexes for countries on a grid
 indexraster = IndexRaster.from_netcdf(
     settings.gridding_path / "ssp_comb_indexraster.nc", # redo: notebooks\gridding_data\generate_ceds_proxy_netcdfs.py
-    chunks={},
+    # chunks={},
 ).persist()
 indexraster_region = indexraster.dissolve(
     regionmapping.filter(indexraster.index).data.rename("country")
@@ -635,10 +651,11 @@ indexraster_region = indexraster.dissolve(
 iam_df.columns
 
 # %%
-# check completeness of historical data
-for c in countries_with_hist_and_gdp_and_regionmapping_data:
-    if len(hist.loc[ismatch(country=c)]) < 120:
-        print(c)
+# TODO: find a better way to test whether all historical data is available for each country (it is known that Guam and Mayotte miss data for some sectors in the used CEDS release)
+# # check completeness of historical data
+# for c in countries_with_hist_and_gdp_and_regionmapping_data:
+#     if len(hist.loc[ismatch(country=c)]) < 120:
+#         print(c)
 
 # %%
 workflow = WorkflowDriver( 
@@ -668,8 +685,9 @@ workflow = WorkflowDriver(
 # ## Add some checks on workflow
 
 # %%
-# save workflow info in easy-to-vet packets 
-workflow.save_info(path = Path("..", "..", "data", "compare_wfd_inputs"), prefix=settings.version)
+# save workflow info in easy-to-vet packets
+workflow.save_info(path = Path(version_path, "workflow_driver_data"),
+                   prefix=settings.version)
 
 # %%
 # check regionmapping and scenarios
@@ -702,6 +720,11 @@ assert_strings_covered(reg_model, reg_mapped)
 # workflow.harmdown_globallevel(workflow.variabledefs) # first step, works fine
 # workflow.harmdown_regionlevel(workflow.variabledefs) # second step, looks to work fine and quick, too
 # workflow.harmdown_countrylevel(workflow.variabledefs) # third step, requires gdp to be available from the HARMONIZATION_YEAR onward
+
+# %% 
+# hot-patch to deal with proxies that have NA values
+# see src/concordia/_patches_ptolemy.py
+
 
 # %%
 downscaled = workflow.harmonize_and_downscale() # For a 1 scenario, this takes about 50 seconds on Jarmo's DELL laptop.
@@ -771,6 +794,7 @@ print(sorted(in_hist_not_downscaled))
 
 missing_emissions = hist.loc[isin(country=list(in_hist_not_downscaled))].groupby(["gas","sector","unit"]).sum().loc[isin(sector='Waste'),2023]
 global_emissions = hist.loc[isin(country='World')].groupby(["gas","sector","unit"]).sum().loc[isin(sector='Waste'),2023]
+print("In %, what share of global emissions is missing because some smaller territories/countries are not downscaled?")
 missing_emissions / global_emissions * 100 # percentage (%) of global emissions that would be missing through these countries
 
 # %% [markdown]
@@ -783,14 +807,15 @@ missing_emissions / global_emissions * 100 # percentage (%) of global emissions 
 cmip7_utils.DS_ATTRS
 
 # %%
-res = workflow.grid(
-    template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}_{grid_label}_{start_date}-{end_date}.nc".format(
-        **cmip7_utils.DS_ATTRS | {"version": settings.version}
-    ),
-    callback=cmip7_utils.DressUp(version=settings.version),
-    directory=version_path,
-    skip_exists=True,
-)
+if run_main_gridding:
+    res = workflow.grid(
+        template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}_{grid_label}_{start_date}-{end_date}.nc".format(
+            **cmip7_utils.DS_ATTRS | {"version": settings.version}
+        ),
+        callback=cmip7_utils.DressUp(version=settings.version),
+        directory=version_path,
+        skip_exists=True,
+    )
 
 # %% [markdown]
 # # END OF MAIN CODE
@@ -802,32 +827,42 @@ res = workflow.grid(
 # # VOC speciation (CEDS, anthro)
 # **NOTE: currently takes long at ~20mins per VOC species ~= 8hrs for all 23 VOC species**
 
+
 # %%
 from dask.utils import SerializableLock
 lock = SerializableLock()
 
 # %%
 # Load VOC data
-
 from concordia.cmip7.CONSTANTS import GASES_ESGF_CEDS_VOC
 import xarray as xr
 
-anthro_voc = settings.proxy_path / "VOC_speciation"
+def load_voc_bulk():
 
-# load VOC (bulk) scenario file
+    # load VOC (bulk) scenario file
 
-# anthro
-voc_anthro = xr.open_dataset(
-    settings.out_path / HARMONIZATION_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution}-{model}-{scenario}_{grid_label}_{start_date}-{end_date}.nc".format(
-    name="VOC-em-anthro",
-    model=MODEL_SELECTION.replace(" ", "-"),
-    scenario=SCENARIO_SELECTION.replace(" ", "-"),
-    **cmip7_utils.DS_ATTRS | {"version": settings.version}
-),
-chunks={},
-lock=lock
-)
-voc_anthro
+    # anthro
+    voc_anthro = xr.open_dataset(
+        # update the file template with:
+        # - discussion on GitHub:  https://github.com/CMIP-Data-Request/Harmonised-Public-Consultation/issues/108
+        # - proper netCDF handling (see Zeb's 0-3-0 fixes)
+        settings.out_path / GRIDDING_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution}-{model}-{scenario}_{grid_label}_{start_date}-{end_date}.nc".format(
+        name="VOC-em-anthro",
+        model=MODEL_SELECTION.replace(" ", "-"),
+        scenario=SCENARIO_SELECTION.replace(" ", "-"),
+        **cmip7_utils.DS_ATTRS | {"version": settings.version}
+    ),
+    chunks={},
+    lock=lock
+    )
+    voc_anthro
+
+    return voc_anthro
+
+
+# %%
+
+
 
 # AIR is not required.
 
@@ -851,113 +886,116 @@ voc_spec_ratios_location = settings.proxy_path / "VOC_speciation"
 #   ii. assign sector value
 # 5. Update/set other attributes
 
-for v in GASES_ESGF_CEDS_VOC:
-# for v in [GASES_ESGF_CEDS_VOC[2]]: # only run one to test
-# for v in GASES_ESGF_CEDS_VOC[0:9]: # run a few to test
-    print(f'Reading in shares of {v}')
-    # import file 
-    voc_share = xr.open_dataset(
-        voc_spec_ratios_location / f"{v}_{PROXY_TIME_RANGE_VOC_CEDS}.nc",
-        engine="netcdf4",
-        chunks={},
-        lock=lock
-    )
+if run_anthro_supplemental_voc:
+    voc_anthro = load_voc_bulk()
+    
+    for v in GASES_ESGF_CEDS_VOC:
+    # for v in [GASES_ESGF_CEDS_VOC[2]]: # only run one to test
+    # for v in GASES_ESGF_CEDS_VOC[0:9]: # run a few to test
+        print(f'Reading in shares of {v}')
+        # import file 
+        voc_share = xr.open_dataset(
+            voc_spec_ratios_location / f"{v}_{PROXY_TIME_RANGE_VOC_CEDS}.nc",
+            engine="netcdf4",
+            chunks={},
+            lock=lock
+        )
 
-    # create VOC_em speciated
-    # Alternative approach using xarray's alignment capabilities
-    
-    # Create a mapping from voc_anthro sectors to voc_share sectors
-    sector_mapping = {
-        'Agriculture': 'AGR',
-        'Energy': 'ENE',
-        'Industrial': 'IND',
-        'Transportation': 'TRA',
-        'Residential, Commercial, Other': 'RCO',
-        'Solvents production and application': 'SLV',
-        'Waste': 'WST',
-        'International Shipping': 'SHP'
-    }
-    
-    # Rename sectors in voc_anthro to match voc_share sector names where possible
-    anthro_to_share_sectors = {v: k for k, v in sector_mapping.items() if v in voc_share.sector.values and k in voc_anthro.sector.values}
-    
-    # Initialize result with same structure as voc_anthro
-    voc_spec = xr.Dataset(
-        coords=voc_anthro.coords,
-        attrs=voc_anthro.attrs.copy()
-    )
-    
-    # Initialize the data variable with zeros
-    voc_spec_data = xr.zeros_like(voc_anthro["VOC_em_anthro"])
-    
-    # Perform multiplication for matching sectors
-    # print(f'Calculations of emissions of {v}')
-    for share_sector, anthro_sector in anthro_to_share_sectors.items():
-        # Select data from both datasets for matching sectors
-        voc_bulk = voc_anthro["VOC_em_anthro"].sel(sector=anthro_sector)
+        # create VOC_em speciated
+        # Alternative approach using xarray's alignment capabilities
         
-        # Get emissions share for this sector and gas
-        share_data = voc_share["emissions_share"].sel(
-            sector=share_sector,
-            gas=voc_share.gas[0]  # Take first gas
+        # Create a mapping from voc_anthro sectors to voc_share sectors
+        sector_mapping = {
+            'Agriculture': 'AGR',
+            'Energy': 'ENE',
+            'Industrial': 'IND',
+            'Transportation': 'TRA',
+            'Residential, Commercial, Other': 'RCO',
+            'Solvents production and application': 'SLV',
+            'Waste': 'WST',
+            'International Shipping': 'SHP'
+        }
+        
+        # Rename sectors in voc_anthro to match voc_share sector names where possible
+        anthro_to_share_sectors = {v: k for k, v in sector_mapping.items() if v in voc_share.sector.values and k in voc_anthro.sector.values}
+        
+        # Initialize result with same structure as voc_anthro
+        voc_spec = xr.Dataset(
+            coords=voc_anthro.coords,
+            attrs=voc_anthro.attrs.copy()
         )
         
-        # Convert time coordinates to year/month for alignment
-        years = voc_bulk.time.dt.year
-        months = voc_bulk.time.dt.month
+        # Initialize the data variable with zeros
+        voc_spec_data = xr.zeros_like(voc_anthro["VOC_em_anthro"])
         
-        # Find the index of the sector in the coordinate array
-        sector_idx = list(voc_anthro.sector.values).index(anthro_sector)
-        
-        # Perform multiplication for each time step
-        for time_idx, time_val in enumerate(voc_bulk.time.values):
-            year = years[time_idx].values
-            month = months[time_idx].values
+        # Perform multiplication for matching sectors
+        # print(f'Calculations of emissions of {v}')
+        for share_sector, anthro_sector in anthro_to_share_sectors.items():
+            # Select data from both datasets for matching sectors
+            voc_bulk = voc_anthro["VOC_em_anthro"].sel(sector=anthro_sector)
             
-            # Check if this year/month exists in voc_share
-            if year in share_data.year.values and month in share_data.month.values:
-                # Get the share data for this specific year/month
-                share_slice = share_data.sel(year=year, month=month)
+            # Get emissions share for this sector and gas
+            share_data = voc_share["emissions_share"].sel(
+                sector=share_sector,
+                gas=voc_share.gas[0]  # Take first gas
+            )
+            
+            # Convert time coordinates to year/month for alignment
+            years = voc_bulk.time.dt.year
+            months = voc_bulk.time.dt.month
+            
+            # Find the index of the sector in the coordinate array
+            sector_idx = list(voc_anthro.sector.values).index(anthro_sector)
+            
+            # Perform multiplication for each time step
+            for time_idx, time_val in enumerate(voc_bulk.time.values):
+                year = years[time_idx].values
+                month = months[time_idx].values
                 
-                # Get the bulk VOC data for this time step
-                voc_slice = voc_bulk.isel(time=time_idx)
-                
-                # Multiply and assign to result
-                voc_spec_data[time_idx, :, :, sector_idx] = (voc_slice * share_slice).values
-    
-    # Add the computed data to the result dataset
-    gas_variable_name = voc_share.gas.values[0]
+                # Check if this year/month exists in voc_share
+                if year in share_data.year.values and month in share_data.month.values:
+                    # Get the share data for this specific year/month
+                    share_slice = share_data.sel(year=year, month=month)
+                    
+                    # Get the bulk VOC data for this time step
+                    voc_slice = voc_bulk.isel(time=time_idx)
+                    
+                    # Multiply and assign to result
+                    voc_spec_data[time_idx, :, :, sector_idx] = (voc_slice * share_slice).values
+        
+        # Add the computed data to the result dataset
+        gas_variable_name = voc_share.gas.values[0]
 
-    voc_spec[f"{gas_variable_name}"] = voc_spec_data
-    # TODO:
-    # - [ ] update long_name of data (follow CEDS long_name) 
-    # Add the bounds
-    voc_spec['lon_bnds'] = voc_anthro['lon_bnds']
-    voc_spec['time_bnds'] = voc_anthro['time_bnds']
-    voc_spec['lat_bnds'] = voc_anthro['lat_bnds']
-    
-    # Update attributes
-    voc_spec.attrs['variable_id'] = gas_variable_name
-    voc_spec.attrs['title'] = f"Speciated {gas_variable_name} emissions"
+        voc_spec[f"{gas_variable_name}"] = voc_spec_data
+        # TODO:
+        # - [ ] update long_name of data (follow CEDS long_name) 
+        # Add the bounds
+        voc_spec['lon_bnds'] = voc_anthro['lon_bnds']
+        voc_spec['time_bnds'] = voc_anthro['time_bnds']
+        voc_spec['lat_bnds'] = voc_anthro['lat_bnds']
+        
+        # Update attributes
+        voc_spec.attrs['variable_id'] = gas_variable_name
+        voc_spec.attrs['title'] = f"Speciated {gas_variable_name} emissions"
 
-    # save out
-    print(f'Writing out emissions of {v}')
-    outfile = settings.out_path / HARMONIZATION_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution}-{model}-{scenario}_{grid_label}_{start_date}-{end_date}.nc".format(
-        name=gas_variable_name.replace("_", "-"),
-        model=MODEL_SELECTION.replace(" ", "-"),
-        scenario=SCENARIO_SELECTION.replace(" ", "-"),
-        **cmip7_utils.DS_ATTRS | {"version": settings.version}
-    )
+        # save out
+        print(f'Writing out emissions of {v}')
+        outfile = settings.out_path / GRIDDING_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution}-{model}-{scenario}_{grid_label}_{start_date}-{end_date}.nc".format(
+            name=gas_variable_name.replace("_", "-"),
+            model=MODEL_SELECTION.replace(" ", "-"),
+            scenario=SCENARIO_SELECTION.replace(" ", "-"),
+            **cmip7_utils.DS_ATTRS | {"version": settings.version}
+        )
 
-    encoding = {
-        gas_variable_name: {
-            "zlib": True,
-            "complevel": 2
+        encoding = {
+            gas_variable_name: {
+                "zlib": True,
+                "complevel": 2
+            }
         }
-    }
-    
-    with ProgressBar():
-        voc_spec.to_netcdf(outfile, mode="w", encoding=encoding, compute=True)
+        
+        with ProgressBar():
+            voc_spec.to_netcdf(outfile, mode="w", encoding=encoding, compute=True)
 
 
 # %% [markdown]

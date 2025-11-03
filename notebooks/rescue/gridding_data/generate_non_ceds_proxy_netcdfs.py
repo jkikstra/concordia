@@ -160,7 +160,7 @@ transform = rio.transform.from_bounds(
 )
 
 # %%
-natearth_l = natearth.explode().loc[lambda df: df.to_crs("esri:54034").area > 2e10]
+natearth_l = natearth.explode().loc[lambda df: df.to_crs("esri:54034").area > 2e10] # if we want OAE in areas like around Mayotte/Comoros (north-western Madagascar) Western Sahara, and Taiwan, this might be the line to tweak.
 largeland = (
     gu.Vector(natearth_l)
     .rasterize(
