@@ -70,12 +70,12 @@ def main():  # noqa: PLR0912
     # All
     markers = [
         "VL",
-        "LN",
-        "L",
-        "ML",
-        "M",
+        # "LN",
+        # "L",
+        # "ML",
+        # "M",
         "H",
-        "HL",
+        # "HL",
     ]
     # # High priority markers:
     # markers = [
@@ -110,16 +110,13 @@ def main():  # noqa: PLR0912
             if any(notebook.name.startswith(np) for np in notebook_prefixes):
 
 
-                GRIDDING_VERSION = f"testing_driver_{marker}"
+                GRIDDING_VERSION = f"testing_driver_{marker}" # folder name of outputs in results folder
+                # GRIDDING_VERSION = f"aerchemmip_pre0-4-0_{marker}" # folder name of outputs in results folder
 
                 DO_GRIDDING_ONLY_FOR_THESE_SPECIES = None # all species
-                # DO_GRIDDING_ONLY_FOR_THESE_SPECIES = ["CO2"] # test just one species
+                # DO_GRIDDING_ONLY_FOR_THESE_SPECIES = ["Sulfur"] # test just one species
 
-                # TODO:
-                # check warning:
-                # Passed unknown parameter: GRIDDING_VERSION
-                # Passed unknown parameter: DO_GRIDDING_ONLY_FOR_THESE_SPECIES
-                # -> figure out where this happens
+
 
                 parameters = get_notebook_parameters(notebook.name,
                                                      marker_to_run=marker,

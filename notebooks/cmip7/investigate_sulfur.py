@@ -13,21 +13,11 @@
 # ---
 
 # %%
-import dask
-import dask.array
-import numpy as np
-import pandas as pd
-import ptolemy as pt
-import pyogrio as pio
-import pyreadr
 import xarray as xr
 from pathlib import Path
-from typing import Callable, Dict, Tuple
-import os
 
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
-import cartopy.feature as cfeature
 
 # %%
 from concordia.settings import Settings
@@ -36,7 +26,7 @@ from concordia.cmip7.CONSTANTS import CONFIG
 from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total, plot_map
 
 # %%
-def get_settings(base_path: Path, 
+def get_settings(base_path: Path,
                  file = CONFIG):
     settings = Settings.from_config(
         file, 

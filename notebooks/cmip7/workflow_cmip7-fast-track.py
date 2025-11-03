@@ -33,7 +33,7 @@ HISTORY_FILE: str = "cmip7_history_countrylevel_251024.csv"
 SETTINGS_FILE: str = "config_cmip7_v0-4-0.yaml" # for second ESGF version
 
 # Which scenario to run from the markers
-marker_to_run: str = "VL" # options: H, HL, M, ML, L, LN, VL
+marker_to_run: str = "LN" # options: H, HL, M, ML, L, LN, VL
 
 GRIDDING_VERSION: str | None = None
 
@@ -46,6 +46,11 @@ run_main_gridding: bool = True # if false, we'll stop at only running the downsc
 run_anthro_supplemental_voc: bool = False
 run_openburning_supplemental_voc: bool = False # not yet implemented, for the future, see PR https://github.com/jkikstra/concordia/pull/14
 # run_anthro_supplemental_solidbiofuel: bool = False # not yet implemented, for the future
+
+# %%
+# validate that we're receiving what we're expecting
+print(f"\n\nGRIDDING_VERSION received: {GRIDDING_VERSION}\n\n")
+print(f"\n\nDO_GRIDDING_ONLY_FOR_THESE_SPECIES received: {DO_GRIDDING_ONLY_FOR_THESE_SPECIES}\n\n")
 
 # %% [markdown]
 # ## Importing packages
@@ -620,9 +625,8 @@ for s in expected_sectors_missing_cdr:
 client = Client()
 # client.register_plugin(DaskSetWorkerLoglevel(logger().getEffectiveLevel()))
 client.forward_logging()
-
-# %%
 dask.distributed.gc.disable_gc_diagnosis()
+
 
 # %% [markdown]
 # # Define workflow
@@ -637,7 +641,7 @@ regionmapping = regionmappings[model_name]
 # indexes for countries on a grid
 indexraster = IndexRaster.from_netcdf(
     settings.gridding_path / "ssp_comb_indexraster.nc", # redo: notebooks\gridding_data\generate_ceds_proxy_netcdfs.py
-    chunks={},
+    # chunks={},
 ).persist()
 indexraster_region = indexraster.dissolve(
     regionmapping.filter(indexraster.index).data.rename("country")
@@ -716,6 +720,11 @@ assert_strings_covered(reg_model, reg_mapped)
 # workflow.harmdown_globallevel(workflow.variabledefs) # first step, works fine
 # workflow.harmdown_regionlevel(workflow.variabledefs) # second step, looks to work fine and quick, too
 # workflow.harmdown_countrylevel(workflow.variabledefs) # third step, requires gdp to be available from the HARMONIZATION_YEAR onward
+
+# %% 
+# hot-patch to deal with proxies that have NA values
+# see src/concordia/_patches_ptolemy.py
+
 
 # %%
 downscaled = workflow.harmonize_and_downscale() # For a 1 scenario, this takes about 50 seconds on Jarmo's DELL laptop.
