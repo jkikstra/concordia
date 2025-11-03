@@ -33,12 +33,12 @@ HISTORY_FILE: str = "cmip7_history_countrylevel_251024.csv"
 SETTINGS_FILE: str = "config_cmip7_v0-4-0.yaml" # for second ESGF version
 
 # Which scenario to run from the markers
-marker_to_run: str = "LN" # options: H, HL, M, ML, L, LN, VL
+marker_to_run: str = "H" # options: H, HL, M, ML, L, LN, VL
 
 GRIDDING_VERSION: str | None = None
 
 DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["CO2", "Sulfur"]
-# DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = ["CO2", "Sulfur"]
+DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = ["VOC"]
 
 # Which parts to run
 run_main: bool = True
@@ -67,7 +67,6 @@ from pathlib import Path
 import dask
 import pandas as pd
 import pycountry
-from dask.distributed import Client
 from pandas_indexing import isin, ismatch, assignlevel, extractlevel
 from pandas_indexing.units import set_openscm_registry_as_default
 from ptolemy.raster import IndexRaster
@@ -619,13 +618,19 @@ for s in expected_sectors_missing_cdr:
 
 # %% [markdown]
 # # Set up technical bits for the workflow
-# **NOTE:** this may not work in all IDEs (it doesn't work in VSCode interactive window; workers don't start), but it does work in a standard jupyter lab instance
+# **NOTE:** Conditional setup for different environments - uses threaded scheduler for VS Code interactive window
 
 # %%
-client = Client()
-# client.register_plugin(DaskSetWorkerLoglevel(logger().getEffectiveLevel()))
-client.forward_logging()
-dask.distributed.gc.disable_gc_diagnosis()
+# Import Dask setup function from separate module
+from dask_setup_alternative import setup_dask_client
+
+# Set up the client
+client = setup_dask_client()
+
+if client is not None:
+    print(f"Dask client dashboard: {client.dashboard_link}")
+else:
+    print("Using Dask threaded/synchronous scheduler")
 
 
 # %% [markdown]
@@ -641,11 +646,11 @@ regionmapping = regionmappings[model_name]
 # indexes for countries on a grid
 indexraster = IndexRaster.from_netcdf(
     settings.gridding_path / "ssp_comb_indexraster.nc", # redo: notebooks\gridding_data\generate_ceds_proxy_netcdfs.py
-    # chunks={},
-).persist()
+    chunks={},
+).compute()
 indexraster_region = indexraster.dissolve(
     regionmapping.filter(indexraster.index).data.rename("country")
-).persist()
+).compute()
 
 # %%
 iam_df.columns
