@@ -17,6 +17,13 @@
 from concordia.cmip7.CONSTANTS import GASES, GASES_ESGF_BB4CMIP_VOC, GASES_ESGF_BB4CMIP, CONFIG, PROXY_YEARS
 
 # %%
+GASES_ESGF_BB4CMIP_VOC = ["C2H2", "C10H16"] # override to only test for two species first
+
+PROXY_TIME_RANGES = [
+    [2014,2023],
+]
+
+# %%
 # check later if we need all these imports 
 import xarray as xr
 from pathlib import Path
@@ -61,6 +68,7 @@ except (FileNotFoundError, NameError):
 
 # %%
 cmip7_dir = "/Users/hoegner/Projects/CMIP7/concordia_cmip7_esgf_v0_alpha/input/gridding/esgf/bb4cmip7_voc"
+cmip7_dir = settings.gridding_path / "esgf" / "bb4cmip7_voc"
 
 # %%
 settings.gridding_path
@@ -93,14 +101,14 @@ def get_bb4cmip7_location_totals(variable):
 # what data to load
 gfed_sectors_forest = ["BORF", "DEFO", "TEMF"]
 forest_fires_name = "FRTB"
-gfed_sectors_singlesector = ["AGRI", "PEAT", "SAVA"] 
+gfed_sectors_singlesector = ["AGRI", "PEAT", "SAVA"]
 sector_mapping_singlesector = {
     "AGRI": "AWB",
     "PEAT": "PEAT",
     "SAVA": "GRSB"
 }
 
-perc_combinations_forest = [f"{g}percentage{sec}" for g in GASES_ESGF_BB4CMIP_VOC for sec in gfed_sectors_forest]
+# perc_combinations_forest = [f"{g}percentage{sec}" for g in GASES_ESGF_BB4CMIP_VOC for sec in gfed_sectors_forest] # WHY IS THIS NOT USED ANYWHERE?
 perc_combinations_singlesector = [f"{g}percentage{sec}" for g in GASES_ESGF_BB4CMIP_VOC for sec in gfed_sectors_singlesector]
 totals_combinations = [f"{g}" for g in GASES_ESGF_BB4CMIP_VOC]
 
@@ -252,7 +260,7 @@ for s in gfed_sectors_singlesector:
     # with the percentage allocated to the respective sector
     
     ds_perc = xr.open_dataset(
-            get_bb4cmip7_voc_percentage_location(
+            get_bb4cmip7_voc_bulk_percentage_location(
                 variable = f"{g}percentage{s}"
             ),
             engine="h5netcdf",
@@ -270,6 +278,8 @@ for s in gfed_sectors_singlesector:
 
     interim_totals_bb[(s)] = ds_bb
 
+# %%
+interim_forest_bb = {}
 
 for s in gfed_sectors_forest:
     # here we calculate the absolute emissions per VOC species and per sector
@@ -288,17 +298,18 @@ for s in gfed_sectors_forest:
         ["lat_bnds", "lon_bnds", "time_bnds"]).rename({f"{g}percentage{s}": "percentage"})
 
     interim_forest_bb[(s)] = ds_perc
-        
-    # do multiplication (now backed by NumPy arrays, detached from file IO)
-    ds_bb = xr.Dataset({
-        # "emissions": total_emissions * percentage / 100
-        "emissions": ds_total["emissions"] * (
-            interim_forest_bb["BORF"]["percentage"] +
-            interim_forest_bb["DEFO"]["percentage"] +
-            interim_forest_bb["TEMF"]["percentage"])/ 100
-    })
 
-    interim_totals_bb["FRTB"] = ds_bb
+        
+# do multiplication (now backed by NumPy arrays, detached from file IO)
+ds_bb = xr.Dataset({
+    # "emissions": total_emissions * percentage / 100
+    "emissions": ds_total["emissions"] * (
+        interim_forest_bb["BORF"]["percentage"] +
+        interim_forest_bb["DEFO"]["percentage"] +
+        interim_forest_bb["TEMF"]["percentage"])/ 100
+})
+
+interim_totals_bb["FRTB"] = ds_bb
 
 # %%
 total_perc = (interim_totals_bb["AGRI"]["emissions"] +
@@ -306,6 +317,7 @@ total_perc = (interim_totals_bb["AGRI"]["emissions"] +
               interim_totals_bb["PEAT"]["emissions"] +
               interim_totals_bb["FRTB"]["emissions"]) / ds_total["emissions"] * 100
 print(total_perc.min().compute().values, total_perc.max().compute().values)
+# range of values: 99.999985 100.00002 (which looks like an acceptable deviation)
 
 # %%
 ds_all = xr.concat(
