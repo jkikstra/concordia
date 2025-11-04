@@ -69,7 +69,7 @@ def main():  # noqa: PLR0912
 
     # All
     markers = [
-        "VL",
+        # "VL",
         # "LN",
         # "L",
         # "ML",
@@ -110,7 +110,7 @@ def main():  # noqa: PLR0912
             if any(notebook.name.startswith(np) for np in notebook_prefixes):
 
 
-                GRIDDING_VERSION = f"testing_driver_{marker}" # folder name of outputs in results folder
+                GRIDDING_VERSION = f"prehandover_test_{marker}" # folder name of outputs in results folder
                 # GRIDDING_VERSION = f"aerchemmip_pre0-4-0_{marker}" # folder name of outputs in results folder
 
                 DO_GRIDDING_ONLY_FOR_THESE_SPECIES = None # all species
@@ -122,6 +122,8 @@ def main():  # noqa: PLR0912
                                                      marker_to_run=marker,
                                                      run_main=True,
                                                      run_main_gridding=True,
+                                                     run_anthro_supplemental_voc=True,
+                                                     run_openburning_supplemental_voc=False, # not yet implemented; work in progress
                                                      GRIDDING_VERSION=GRIDDING_VERSION,
                                                      DO_GRIDDING_ONLY_FOR_THESE_SPECIES=DO_GRIDDING_ONLY_FOR_THESE_SPECIES
                                                      #  ... add here other parameters that you might like to change
@@ -131,7 +133,7 @@ def main():  # noqa: PLR0912
                 if GRIDDING_VERSION is None:
                     notebook_identification = f"{marker}"
                 else:
-                    notebook_identification = f"{GRIDDING_VERSION}" 
+                    notebook_identification = f"{GRIDDING_VERSION}"
 
                 print(notebook.name)
 
