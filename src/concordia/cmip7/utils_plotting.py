@@ -66,6 +66,7 @@ def plot_map(
     robust: bool = True,
     add_colorbar: bool | None = None,
     borders: bool = False,
+    coastlines: bool = True,
     save_as: str | None = None,
     filename: str | None = None,
     cmap: str = "GnBu",
@@ -76,7 +77,8 @@ def plot_map(
     )
     axis.set_global()
     # axis.stock_img()
-    axis.coastlines()
+    if coastlines:
+        axis.coastlines()
     if borders:
         axis.add_feature(cfeature.BORDERS)
 

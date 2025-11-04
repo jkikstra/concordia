@@ -54,6 +54,7 @@ Tasks to be distributed:
 - update 2022 handling
 - [~: is in main workflow, not yet in the sector reaggregation] multiple-CDR handling
 - input4mips (metdadata) validation script
+- decision on Ukraine (esp. transportation): war emissions from transportation are only <5% of what they were pre-war; can we do a believable fix in harmonization? 
 
 ### Update 30.10.2025
 

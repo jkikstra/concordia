@@ -243,6 +243,15 @@ data_panels = [
         'vmin': -vmax_shared,
         'vmax': vmax_shared
     }
+    # {
+    #     'da': (
+    #         openburning_h_da.sel(year=YEAR_FUTURE) + anthro_h_da.sel(year=YEAR_FUTURE) + air_h_da.sel(year=YEAR_FUTURE)
+    #     ),
+    #     'title': f"{YEAR_FUTURE}, h",
+    #     'cmap': 'GnBu',
+    #     'vmin': vmin_shared,
+    #     'vmax': vmax_shared
+    # }
 ]
 
 # Plot each panel
@@ -285,6 +294,7 @@ plt.tight_layout()
 
 # Save the figure
 output_base = path_fiedler / ".." / f"so2_emissions_comparison_{YEAR_CURRENT}_{YEAR_FUTURE}_v1"
+# output_base = path_fiedler / ".." / f"so2_emissions_comparison_{YEAR_CURRENT}_{YEAR_FUTURE}_v1_IAMC2025"
 plt.savefig(f"{output_base}.pdf", bbox_inches='tight', dpi=300)
 plt.savefig(f"{output_base}.png", bbox_inches='tight', dpi=300)
 
