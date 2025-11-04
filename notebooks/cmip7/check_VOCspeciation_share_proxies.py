@@ -39,21 +39,34 @@ from concordia.cmip7.CONSTANTS import GASES, GASES_ESGF_BB4CMIP_VOC, GASES_ESGF_
 
 # %%
 VERSION = CONFIG
+GRIDDING_VERSION: str | None = "joy-ride-H"
 
 # %%
 try:
-    # when running the script from a terminal or otherwise
-    cmip7_dir = Path(__file__).resolve()
-    settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
-except (FileNotFoundError, NameError):
-    try:
-        # when running the script from a terminal or otherwise
-        cmip7_dir = Path(__file__).resolve().parent
-        settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
-    except (FileNotFoundError, NameError):
-        # Fallback for interactive/Jupyter mode, where 'file location' does not exist
-        cmip7_dir = Path().resolve()  # one up
-        settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+    # Try to get __file__ (works when running as script)
+    HERE = Path(__file__).parent
+except NameError:
+    # When running in notebook/papermill, use a more robust approach
+    # Find the concordia repository root and navigate to notebooks/cmip7
+    current_path = Path.cwd()
+    
+    # Look for the concordia root directory (contains pyproject.toml)
+    concordia_root = None
+    for parent in [current_path] + list(current_path.parents):
+        if (parent / "pyproject.toml").exists() and (parent / "src" / "concordia").exists():
+            concordia_root = parent
+            break
+    
+    if concordia_root is None:
+        raise RuntimeError("Could not find concordia repository root")
+    
+    HERE = concordia_root / "notebooks" / "cmip7"
+
+settings = Settings.from_config(version=GRIDDING_VERSION,
+                                local_config_path=Path(HERE,
+                                                       CONFIG))
+
+settings.base_year
 
 # %%
 settings.proxy_path
@@ -66,15 +79,27 @@ openburning_path = settings.proxy_path / "NMVOC_speciation"
 openburning_path
 
 # %%
+# Check openburning VOC totals
+# files = glob(os.path.join(openburning_path, "*CH3OH*.nc"))
 files = glob(os.path.join(openburning_path, "*.nc"))
 
 # Open datasets
-datasets = [xr.open_dataset(f) for f in files]
+# datasets = [xr.open_dataset(f) for f in files]
 
 # Get the variable name (assuming the same across all files)
-var_name = list(datasets[0].data_vars)[0]  # first variable
+# var_name = 'emissions_share' # list(datasets[0].data_vars)[0]  # first variable should be the variable name for the emissions_share
 
-data_arrays = [ds[var_name].isel(year=0, month=1, sector=0) for ds in datasets]
+
+
+# data_arrays = [ds[var_name].isel(year=0, month=1, sector=0) for ds in datasets]
+data_arrays = [xr.open_dataset(f).emissions_share.isel(year=0, month=1).assign_attrs(file=f) for f in files]
+
+# %%
+# for d in data_arrays:
+#     print("\n"*2)
+#     print(f"Filename: {Path(d.file).name}")
+#     print(f"Sectors: {d.sector}")
+#     print("\n"*2)
 
 summed = xr.concat(data_arrays, dim="file").sum(dim="file", skipna=True)
 openb = summed.sum(dim="gas", skipna=True)
@@ -86,9 +111,67 @@ values_list = openb.values.flatten().tolist()
 len(np.unique(values_list))
 
 # %%
-plt.hist(np.unique(values_list));
+plt.hist(np.unique(values_list)); # should be 0 or 1, not inbetween
 
 # %%
+from concordia.cmip7.utils_plotting import plot_map
+
+# %%
+
+plot_map(
+    openb.sel(sector='AGRI')
+)
+plot_map(
+    openb.sel(sector='SAVA')
+)
+plot_map( 
+    openb.sel(sector='PEAT'),
+    robust=False,
+    coastlines=True
+)
+
+plot_map(
+    openb.sel(sector='FRTB'),
+    robust=False
+)
+plot_map(
+    openb.sel(sector='FRTB') # the issue is clearly in forest burning
+)
+
+x = openb.sel(sector='PEAT') + openb.sel(sector='SAVA') + openb.sel(sector='AGRI') + openb.sel(sector='FRTB')
+x = x.where(x >= 1, 0)
+
+plot_map(
+    openb.sel(sector='PEAT') + openb.sel(sector='SAVA') + openb.sel(sector='AGRI') + openb.sel(sector='FRTB'),
+    robust=False
+)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# %%
+# ..
+# %%
+# ..
+# %%
+# ..
+# %%
+# ..
+# %%
+# ..
+
+# %%
+# Check also anthropogenic VOC totals
 files = glob(os.path.join(anthro_path, "*.nc"))
 
 # Open datasets
