@@ -622,7 +622,7 @@ for s in expected_sectors_missing_cdr:
 
 # %%
 # Import Dask setup function from separate module
-from dask_setup_alternative import setup_dask_client
+from concordia.cmip7.dask_setup_alternative import setup_dask_client
 
 # Set up the client
 client = setup_dask_client()
