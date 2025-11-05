@@ -38,10 +38,9 @@ marker_to_run: str = "H" # options: H, HL, M, ML, L, LN, VL
 GRIDDING_VERSION: str | None = None
 
 DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["CO2", "Sulfur"]
-DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = ["VOC"]
 
 # Which parts to run
-run_main: bool = True
+run_main: bool = True # not currently used; suggestion/thinking to use in future for "default" (all) workflow, incl. some plots?
 run_main_gridding: bool = True # if false, we'll stop at only running the downscaling of main
 run_anthro_supplemental_voc: bool = False
 run_openburning_supplemental_voc: bool = False # not yet implemented, for the future, see PR https://github.com/jkikstra/concordia/pull/14
@@ -82,6 +81,7 @@ from concordia.settings import Settings
 from concordia.utils import MultiLineFormatter
 from concordia.workflow import WorkflowDriver
 from concordia.cmip7.CONSTANTS import return_marker_information
+from concordia.cmip7.dask_setup_alternative import setup_dask_client # to enable running with dask also from VSCode Interactive Window
 
 
 # %%
@@ -121,6 +121,9 @@ ur = set_openscm_registry_as_default()
 try:
     # Try to get __file__ (works when running as script)
     HERE = Path(__file__).parent
+    # Also check if HERE resolved to just current directory, which indicates path resolution failed
+    if str(HERE) == "." or HERE == Path("."):
+        raise NameError("HERE resolved to current directory, using fallback")
 except NameError:
     # When running in notebook/papermill, use a more robust approach
     # Find the concordia repository root and navigate to notebooks/cmip7
@@ -622,8 +625,6 @@ for s in expected_sectors_missing_cdr:
 
 # %%
 # Import Dask setup function from separate module
-from concordia.cmip7.dask_setup_alternative import setup_dask_client
-
 # Set up the client
 client = setup_dask_client()
 
@@ -812,7 +813,7 @@ missing_emissions / global_emissions * 100 # percentage (%) of global emissions 
 cmip7_utils.DS_ATTRS
 
 # %%
-if run_main_gridding:
+if run_main_gridding: # full run for all 10 species takes about ~1hour for 1 scenario
     res = workflow.grid(
         template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}_{grid_label}_{start_date}-{end_date}.nc".format(
             **cmip7_utils.DS_ATTRS | {"version": settings.version}

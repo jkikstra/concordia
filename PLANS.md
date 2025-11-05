@@ -39,22 +39,36 @@ scripts\cmip7\driver_workflow_cmip7-fast-track.py
 
 29.10.2025: 
 - [x] Marco and Annika attempt to run the main workflow (at least 2 high priority scenarios)
-- Jarmo cleans and updates post-processing scripts (including metadata; including variable names SO2/Sulfur; including filenames/scenarionames; including timesteps in netcdf)
-- Jarmo checks Annika's VOC PR (check why some cells are not 0 or 1)
+- [~] Jarmo cleans and updates post-processing scripts (including metadata; CO2 sectors; including variable names SO2/Sulfur; including filenames/scenarionames; including timesteps in netcdf)
+- [x] Jarmo checks Annika's VOC PR (check why some cells are not 0 or 1)
 - [x] Jarmo creates ERW proxy
 
-30.10.2025: 
-- Meeting (online) to do Q&A and distribute tasks
-
 31.10.2025:
-- Jarmo works on a (semi-automatic) plotting suite
+- [ ] Jarmo works on a (semi-automatic) plotting suite
+
+Tasks Annika:
+- [ ] VOC biomass
+- [ ] update 2022 handling; if no time at all, perhaps consider deleting it altogether (?).
+    - [ ] 2022 CEDS: 
+        * Option A (preferred): remove what we have created, replace with CEDS ESGF file values
+        * Option B: remove year altogether in CEDS + update metadata and description in line with that
+        * OPtion C:   remove year altogether in CEDS as well as removing it in openburning (to try to avoid having different years in our dataset, letting everyone just interpolate between 2021 and 2023 which shouldn't be too bad)
+    - [~] 2022 openburning: keep as is, just check that it looks OK
+
+Tasks Marco:
+- [ ] understand how to run everything, perform test runs
+- [ ] perform run for H and VL, run all plotting, and check that the data is correct (share the plots with Jarmo too)
+- [ ] consider ways to run (on unicc?), to deal with storage space issues (if necessary)
+- [ ] input4mips (metdadata) validation script; see README.md in CMIP7 notebooks, section "Validation: data format checking for input4MIPs" -- ensure that the netCDF metadata is correct for upload to ESGF
 
 Tasks to be distributed:
-- consider ways to run (on unicc?), dealing with storage space issues
-- update 2022 handling
+
+
+Tasks for Jarmo:
 - [~: is in main workflow, not yet in the sector reaggregation] multiple-CDR handling
-- input4mips (metdadata) validation script
-- decision on Ukraine (esp. transportation): war emissions from transportation are only <5% of what they were pre-war; can we do a believable fix in harmonization? 
+    * tentatively decided to use DAC_CDR as the proxy for Other CDR, which is assumed to mainly be leakages of CDR. 
+- [x] decision on Ukraine (esp. transportation): war emissions from transportation are only <5% of what they were pre-war; can we do a believable fix in harmonization? --> DECISION: don't try to patch this for v0-4-0
+- [~] double-check soil carbon sequestration and biochar; which models do it and where do they put it. If under AFOLU (AIM under Other Capture and Removal) then we may need to adjust gridding. 
 
 ### Update 30.10.2025
 
