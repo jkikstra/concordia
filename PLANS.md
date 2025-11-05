@@ -34,17 +34,23 @@ scripts\cmip7\driver_workflow_cmip7-fast-track.py
 
 ## Timeline
 
-28.10.2025: 
+Done:
 - [x] Jarmo explains the current state of the full workflow to Marco and Annika, shows where resources are, and what is still planned
-
-29.10.2025: 
 - [x] Marco and Annika attempt to run the main workflow (at least 2 high priority scenarios)
-- [~] Jarmo cleans and updates post-processing scripts (including metadata; CO2 sectors; including variable names SO2/Sulfur; including filenames/scenarionames; including timesteps in netcdf)
 - [x] Jarmo checks Annika's VOC PR (check why some cells are not 0 or 1)
 - [x] Jarmo creates ERW proxy
+- [x] Jarmo updates variabledefinitions to run multiple-CDR 
+    * for Other CDR:
+        * tentatively decided to use DAC_CDR as the proxy for Other CDR, which is assumed to mainly be leakages of CDR; for MESSAGE.
+        * however, AIM mainly has soil carbon and biochar here, which would be in different locations.
+        * other models would still need to be checked.
 
-31.10.2025:
-- [ ] Jarmo works on a (semi-automatic) plotting suite
+In progress:
+- [~] Jarmo cleans and updates post-processing scripts (including metadata; CO2 sectors; including variable names SO2/Sulfur; including filenames/scenarionames; including timesteps in netcdf)
+
+Tasks Jarmo:
+- [ ] Jarmo works on a (semi-automatic) plotting suites
+- [ ] Jarmp updates multiple-CDR handling for reaggregation
 
 Tasks Annika:
 - [ ] VOC biomass
@@ -61,12 +67,8 @@ Tasks Marco:
 - [ ] consider ways to run (on unicc?), to deal with storage space issues (if necessary)
 - [ ] input4mips (metdadata) validation script; see README.md in CMIP7 notebooks, section "Validation: data format checking for input4MIPs" -- ensure that the netCDF metadata is correct for upload to ESGF
 
-Tasks to be distributed:
 
-
-Tasks for Jarmo:
-- [~: is in main workflow, not yet in the sector reaggregation] multiple-CDR handling
-    * tentatively decided to use DAC_CDR as the proxy for Other CDR, which is assumed to mainly be leakages of CDR. 
+Other (minor) things to be decided:
 - [x] decision on Ukraine (esp. transportation): war emissions from transportation are only <5% of what they were pre-war; can we do a believable fix in harmonization? --> DECISION: don't try to patch this for v0-4-0
 - [~] double-check soil carbon sequestration and biochar; which models do it and where do they put it. If under AFOLU (AIM under Other Capture and Removal) then we may need to adjust gridding. 
 
