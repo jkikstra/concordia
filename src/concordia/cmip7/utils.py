@@ -36,6 +36,7 @@ SECTOR_RENAMES = {
 }
 
 SECTOR_ORDERING_DEFAULT = {
+    # em_anthro (except CO2)
     "em_anthro": [
         "Agriculture",
         "Energy",
@@ -44,9 +45,7 @@ SECTOR_ORDERING_DEFAULT = {
         "Residential, Commercial, Other",
         "Solvents Production and Application",
         "Waste",
-        "International Shipping",
-        "Other non-Land CDR",
-        "BECCS",
+        "International Shipping"
     ],
     "em_openburning": [
         "Agricultural Waste Burning",
@@ -66,8 +65,11 @@ SECTOR_ORDERING_GAS = {
         "Solvents Production and Application",
         "Waste",
         "International Shipping",
-        "Other non-Land CDR",
         "BECCS",
+        "Direct Air Capture",
+        "Enhanced Weathering",
+        "Ocean",
+        "Other CDR",
         # "Deforestation and other LUC",
         # "OAE Calcination Emissions",
         # "CDR Afforestation",
