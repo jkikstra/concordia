@@ -32,7 +32,7 @@ def get_notebook_parameters(notebook_name: str,
             "GRIDDING_VERSION": GRIDDING_VERSION, # defaults to `marker_to_run`, but here you can give another option
             "marker_to_run": marker_to_run,
             "SETTINGS_FILE": SETTINGS_FILE,
-            "run_main": run_main,
+            "run_main": run_main, # currently does nothing
             "run_main_gridding": run_main_gridding,
             "run_anthro_supplemental_voc": run_anthro_supplemental_voc,
             "run_openburning_supplemental_voc": run_openburning_supplemental_voc,
@@ -66,6 +66,11 @@ def main():  # noqa: PLR0912
 
     notebooks_dir = DEFAULT_NOTEBOOKS_DIR
     all_notebooks = tuple(sorted(notebooks_dir.glob("*.py")))
+
+    GRIDDING_VERSION_PREFIX = "prehandover_test_"
+    
+    DO_GRIDDING_ONLY_FOR_THESE_SPECIES = None # all species
+    # DO_GRIDDING_ONLY_FOR_THESE_SPECIES = ["CO2"] # test just one species
 
     # All
     markers = [
@@ -106,23 +111,17 @@ def main():  # noqa: PLR0912
 
     for marker in tqdm.tqdm(markers,
                             desc="Running full workflow"):
+        
+        GRIDDING_VERSION = f"{GRIDDING_VERSION_PREFIX}{marker}" # folder name of outputs in results folder
+
         for notebook in all_notebooks:
             if any(notebook.name.startswith(np) for np in notebook_prefixes):
 
-
-                GRIDDING_VERSION = f"prehandover_test_{marker}" # folder name of outputs in results folder
-                # GRIDDING_VERSION = f"aerchemmip_pre0-4-0_{marker}" # folder name of outputs in results folder
-
-                DO_GRIDDING_ONLY_FOR_THESE_SPECIES = None # all species
-                # DO_GRIDDING_ONLY_FOR_THESE_SPECIES = ["Sulfur"] # test just one species
-
-
-
                 parameters = get_notebook_parameters(notebook.name,
                                                      marker_to_run=marker,
-                                                     run_main=True,
-                                                     run_main_gridding=True,
-                                                     run_anthro_supplemental_voc=True,
+                                                     run_main=True, # argument not currently a used
+                                                     run_main_gridding=True, # produce BC_*, ..., VOC_* .nc files (AIR, anthro, openburning)
+                                                     run_anthro_supplemental_voc=True, # produce VOC01, ..., VOC25 .nc files
                                                      run_openburning_supplemental_voc=False, # not yet implemented; work in progress
                                                      GRIDDING_VERSION=GRIDDING_VERSION,
                                                      DO_GRIDDING_ONLY_FOR_THESE_SPECIES=DO_GRIDDING_ONLY_FOR_THESE_SPECIES
@@ -148,6 +147,8 @@ def main():  # noqa: PLR0912
     # --------------------------------------------------------------
 
     # tbd.
+    # currently, nothing necessary here.
+    
 
     # --------------------------------
     # 2A. POST-PROCESSING (data fixes)
