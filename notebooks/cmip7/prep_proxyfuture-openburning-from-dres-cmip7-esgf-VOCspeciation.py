@@ -6,8 +6,15 @@
 
 
 # %% [markdown]
-# ### Steps happening in this notebook
-#
+# ## Steps happening in this notebook
+# - pre-process bulk data: calculate sectoral emissions from shares
+# - re-grid to 0.5°
+# - pre-process speciated data: calculate sectoral emissions from shares
+# - re-grid to 0.5°
+# - take 10 year average for each month (bulk and speciated)
+# - calculate speciated from bulk
+# - adjust to CMIP7 file conventions
+# - write out
 
 # %%
 # check later if we need all these imports 
