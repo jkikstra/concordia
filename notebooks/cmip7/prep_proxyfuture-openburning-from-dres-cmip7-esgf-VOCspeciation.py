@@ -7,14 +7,7 @@
 
 # %% [markdown]
 # ### Steps happening in this notebook
-# 1. calculate 10-y average VOC-speciation single-sector proxies (peat, awb, grassland)
-# 1. calculate 10-y average VOC-speciation multiple-sector proxies (forest burning)
-# 1. load corresponding 10-y average VOC totals
-# 1. calculate percentage for each grid cell
-# 1. write out percentage to proxy_rasters folder as input to workflow
-
-# %%
-from concordia.cmip7.CONSTANTS import GASES, GASES_ESGF_BB4CMIP_VOC, GASES_ESGF_BB4CMIP, CONFIG, PROXY_YEARS
+#
 
 # %%
 # check later if we need all these imports 
@@ -33,16 +26,18 @@ from dask.utils import SerializableLock
 from typing import Optional
 import seaborn as sns
 
+from tqdm import tqdm
+
 from concordia.cmip7 import utils as cmip7_utils
 from concordia.settings import Settings
 import concordia.cmip7.utils_futureproxy_ceds_bb4cmip as uprox
 from concordia.cmip7.utils_futureproxy_ceds_bb4cmip import _normalize_time_slice
 
 # %%
-VERSION = CONFIG
+from concordia.cmip7.CONSTANTS import GASES, GASES_ESGF_BB4CMIP_VOC, GASES_ESGF_BB4CMIP, CONFIG, PROXY_YEARS
 
 # %%
-PROXY_YEAR = 2023
+VERSION = CONFIG
 
 # %%
 try:
@@ -65,61 +60,28 @@ cmip7_dir = "/Users/hoegner/Projects/CMIP7/concordia_cmip7_esgf_v0_alpha/input/g
 # %%
 settings.gridding_path
 
-# %% [markdown]
-# ### Unsmoothed data
-
 # %%
 lock = SerializableLock()
 
 # Workaround for HDF5 on Windows: disable file locking to avoid sporadic read errors
 os.environ.setdefault("HDF5_USE_FILE_LOCKING", "FALSE")
 
+# %% [markdown]
+# ## Settings
 
 # %%
-# Load VOC bulk data
-def get_bb4cmip7_voc_bulk_location(variable):
-    return Path(settings.gridding_path) / f"esgf/bb4cmip7/{variable}/gn/v20250612/{variable}_input4MIPs_emissions_CMIP_DRES-CMIP-BB4CMIP7-2-1_gn_190001-202312.nc"
-
-def get_bb4cmip7_voc_bulk_percentage_location(variable):
-    return Path(settings.gridding_path) / f"esgf/bb4cmip7/{variable}/gn/v20250612/{variable}_input4MIPs_emissions_CMIP_DRES-CMIP-BB4CMIP7-2-1_gn_175001-202312.nc"
-
-# Load VOC speciated data
-def get_bb4cmip7_location_percentage(variable):
-    return Path(settings.gridding_path) / f"esgf/bb4cmip7_voc/{variable}/gn/v20250612/{variable}_input4MIPs_emissions_CMIP_DRES-CMIP-BB4CMIP7-2-1_gn_175001-202312.nc"
-
-def get_bb4cmip7_location_totals(variable):
-    return Path(settings.gridding_path) / f"esgf/bb4cmip7_voc/{variable}/gn/v20250612/{variable}_input4MIPs_emissions_CMIP_DRES-CMIP-BB4CMIP7-2-1_gn_190001-202312.nc"
-
-# what data to load
-gfed_sectors_forest = ["BORF", "DEFO", "TEMF"]
-forest_fires_name = "FRTB"
-gfed_sectors_singlesector = ["AGRI", "PEAT", "SAVA"] 
-sector_mapping_singlesector = {
-    "AGRI": "AWB",
-    "PEAT": "PEAT",
-    "SAVA": "GRSB"
-}
-
-perc_combinations_forest = [f"{g}percentage{sec}" for g in GASES_ESGF_BB4CMIP_VOC for sec in gfed_sectors_forest]
-perc_combinations_singlesector = [f"{g}percentage{sec}" for g in GASES_ESGF_BB4CMIP_VOC for sec in gfed_sectors_singlesector]
-totals_combinations = [f"{g}" for g in GASES_ESGF_BB4CMIP_VOC]
-
-# input data filepaths
-# note: adjust the paths below as required by where you placed your downloaded data
-perc_file_paths_singlesector = [get_bb4cmip7_location_percentage(variable) for variable in perc_combinations_singlesector]
-totals_file_paths = [get_bb4cmip7_location_totals(variable) for variable in totals_combinations]
-print(len(totals_file_paths) + len(perc_file_paths_singlesector))
+PROXY_TIME_RANGE = [2014,2023]
 
 # %%
-settings.proxy_path
+sectors = ["AGRI", "BORF", "DEFO", "PEAT", "SAVA", "TEMF"]
 
 # %%
 # what data to output
 new_proxies_location = settings.proxy_path
 # ensure output directory exists
-#new_proxies_location.mkdir(parents=True, exist_ok=True)
+new_proxies_location.mkdir(parents=True, exist_ok=True)
 
-years = [2022, 2023, 2024, 2025, 2030, 2035, 2040, 2045, 2050, 2055, 2060, 2065, 2070, 2075, 2080, 2085, 2090, 2095, 2100]
+scenario_years = [2022, 2023, 2024, 2025, 2030, 2035, 2040, 2045, 2050, 2055, 2060, 2065, 2070, 2075, 2080, 2085, 2090, 2095, 2100]
 
 
 # %%
@@ -132,482 +94,296 @@ template_file = (
 template = xr.open_dataset(template_file)
 
 
-# %% [markdown]
-# STANDARD 1-sector proxies (without VOC speciation; not forest)
-
 # %%
 target_lat = template["lat"].values
 target_lon = template["lon"].values
 
-# %%
-def load_bb4cmip(g, type, time_slice, s: Optional[str] = None) -> xr.Dataset:
-    if type == "total":
-        
-        try:
-            ds_total = xr.open_dataset(
-                get_bb4cmip7_location_totals(g),
-                engine="h5netcdf",
-                chunks={},
-                # chunks={"time": 12},
-                lock=lock
-            ).sel(time=_normalize_time_slice(time_slice))
-        except Exception:
-            ds_total = xr.open_dataset(
-                get_bb4cmip7_location_totals(g),
-                engine="netcdf4",
-                chunks={},
-                # chunks={"time": 12},
-                lock=lock
-            # ).sel(time=slice(start_time, end_time))
-            ).sel(time=_normalize_time_slice(time_slice))
-        return ds_total
-    if type == "percentage":
-        try:
-            ds_perc = xr.open_dataset(
-                get_bb4cmip7_location_percentage(f"{g}percentage{s}"),
-                engine="h5netcdf",
-                chunks={},
-                # chunks={"time": 12},
-                lock=lock
-            # ).sel(time=slice(start_time, end_time))
-            ).sel(time=_normalize_time_slice(time_slice))
-        except Exception:
-            ds_perc = xr.open_dataset(
-                get_bb4cmip7_location_percentage(f"{g}percentage{s}"),
-                engine="netcdf4",
-                chunks={},
-                # chunks={"time": 12},
-                lock=lock
-            # ).sel(time=slice(start_time, end_time))
-            ).sel(time=_normalize_time_slice(time_slice))
-        return ds_perc
-    raise ValueError('type must be "total" or "percentage"')
-
-
-# %%
-def formatting_to_cmip7_scenario_proxy(
-        ds,
-        g,
-        scenario_years: list[int] = years,
-        ysel: int | list[int] | tuple[int, ...] = 2023,
-        sector_override: Optional[str] = None
-):
-    if isinstance(ds, xr.DataArray):
-        ds = ds.to_dataset(name=ds.name)
-    
-    ## do additional formatting (like CEDS workflow)
-    ds = ds.expand_dims(dim={"gas": [f"{g}"]})
-    
-    # split time into year and month
-    ds = ds.assign_coords(year=("time", ds["time"].dt.year.data),
-                            month=("time", ds["time"].dt.month.data)).groupby(["year", "month"]).mean()
-
-    # Take average over the different years
-    ds = ds.mean(dim="year")
-
-    # Project onto future years
-    ds = ds.expand_dims({"year": scenario_years})
-    
-    # reorder
-    ds_reordered = ds.transpose("lat", "lon", "gas", "sector", "year", "month").chunk({"month": 12})
-
-    # unify chunks for dask
-    ds_reordered = ds_reordered.unify_chunks().astype("float32")
-
-    # Format ysel for filename if it's not an integer
-    if not isinstance(ysel, int):
-        ysel_filename = f"{min(ysel)}_{max(ysel)}"
-    else:
-        ysel_filename = ysel
-
-    # give path for outfile
-    outfile = new_proxies_location / "NMVOC_speciation" / f"{g}_other_voc_em_speciated_NMVOC_openburning_{ysel_filename}.nc"
-    
-    return ds_reordered, outfile
-
-
-# %%
-# run single-sector for NMVOCbulk
-
-interim_totals_bb = {}
-
-g = "NMVOCbulk"
-
-# import file
-ds_total = xr.open_dataset(
-    get_bb4cmip7_voc_bulk_location(
-        variable = g
-    ),
-    engine="h5netcdf",
-    chunks={},
-    lock=lock
-).sel(time=_normalize_time_slice(PROXY_YEAR)).drop_vars(
-    # drop variables we don't need and rename the one we need
-    ["lat_bnds", "lon_bnds", "time_bnds"]).rename({f"{g}": "emissions"}
-)
-
-for s in gfed_sectors_singlesector:
-    # here we calculate the absolute emissions per VOC species and per sector
-    # by multiplying the total emissions for the respective species 
-    # with the percentage allocated to the respective sector
-    
-    ds_perc = xr.open_dataset(
-            get_bb4cmip7_voc_percentage_location(
-                variable = f"{g}percentage{s}"
-            ),
-            engine="h5netcdf",
-            chunks={},
-            lock=lock
-        ).sel(time=_normalize_time_slice(PROXY_YEAR)).drop_vars(
-        # drop variables we don't need and rename the one we need
-        ["lat_bnds", "lon_bnds", "time_bnds"]).rename({f"{g}percentage{s}": "percentage"})
-
-    # do multiplication (now backed by NumPy arrays, detached from file IO)
-    ds_bb = xr.Dataset({
-        # "emissions": total_emissions * percentage / 100
-        "emissions": ds_total["emissions"] * ds_perc["percentage"] / 100
-    })
-
-    interim_totals_bb[(s)] = ds_bb
-
-
-for s in gfed_sectors_forest:
-    # here we calculate the absolute emissions per VOC species and per sector
-    # by multiplying the total emissions for the respective species 
-    # with the percentage allocated to the respective sector
-    
-    ds_perc = xr.open_dataset(
-            get_bb4cmip7_voc_bulk_percentage_location(
-                variable = f"{g}percentage{s}"
-            ),
-            engine="h5netcdf",
-            chunks={},
-            lock=lock
-        ).sel(time=_normalize_time_slice(PROXY_TIME_RANGES[0])).drop_vars(
-        # drop variables we don't need and rename the one we need
-        ["lat_bnds", "lon_bnds", "time_bnds"]).rename({f"{g}percentage{s}": "percentage"})
-
-    interim_forest_bb[(s)] = ds_perc
-        
-    # do multiplication (now backed by NumPy arrays, detached from file IO)
-    ds_bb = xr.Dataset({
-        # "emissions": total_emissions * percentage / 100
-        "emissions": ds_total["emissions"] * (
-            interim_forest_bb["BORF"]["percentage"] +
-            interim_forest_bb["DEFO"]["percentage"] +
-            interim_forest_bb["TEMF"]["percentage"])/ 100
-    })
-
-    interim_totals_bb["FRTB"] = ds_bb
-
-# %%
-total_perc = (interim_totals_bb["AGRI"]["emissions"] +
-              interim_totals_bb["SAVA"]["emissions"] +
-              interim_totals_bb["PEAT"]["emissions"] +
-              interim_totals_bb["FRTB"]["emissions"]) / ds_total["emissions"] * 100
-print(total_perc.min().compute().values, total_perc.max().compute().values)
-
-# %%
-ds_all = xr.concat(
-    [ds["emissions"] for ds in interim_totals_bb.values()],
-    dim="sector"
-)
-
-# label the sector dimension
-ds_all = ds_all.assign_coords(sector=list(interim_totals_bb.keys()))
-ds_all
-
-# %%
-interim_totals_bb.keys()
-
 # %% [markdown]
-# ## input
+# ## Functions
 
 # %%
-HARMONIZATION_VERSION = "cmip7_esgf_v0_alpha_vllo"
-MODEL_SELECTION = "REMIND-MAgPIE 3.5-4.11"
-SCENARIO_SELECTION = "SSP1 - Very Low Emissions"
+def get_bb4cmip7_location(variable, kind="speciated", data_type="total"):
+    """
+    Return the path to a BB4CMIP7 VOC dataset.
+
+    Parameters
+    ----------
+    variable : str
+        Species name (e.g. 'NMVOC', 'C2H2', etc.)
+    kind : {'bulk', 'speciated'}
+        Whether to load the bulk or speciated dataset.
+    data_type : {'total', 'percentage'}
+        Whether to load total emissions or percentage allocations.
+
+    Returns
+    -------
+    Path
+        Full path to the NetCDF dataset.
+    """
+    base = Path(settings.gridding_path)
+    folder = "esgf/bb4cmip7" if kind == "bulk" else "esgf/bb4cmip7_voc"
+
+    time_range = "190001-202312" if data_type == "total" else "175001-202312"
+
+    filename = f"{variable}_input4MIPs_emissions_CMIP_DRES-CMIP-BB4CMIP7-2-1_gn_{time_range}.nc"
+
+    return base / folder / variable / "gn" / "v20250612" / filename
+
 
 # %%
-# openburning
-voc_openburning = xr.open_dataset(
-        settings.out_path / HARMONIZATION_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution}-{model}-{scenario}_{grid_label}_{start_date}-{end_date}.nc".format(
-    name="VOC-em-openburning",
-    model=MODEL_SELECTION.replace(" ", "-"),
-    scenario=SCENARIO_SELECTION.replace(" ", "-"),
-    **cmip7_utils.DS_ATTRS | {"version": settings.version}
-),
-chunks={},
-lock=lock
-)
+def load_bb4cmip7_datasets(g, kind="speciated", lock=None, proxy_time_range=None):
+    """
+    Load BB4CMIP7 datasets for a given gas `g` and fixed kind.
 
-# %%
-voc_openburning.sector
+    Loads both the total emissions file and all sectoral percentage files.
 
-# %% [markdown]
-# ## derive speciated VOC share of NMVOCbulk
-#
-# this is done by VOC species, for the totals only, no sectoral information needed. should give us as many grid-cell level scalars as there is VOC species; these can then be multiplied with the sectoral percentages in a next step to obtain the speciation "proxies"
+    Parameters
+    ----------
+    g : str
+        Gas name (e.g., "CO", "VOC", etc.)
+    kind : {"bulk", "speciated"}, optional
+        Dataset kind (defaults to "speciated").
+    lock : threading.Lock or dask.utils.SerializableLock, optional
+        Lock to use during file access (recommended when using dask).
+    proxy_time_range : slice or str, optional
+        Time range passed to `.sel(time=...)`. Uses `_normalize_time_slice` if None.
 
-# %%
-GASES_ESGF_BB4CMIP_VOC
+    Returns
+    -------
+    dict
+        {
+            "total": <xarray.Dataset>,
+            "percentage": {sector: <xarray.Dataset>, ...}
+        }
+    """
+    # sectors for which we load percentage files
+    sectors = ["AGRI", "BORF", "DEFO", "PEAT", "SAVA", "TEMF"]
 
-# %%
-GASES_ESGF_BB4CMIP_VOC_test = ["C2H2"]
+    if proxy_time_range is None:
+        proxy_time_range = PROXY_TIME_RANGE  # fallback to global
 
-# %%
-# 1. load NMVOCbulk openburning total, retain only 2023 values, do some renaming
-# this we need for all speciated gases as a reference, so we can do it outside the loop
-nmvoc_bulk_total = xr.open_dataset(
-    get_bb4cmip7_voc_bulk_location(
-        variable = "NMVOCbulk"
-    ),
-    engine="h5netcdf",
-    chunks={},
-    lock=lock
-).sel(time=_normalize_time_slice(PROXY_YEAR)).drop_vars(
-    # drop variables we don't need and rename the one we need
-    ["lat_bnds", "lon_bnds", "time_bnds"]).rename({f"NMVOCbulk": "emissions"}
-)
-
-# 2. loop over all VOC species
-for g in GASES_ESGF_BB4CMIP_VOC_test:
-    
-    # 2.1 load respective species totals, renaming as above
+    # load total emissions
     ds_total = xr.open_dataset(
-        get_bb4cmip7_location_totals(
-            variable = f"{g}"
-        ),
+        get_bb4cmip7_location(variable=g, kind=kind, data_type="total"),
         engine="h5netcdf",
         chunks={},
         lock=lock
-    ).sel(time=_normalize_time_slice(PROXY_TIME_RANGES[0])).drop_vars(
-            # drop variables we don't need and rename the one we need
-            ["lat_bnds", "lon_bnds", "time_bnds"]).rename({f"{g}": "emissions"})
+    ).sel(time=_normalize_time_slice(proxy_time_range)).drop_vars(
+        ["lat_bnds", "lon_bnds", "time_bnds"]
+    ).rename({f"{g}": "emissions"})
 
-    
-    # 2.2 calculate grid-level speciated VOC shares of NMVOCbulk
-    ds_shares = xr.Dataset({
-        "emissions_share": xr.where(nmvoc_bulk_total["emissions"] !=0, ds_total["emissions"] / nmvoc_bulk_total["emissions"], 0)
-    })
+    # load percentage datasets per sector
+    ds_percentages = {}
+    for s in sectors:
+        variable = f"{g}percentage{s}"
+        ds = xr.open_dataset(
+            get_bb4cmip7_location(variable=variable, kind=kind, data_type="percentage"),
+            engine="h5netcdf",
+            chunks={},
+            lock=lock
+        ).sel(time=_normalize_time_slice(proxy_time_range)).drop_vars(
+            ["lat_bnds", "lon_bnds", "time_bnds"]
+        ).rename({f"{variable}": "percentage"})
 
-    
-    # 3. loop over sectors, multiply total shares with sectoral percentages
-    for s in gfed_sectors_singlesector:
-        # here we split the speciated VOC shares into their respective sectoral parts
-        
-        ds_perc = xr.open_dataset(
-                get_bb4cmip7_location_percentage(
-                    variable = f"{g}percentage{s}"
-                ),
-                engine="h5netcdf",
-                chunks={},
-                lock=lock
-            ).sel(time=_normalize_time_slice(PROXY_YEAR)).drop_vars(
-            # drop variables we don't need and rename the one we need
-            ["lat_bnds", "lon_bnds", "time_bnds"]).rename({f"{g}percentage{s}": "percentage"})
-    
-        # do multiplication (now backed by NumPy arrays, detached from file IO)
-        ds_bb = xr.Dataset({
-            "emissions_share": ds_shares["emissions_share"] * ds_perc["percentage"] / 100
+        ds_percentages[s] = ds
+
+    return {"total": ds_total, "percentage": ds_percentages}
+
+
+# %%
+def compute_sectoral_emissions(datasets):
+    """
+    Compute sectoral emissions by multiplying total emissions with sector percentages,
+    and interpolate each sector dataset from 0.25° to 0.5° grid.
+
+    Parameters
+    ----------
+    datasets : dict
+        Output from `load_bb4cmip7_datasets()`, containing:
+            - datasets["total"] (xarray.Dataset with variable 'emissions')
+            - datasets["percentage"][sector] (xarray.Dataset with variable 'percentage')
+
+    Returns
+    -------
+    dict
+        Dictionary of xarray.Datasets per sector, each containing variable 'emissions'
+        interpolated onto the 0.5° grid.
+    """
+    ds_total = datasets["total"]
+    ds_percentages = datasets["percentage"]
+
+    sectoral_emissions = {}
+
+    for sector, ds_perc in ds_percentages.items():
+        # Multiply totals by sector percentages (convert percentage to fraction)
+        ds_sector = xr.Dataset({
+            "emissions": ds_total["emissions"] * (ds_perc["percentage"] / 100)
         })
-    
-        interim_totals_bb[(s)] = ds_bb
-    
-    
-    for s in gfed_sectors_forest:
-        # here we split the speciated VOC shares into their respective sectoral parts and aggregate forest sectors
 
-        ds_perc = xr.open_dataset(
-                get_bb4cmip7_location_percentage(
-                    variable = f"{g}percentage{s}"
-                ),
-                engine="h5netcdf",
-                chunks={},
-                lock=lock
-            ).sel(time=_normalize_time_slice(PROXY_TIME_RANGES[0])).drop_vars(
-            # drop variables we don't need and rename the one we need
-            ["lat_bnds", "lon_bnds", "time_bnds"]).rename({f"{g}percentage{s}": "percentage"})
-    
-        interim_forest_bb[(s)] = ds_perc
-            
-        # do multiplication (now backed by NumPy arrays, detached from file IO)
-        ds_bb = xr.Dataset({
-            "emissions_share": ds_shares["emissions_share"] * (
-                interim_forest_bb["BORF"]["percentage"] +
-                interim_forest_bb["DEFO"]["percentage"] +
-                interim_forest_bb["TEMF"]["percentage"])/ 100
-        })
-    
-        interim_totals_bb["FRTB"] = ds_bb
+        # Interpolate to 0.5° grid using globally defined target_lat/lon
+        ds_sector_interp = ds_sector.interp(
+            latitude=target_lat,
+            longitude=target_lon,
+            method="linear"
+        )
+
+        sectoral_emissions[sector] = ds_sector_interp
+
+    return sectoral_emissions
 
 
-    # 4. collect into one .nc per species, reformat for CMIP7 conventions
-    ds_all = xr.concat(
-    [ds["emissions_share"] for ds in interim_totals_bb.values()],
-    dim="sector"
-    )
-    
-    # label the sector dimension
-    ds_all = ds_all.assign_coords(sector=list(interim_totals_bb.keys()))
-    ds_all
-        
-    # regrid to 0.5 degree after multiplication (first rename variable names to be like the CEDS template data)
-    print(f"Regridding from {ds_bb.latitude.size}x{ds_bb.longitude.size} to {len(target_lat)}x{len(target_lon)}")
-    ds_all = ds_all.rename(
-        {"latitude":"lat","longitude":"lon"}
-    ).interp(
-        lat=target_lat, lon=target_lon, method='linear'
-    ) # TODO: read a bit more on aggregation methods.
+# %%
+def monthly_average_voc_species_shares(speciated_sectoral_emissions, bulk_sectoral_emissions):
+    """
+    Compute monthly VOC species shares (% of bulk) for each sector,
+    using the ratio of time-mean emissions.
+    This preserves global totals when applied to aggregate emissions.
+    """
+    monthly_shares = {}
 
-    # formatting, including averaging if we do not select just one single year
-    ds_reordered, outfile = formatting_to_cmip7_scenario_proxy(
-        ds=ds_all, g=g, ysel=PROXY_YEAR
-    )
+    for sp, sector_dict in speciated_sectoral_emissions.items():
+        monthly_shares[sp] = {}
+        for sector, ds_sp in sector_dict.items():
+            ds_bulk = bulk_sectoral_emissions[sector]
 
-    # saving
-    if outfile.exists():
-        outfile.unlink()
+            # 1. Compute monthly averages (mean over years per calendar month)
+            sp_monthly = ds_sp["emissions"].groupby("time.month").mean(dim="time", skipna=True)
+            bulk_monthly = ds_bulk["emissions"].groupby("time.month").mean(dim="time", skipna=True)
 
-    encoding = {
-        var: {"zlib": True, "complevel": 4}
-        for var in ds_reordered.data_vars
+            # 2. Compute ratio (species/bulk) * 100
+            share = xr.where(bulk_monthly != 0, (sp_monthly / bulk_monthly) * 100, 0.0)
+
+            monthly_shares[sp][sector] = share.to_dataset(name="share")
+
+    return monthly_shares
+
+
+# %%
+def rename_and_aggregate_sectors(species_sectoral_shares):
+    """
+    Rename some sectors and aggregate forest sectors into FRTB.
+
+    Parameters
+    ----------
+    species_sectoral_shares : dict
+        Nested dictionary {species: {sector: xarray.Dataset with 'share'}}
+
+    Returns
+    -------
+    dict
+        Updated dictionary {species: {new_sector: Dataset}} with renamed/aggregated sectors.
+    """
+    # sector mapping
+    sector_mapping_singlesector = {
+        "AGRI": "AWB",
+        "PEAT": "PEAT",
+        "SAVA": "GRSB"
     }
 
-    with ProgressBar():
-        ds_reordered.to_netcdf(outfile, mode="w", engine="h5netcdf", encoding=encoding)
+    gfed_sectors_forest = ["BORF", "DEFO", "TEMF"]
 
+    updated_shares = {}
 
-# %%
-xr.open_dataset(
-                "/Users/hoegner/Projects/CMIP7/concordia_cmip7_esgf_v0_alpha/input/gridding/proxy_rasters/openburning_C2H4O_TEMF_2023.nc",
-            )
+    for sp, sector_dict in species_sectoral_shares.items():
+        updated_shares[sp] = {}
+
+        # rename single sectors
+        for old_sector, new_sector in sector_mapping_singlesector.items():
+            if old_sector in sector_dict:
+                updated_shares[sp][new_sector] = sector_dict[old_sector]
+
+        # aggregate forest sectors into FRTB
+        forest_datasets = [sector_dict[s] for s in gfed_sectors_forest if s in sector_dict]
+        if forest_datasets:
+            
+            # sum shares along each grid cell / month
+            forest_sum = sum(ds["share"] for ds in forest_datasets)
+            updated_shares[sp]["FRTB"] = xr.Dataset({"share": forest_sum})
+
+    return updated_shares
+
 
 # %% [markdown]
-# STANDARD multiple-sector proxies (with VOC speciation; only forest)
+# ## Obtain speciated shares for all sectors
 
 # %%
-# run single-sector for NMVOCbulk
+# load and process bulk VOC emissions
+bulk_datasets = load_bb4cmip7_datasets("NMVOCbulk", kind="bulk", lock=lock, proxy_time_range=PROXY_TIME_RANGE)
+bulk_sectoral_emissions = compute_sectoral_emissions(bulk_datasets)
+bulk_ds_total = bulk_datasets["total"]  # already interpolated inside compute_sectoral_emissions
 
-interim_forest_bb = {}
-interim_totals_bb = {}
+# load and process speciated emissions
+speciated_datasets = {}
+speciated_sectoral_emissions = {}
 
-for y in PROXY_TIME_RANGES:
-    g = "NMVOCbulk"
-
-    # import file
-    ds_total = xr.open_dataset(
-        get_bb4cmip7_voc_bulk_location(
-            variable = g
-        ),
-        engine="h5netcdf",
-        chunks={},
-        lock=lock
-    ).sel(time=_normalize_time_slice(PROXY_TIME_RANGES[0])).drop_vars(
-        # drop variables we don't need and rename the one we need
-        ["lat_bnds", "lon_bnds", "time_bnds"]).rename({f"{g}": "emissions"}
-    )
-
-    for s in gfed_sectors_forest:
-        if not isinstance(y, int):
-            y_log = f"{min(y)}-{max(y)}"
-        else:
-            y_log = y
-        print(f"Processing {g}_{s} for {y_log}")
-
-        # here we calculate the absolute emissions per VOC species and per sector
-        # by multiplying the total emissions for the respective species 
-        # with the percentage allocated to the respective sector
-        
-        ds_perc = xr.open_dataset(
-                get_bb4cmip7_voc_bulk_percentage_location(
-                    variable = f"{g}percentage{s}"
-                ),
-                engine="h5netcdf",
-                chunks={},
-                lock=lock
-            ).sel(time=_normalize_time_slice(PROXY_TIME_RANGES[0])).drop_vars(
-            # drop variables we don't need and rename the one we need
-            ["lat_bnds", "lon_bnds", "time_bnds"]).rename({f"{g}percentage{s}": "percentage"})
-
-        interim_forest_bb[(s)] = ds_perc
-        
-    # do multiplication (now backed by NumPy arrays, detached from file IO)
-    ds_bb = xr.Dataset({
-        # "emissions": total_emissions * percentage / 100
-        "emissions": ds_total["emissions"] * (
-            interim_forest_bb["BORF"]["percentage"] +
-            interim_forest_bb["DEFO"]["percentage"] +
-            interim_forest_bb["TEMF"]["percentage"])/ 100
-    })
-
-    interim_totals_bb["FRTB"] = ds_bb
+for sp in GASES_ESGF_BB4CMIP_VOC:
+    ds_sp = load_bb4cmip7_datasets(sp, kind="speciated", lock=lock, proxy_time_range=PROXY_TIME_RANGE)
+    ds_sp_sectoral = compute_sectoral_emissions(ds_sp)
+    
+    speciated_datasets[sp] = ds_sp      # contains both total and percentage
+    speciated_sectoral_emissions[sp] = ds_sp_sectoral  # contains emissions per sector
 
 # %%
-# run multiple-sector proxies (without VOC speciation; only forest)
-for y in PROXY_TIME_RANGES:
-    for g in GASES_ESGF_BB4CMIP_VOC:
-    # for g in ['BC']:
-    # for g in ["SO2", "NMVOCbulk"]:
-        
-        if not isinstance(y, int):
-            y_log = f"{min(y)}-{max(y)}"
-        else:
-            y_log = y
-        print(f"Processing {g}_{forest_fires_name} for {y_log}")
+# obtain shares for all species-sector combinations
+species_sectoral_shares = monthly_average_voc_species_shares(
+    speciated_sectoral_emissions, bulk_sectoral_emissions
+)
 
-        # import file 
-        ds_total = load_bb4cmip(g, type="total", time_slice=y).drop_vars(
-            # drop variables we don't need and rename the one we need
-            ["lat_bnds", "lon_bnds", "time_bnds"]).rename({f"{g}": "emissions"}
-        )
+# %%
+# rename single sectors, aggregate forest fire sectors
+shares_final = rename_and_aggregate_sectors(species_sectoral_shares)
 
-        # load the multiple forest sectors
-        ds_perc1 = load_bb4cmip(g ,type="percentage", time_slice=y, s=gfed_sectors_forest[0]).drop_vars(
-            ["lat_bnds", "lon_bnds", "time_bnds"]).rename({f"{g}percentage{gfed_sectors_forest[0]}": "percentage"})
-        ds_perc2 = load_bb4cmip(g ,type="percentage", time_slice=y, s=gfed_sectors_forest[1]).drop_vars(
-            ["lat_bnds", "lon_bnds", "time_bnds"]).rename({f"{g}percentage{gfed_sectors_forest[1]}": "percentage"})
-        ds_perc3 = load_bb4cmip(g ,type="percentage", time_slice=y, s=gfed_sectors_forest[2]).drop_vars(
-            ["lat_bnds", "lon_bnds", "time_bnds"]).rename({f"{g}percentage{gfed_sectors_forest[2]}": "percentage"})
+# %%
+new_proxies_location
 
-        # do multiplication (now backed by NumPy arrays, detached from file IO)
-        ds_bb = xr.Dataset({
-            "emissions": ds_total["emissions"] * (ds_perc1["percentage"]+ds_perc2["percentage"]+ds_perc3["percentage"]) / 100
+# %% [markdown]
+# ## Compute and export
+
+# %%
+outdir = new_proxies_location / "NMVOC_speciation"
+outdir.mkdir(parents=True, exist_ok=True)
+
+ysel_filename="2014-23"
+
+encoding = {"share": {"zlib": True,"complevel": 4}}
+
+for sp in tqdm(GASES_ESGF_BB4CMIP_VOC, desc="Species"):
+
+    # List to hold each sector's DataArray
+    sector_arrays = []
+    sector_names = []
+
+    for sector, ds_share in shares_final[sp].items():
+        # Rename lat/lon if necessary
+        ds_share = ds_share.rename({
+            "latitude": "lat" if "latitude" in ds_share.dims else "lat",
+            "longitude": "lon" if "longitude" in ds_share.dims else "lon"
         })
 
-        # now take the total un-speciated sectoral VOC emissions from above
-        # calculate share (now backed by NumPy arrays, detached from file IO)
-        # If tot["NMVOC_em_anthro"] is zero, then emissions_share should also be zero
+        # Ensure variable is DataArray
+        da = ds_share["share"]
+        # Add 'sector' dimension
+        da = da.expand_dims({"sector": [sector]})
+        sector_arrays.append(da)
+        sector_names.append(sector)
 
-        tot = interim_totals_bb["FRTB"]
-        
-        ds_bb = xr.Dataset({
-            "emissions_share": xr.where(tot["emissions"] != 0, ds_bb["emissions"] / tot["emissions"], 0)
-        })
-        
-        # regrid to 0.5 degree after multiplication (first rename variable names to be like the CEDS template data)
-        # print(f"Regridding from {ds_bb.latitude.size}x{ds_bb.longitude.size} to {len(target_lat)}x{len(target_lon)}")
-        ds_bb = ds_bb.rename(
-            {"latitude":"lat","longitude":"lon"}
-        ).interp(
-            lat=target_lat, lon=target_lon, method='linear'
-        )
+    # Combine all sectors along 'sector' dimension
+    combined = xr.concat(sector_arrays, dim="sector")
+    combined = combined.assign_coords(sector=sector_names)
 
-        # formatting, including averaging if we do not select just one single year
-        ds_reordered, outfile = formatting_to_cmip7_scenario_proxy(
-            ds=ds_bb, g=g, gas_mapping=gas_mapping, sector_override=forest_fires_name,
-            ysel=y
-        )
+    # Add gas dimension
+    combined = combined.expand_dims({"gas": [sp]})
 
-        # saving
-        if outfile.exists():
-            outfile.unlink()
+    # Broadcast to scenario years
+    combined = combined.expand_dims({"year": scenario_years})
 
-        encoding = {
-            var: {"zlib": True, "complevel": 4}
-            for var in ds_reordered.data_vars
-        }
+    # Reorder dimensions: lat, lon, gas, sector, year, month
+    combined = combined.transpose("lat", "lon", "gas", "sector", "year", "month")
 
-        with ProgressBar():
-            ds_reordered.to_netcdf(outfile, mode="w", engine="h5netcdf", encoding=encoding)
+    # Ensure float32 and unify chunks
+    combined = combined.unify_chunks().astype("float32")
+
+    # Output file
+    outfile = outdir / f"{sp}_other_voc_em_speciated_NMVOC_openburning_{ysel_filename}.nc"
+    combined.to_netcdf(outfile, encoding=encoding)
 
