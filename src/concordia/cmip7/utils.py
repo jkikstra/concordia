@@ -279,7 +279,7 @@ def set_var_encoding(ds, name):
         {
             "zlib": True,
             "complevel": 2,
-            "chunksizes": tuple((dict(da.sizes) | dict(time=1)).values()),
+            "chunksizes": None, # tuple((dict(da.sizes) | dict(time=1)).values()),
             "_FillValue": da.dtype.type(1e20),
         }
     )
