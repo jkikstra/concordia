@@ -31,6 +31,7 @@ HISTORY_FILE: str = "cmip7_history_countrylevel_251024.csv"
 # Settings
 # SETTINGS_FILE: str = "config_cmip7_esgf_v0_alpha.yaml" # was used for preparing for first upload to ESGF
 SETTINGS_FILE: str = "config_cmip7_v0-4-0.yaml" # for second ESGF version
+VERSION_ESGF: str = "0-4-0" # for second ESGF version
 
 # Which scenario to run from the markers
 marker_to_run: str = "H" # options: H, HL, M, ML, L, LN, VL
@@ -818,8 +819,8 @@ if run_main_gridding: # full run for all 10 species takes about ~1hour for 1 sce
 
         # keep {name} as a placeholder for workflow.grid (escaped as {{name}} here);
         # substitute scenario now using esgf_name computed earlier
-        template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution_id}-{scenario}_{grid_label}_{start_date}-{end_date}.nc".format(
-            **(cmip7_utils.DS_ATTRS | {"version": settings.version, 
+        template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution_id}-{scenario}-{version}_{grid_label}_{start_date}-{end_date}.nc".format(
+            **(cmip7_utils.DS_ATTRS | {"version": VERSION_ESGF,
                                        "scenario": f"scen-{marker_to_run.lower()}"})
         ),
         callback=cmip7_utils.DressUp(version=settings.version),
@@ -856,10 +857,10 @@ def load_voc_bulk():
         # update the file template with:
         # - discussion on GitHub:  https://github.com/CMIP-Data-Request/Harmonised-Public-Consultation/issues/108
         # - proper netCDF handling (see Zeb's 0-3-0 fixes)
-        settings.out_path / GRIDDING_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution_id}-{scenario}_{grid_label}_{start_date}-{end_date}.nc".format(
+        settings.out_path / GRIDDING_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution_id}-{scenario}-{version}_{grid_label}_{start_date}-{end_date}.nc".format(
         name="VOC-em-anthro",
         scenario=f"scen-{marker_to_run.lower()}",
-        **cmip7_utils.DS_ATTRS | {"version": settings.version}
+        **cmip7_utils.DS_ATTRS | {"version": VERSION_ESGF}
     ),
     chunks={},
     lock=lock
@@ -989,10 +990,10 @@ if run_anthro_supplemental_voc:
 
         # save out
         print(f'Writing out emissions of {v}')
-        outfile = settings.out_path / GRIDDING_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution_id}-{scenario}_{grid_label}_{start_date}-{end_date}.nc".format(
+        outfile = settings.out_path / GRIDDING_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution_id}-{scenario}-{version}_{grid_label}_{start_date}-{end_date}.nc".format(
             name=gas_variable_name.replace("_", "-"),
             scenario=f"scen-{marker_to_run.lower()}",
-            **cmip7_utils.DS_ATTRS | {"version": settings.version}
+            **cmip7_utils.DS_ATTRS | {"version": VERSION_ESGF}
         )
 
         encoding = {
