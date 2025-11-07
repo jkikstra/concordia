@@ -815,8 +815,12 @@ cmip7_utils.DS_ATTRS
 # %%
 if run_main_gridding: # full run for all 10 species takes about ~1hour for 1 scenario
     res = workflow.grid(
-        template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution}-{{model}}-{{scenario}}_{grid_label}_{start_date}-{end_date}.nc".format(
-            **cmip7_utils.DS_ATTRS | {"version": settings.version}
+
+        # keep {name} as a placeholder for workflow.grid (escaped as {{name}} here);
+        # substitute scenario now using esgf_name computed earlier
+        template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution_id}-{scenario}_{grid_label}_{start_date}-{end_date}.nc".format(
+            **(cmip7_utils.DS_ATTRS | {"version": settings.version, 
+                                       "scenario": f"scen-{marker_to_run.lower()}"})
         ),
         callback=cmip7_utils.DressUp(version=settings.version),
         directory=version_path,
@@ -852,10 +856,9 @@ def load_voc_bulk():
         # update the file template with:
         # - discussion on GitHub:  https://github.com/CMIP-Data-Request/Harmonised-Public-Consultation/issues/108
         # - proper netCDF handling (see Zeb's 0-3-0 fixes)
-        settings.out_path / GRIDDING_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution}-{model}-{scenario}_{grid_label}_{start_date}-{end_date}.nc".format(
+        settings.out_path / GRIDDING_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution_id}-{scenario}_{grid_label}_{start_date}-{end_date}.nc".format(
         name="VOC-em-anthro",
-        model=MODEL_SELECTION.replace(" ", "-"),
-        scenario=SCENARIO_SELECTION.replace(" ", "-"),
+        scenario=f"scen-{marker_to_run.lower()}",
         **cmip7_utils.DS_ATTRS | {"version": settings.version}
     ),
     chunks={},
@@ -986,10 +989,9 @@ if run_anthro_supplemental_voc:
 
         # save out
         print(f'Writing out emissions of {v}')
-        outfile = settings.out_path / GRIDDING_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution}-{model}-{scenario}_{grid_label}_{start_date}-{end_date}.nc".format(
+        outfile = settings.out_path / GRIDDING_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution_id}-{scenario}_{grid_label}_{start_date}-{end_date}.nc".format(
             name=gas_variable_name.replace("_", "-"),
-            model=MODEL_SELECTION.replace(" ", "-"),
-            scenario=SCENARIO_SELECTION.replace(" ", "-"),
+            scenario=f"scen-{marker_to_run.lower()}",
             **cmip7_utils.DS_ATTRS | {"version": settings.version}
         )
 
