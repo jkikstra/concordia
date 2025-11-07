@@ -272,6 +272,99 @@ def clean_var(ds, name, gas, handle):
     ds[name].attrs.update({"cell_methods": "time: mean", "long_name": long_name})
     return ds
 
+def _rename_cdr_sectors(ds,name,
+                        other_cdr_variable_new_name="Other Capture and Removal",
+                        other_cdr_variable_old_name="Other CDR"):
+    if name == "CO2_em_anthro":
+        if "Other CDR" in ds.sector.values:
+                # Create new sector coordinate values with the renamed sector
+                new_sector_values = []
+                for sector in ds.sector.values:
+                    if sector == other_cdr_variable_old_name:
+                        new_sector_values.append(other_cdr_variable_new_name)
+                    else:
+                        new_sector_values.append(sector)
+                
+                # Assign the new coordinate values
+                ds = ds.assign_coords(sector=new_sector_values)
+                print(f"Renamed '{other_cdr_variable_old_name}' to '{other_cdr_variable_new_name}' for {name}")
+        #TODO: check why the above seems to work
+
+        return ds
+    else:
+        return ds
+
+def reaggregate_sectors_cdr(ds, name):
+
+    if name == "CO2_em_anthro":
+        # list sectors
+        # sector_detail_to_aggregate
+        # sector_to_aggregate_into
+
+        def _aggregate_sectors(
+                ds,
+                sector_detail_to_aggregate,
+                sector_to_aggregate_into
+        ):
+            # Step 2: sum sectors, e.g. "Energy" and "BECCS" into "Energy" (just add BECCS)
+            if sector_to_aggregate_into in ds.sector.values and sector_detail_to_aggregate in ds.sector.values:
+                
+                # Extract Energy and BECCS data
+                sector_to_aggregate_into_data = ds.sel(sector=sector_to_aggregate_into)
+                sector_detail_to_aggregate_data = ds.sel(sector=sector_detail_to_aggregate)
+                
+                # Sum them together (lazy computation with dask or direct computation without)
+                combined_emissions = sector_to_aggregate_into_data[name] + sector_detail_to_aggregate_data[name]
+                
+                # Remove sector (sector_detail_to_aggregate will be in the aggregate sector)
+                sectors_to_keep = [s for s in ds.sector.values if s != sector_detail_to_aggregate]
+                ds = ds.sel(sector=sectors_to_keep)                
+                # Assign combined_emissions data 
+                ds[name].loc[dict(sector=sector_to_aggregate_into)] = combined_emissions
+                
+            # TODO: fix these elifs below 
+            elif sector_to_aggregate_into in ds.sector.values:
+                print(f"Warning: {name} has {sector_to_aggregate_into} but no {sector_detail_to_aggregate}. Continuing as is.")
+            else:
+                # (A) Neither exists, OR (B) the CDR/detailed sector exists but the aggregate sector does not exist
+                raise ValueError(f"{name} misses {sector_to_aggregate_into} (and potentially also misses {sector_detail_to_aggregate})")
+
+            return ds
+
+        # do the reverse of the disaggregation/splitting of CDR in:
+        # https://github.com/openscm/gcages/blob/f6ee64156480c9085d290369033c3fbdeeee33ad/src/gcages/cmip7_scenariomip/pre_processing/reaggregation/basic.py#L1281-L1288
+        print("Move gridded BECCS back into the Energy sector")
+        ds = _aggregate_sectors(ds,
+                                sector_detail_to_aggregate="BECCS",
+                                sector_to_aggregate_into="Energy")
+        print("Move gridded Ocean CDR back into an aggregate Other CDR sector")
+        ds = _aggregate_sectors(ds,
+                                sector_detail_to_aggregate="Ocean",
+                                sector_to_aggregate_into="Other CDR")
+        print("Move gridded Enhanced Weathering back into an aggregate Other CDR sector")
+        ds = _aggregate_sectors(ds,
+                                sector_detail_to_aggregate="Enhanced Weathering",
+                                sector_to_aggregate_into="Other CDR")
+        print("Move gridded DAC back into an aggregate Other CDR sector")
+        ds = _aggregate_sectors(ds,
+                                sector_detail_to_aggregate="Direct Air Capture",
+                                sector_to_aggregate_into="Other CDR")
+        
+        # Update the sector coordinate attributes for all changes
+        if 'ids' in ds.sector.attrs:
+            # Create new ids mapping with updated sector names
+            new_ids_list = []
+            for i, sector in enumerate(ds.sector.values):
+                new_ids_list.append(f"{i}: {sector}")
+            
+            # Update the ids attribute
+            ds.sector.attrs['ids'] = "; ".join(new_ids_list)
+            # print(f"Updated sector ids for {name}")
+
+        return ds
+    else:
+        return ds
+
 
 def set_var_encoding(ds, name):
     da = ds[name]
@@ -335,6 +428,8 @@ class DressUp:
             .pipe(update_attrs, ATTRS)
             .pipe(clean_var, name, gas, handle)
             .assign_attrs(ds_attrs(name, model, scenario, self.version, self.date))
+            .pipe(reaggregate_sectors_cdr, name)
+            .pipe(_rename_cdr_sectors, name)
         )
 
 
