@@ -1,12 +1,12 @@
 local_config_path: 'config_cmip7_v0-4-0.yaml' # this file; we don't use a separate local file
 
 # ---- standard config for CMIP7 ----
-# out_path: "../../results"
+out_path: "../../results"
 
 # this needs to be changed based on where you want to store your own data
-# data_path: "/home/hoegner/Projects/CMIP7/" # Annika
-data_path: "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0-4-0" # Jarmo; 22.10.2025 and later
-out_path: "C:/Users/kikstra/Documents/GitHub/concordia/results" # Jarmo; 19.09.2025 and later
+data_path: "/Users/hoegner/Projects/CMIP7/" # Annika
+#data_path: "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0-4-0" # Jarmo; 22.10.2025 and later
+#out_path: "C:/Users/kikstra/Documents/GitHub/concordia/results" # Jarmo; 19.09.2025 and later
 
 variabledefs_path: "$data_path/input/variabledefinitions/variabledefs-cmip7_v0-4-0.csv" 
 
