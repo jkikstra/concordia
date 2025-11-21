@@ -24,9 +24,9 @@ from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total
 
 # %%
 # load cell area
-areacella = xr.open_dataset(Path("C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0-4-0/input/gridding", 
-                                 "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc"))
-cell_area = areacella["areacella"]
+# areacella = xr.open_dataset(Path("C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0-4-0/input/gridding", 
+#                                  "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc"))
+# cell_area = areacella["areacella"]
 
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
 marker: str = "H"
@@ -51,9 +51,11 @@ path_output_plot_results: Path = Path("C:/Users/kikstra/Documents/GitHub/concord
 
 
 # scenario data
-path_results: Path = Path("C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_esgf_v0_alpha/output/cmip7_esgf_v0_alpha_h/final")
+# path_results: Path = Path("C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_esgf_v0_alpha/output/cmip7_esgf_v0_alpha_h/final")
 # path_results: Path = Path("D:/concordia-results/temp_v03_fix/v0_3_files-rewrite")
 # path_results: Path = Path("C:/Users/kikstra/Downloads/cmip7-uploaded/esgf")
+path_results: Path = Path("C:/Users/kikstra/Documents/GitHub/concordia/results/prehandover_test_VL")
+
 
 # ESGF history files:
 path_history_ceds_anthro: Path = Path("C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0-4-0/input/gridding/esgf/ceds/CMIP7_anthro")
@@ -138,7 +140,7 @@ for sp in species:
         annual_emissions = ds_to_annual_emissions_total(
             gridded_data=scen,
             var_name=data_var_name,
-            cell_area=cell_area,
+            # cell_area=cell_area,
             keep_sectors=False
         )
         
