@@ -70,7 +70,7 @@ import pycountry
 from pandas_indexing import isin, ismatch, assignlevel, extractlevel
 from pandas_indexing.units import set_openscm_registry_as_default
 from ptolemy.raster import IndexRaster
-import concordia._patches_ptolemy
+# import concordia._patches_ptolemy
 
 from aneris import logger
 from concordia import (
@@ -899,9 +899,9 @@ voc_spec_ratios_location = settings.proxy_path / "VOC_speciation"
 if run_anthro_supplemental_voc:
     voc_anthro = load_voc_bulk()
     
-    for v in GASES_ESGF_CEDS_VOC:
+    for v in GASES_ESGF_CEDS_VOC: # all take about ~6hours for 1 scenario; could consider making this part of the driver parameters
     # for v in [GASES_ESGF_CEDS_VOC[2]]: # only run one to test
-    # for v in GASES_ESGF_CEDS_VOC[0:9]: # run a few to test
+    # for v in GASES_ESGF_CEDS_VOC[0:2]: # run a few to test
         print(f'Reading in shares of {v}')
         # import file 
         voc_share = xr.open_dataset(
