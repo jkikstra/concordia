@@ -13,24 +13,45 @@
 # ---
 
 # %%
+# With autoreload: changes are picked up automatically when changing a file/module that is imported, without having to restart the kernel.
+# %load_ext autoreload
+# %autoreload 2
+
+# %% [markdown]
+# ## Specify input scenario data and project settings
+# **Note:** these options below can also be changed and driven from a driver script. 
+
+# %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
+# Settings
+# SETTINGS_FILE: str = "config_cmip7_esgf_v0_alpha.yaml" # was used for preparing for first upload to ESGF
+SETTINGS_FILE: str = "config_cmip7_v0-4-0.yaml" # for second ESGF version
+
+# Which scenario to run from the markers
+marker_to_run: str = "H" # options: H, HL, M, ML, L, LN, VL
+
+GRIDDING_VERSION: str | None = None
+
+DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["CO2", "Sulfur", ""]
+
+# Which parts to run
+run_main: bool = True # not currently used; suggestion/thinking to use in future for "default" (all) workflow, incl. some plots?
+run_main_gridding: bool = True 
+run_anthro_supplemental_voc: bool = False
+run_openburning_supplemental_voc: bool = False # not yet implemented, for the future, see PR https://github.com/jkikstra/concordia/pull/14
+# run_anthro_supplemental_solidbiofuel: bool = False # not yet implemented, for the future
+
+
+# %% [markdown]
+# Import packages
+# %%
 import xarray as xr
 from pathlib import Path
-import matplotlib.pyplot as plt
-import pandas_indexing as pix
 import pandas as pd
-import numpy as np
-import os
-import dask
-from dask import delayed, compute
-from dask.diagnostics import ProgressBar
 from dask.utils import SerializableLock
-import seaborn as sns
-import cartopy.crs as ccrs
-import cartopy.feature as cfeature
 from tqdm import tqdm
 
-from concordia.cmip7 import utils as cmip7_utils
-
+from concordia.cmip7.CONSTANTS import return_marker_information, PROXY_YEARS, find_voc_data_variable_string
+from concordia.settings import Settings
 # %%
 lock = SerializableLock()
 
@@ -38,31 +59,42 @@ lock = SerializableLock()
 # ## setup
 
 # %%
-from concordia.cmip7.CONSTANTS import CONFIG, return_marker_information, PROXY_YEARS, CMIP_ERA, GASES_ESGF_CEDS_VOC, find_voc_data_variable_string
-import concordia.cmip7.utils_futureproxy_ceds_bb4cmip as uprox
+# Scenario information
+_, MODEL_SELECTION, SCENARIO_SELECTION, _ = return_marker_information(
+    v=SETTINGS_FILE,
+    m=marker_to_run
+)
+if GRIDDING_VERSION is None:
+    GRIDDING_VERSION = f"{marker_to_run}" # default to just the marker abbreviation if no versioning is provided
 
-VERSION = CONFIG
+# %%
+# Get the directory of the current file, works in both script and notebook contexts
+# When running through papermill, we need to find the original notebook location
 try:
-    # when running the script from a terminal or otherwise
-    cmip7_dir = Path(__file__).resolve()
-    settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
-except (FileNotFoundError, NameError):
-    try:
-        # when running the script from a terminal or otherwise
-        cmip7_dir = Path(__file__).resolve().parent
-        settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
-    except (FileNotFoundError, NameError):
-        try:
-            # Fallback for interactive/Jupyter mode, where 'file location' does not exist
-            cmip7_dir = Path().resolve()  # one up
-            settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
-        except (FileNotFoundError, NameError):
-            # if Path().resolve somehow goes to the root of this repository
-            cmip7_dir = Path().resolve() / "notebooks" / "cmip7"  # one up
-            settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+    # Try to get __file__ (works when running as script)
+    HERE = Path(__file__).parent
+except NameError:
+    # When running in notebook/papermill, use a more robust approach
+    # Find the concordia repository root and navigate to notebooks/cmip7
+    current_path = Path.cwd()
+    
+    # Look for the concordia root directory (contains pyproject.toml)
+    concordia_root = None
+    for parent in [current_path] + list(current_path.parents):
+        if (parent / "pyproject.toml").exists() and (parent / "src" / "concordia").exists():
+            concordia_root = parent
+            break
+    
+    if concordia_root is None:
+        raise RuntimeError("Could not find concordia repository root")
+    
+    HERE = concordia_root / "notebooks" / "cmip7"
 
-# %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
-marker_to_run: str = "H" # still run this for VLLO
+settings = Settings.from_config(version=GRIDDING_VERSION,
+                                local_config_path=Path(HERE,
+                                                       SETTINGS_FILE))
+
+settings.base_year
 
 # %%
 # Scenario information
@@ -77,7 +109,7 @@ grid_file_location = settings.gridding_path
 # ceds_data_location = Path(grid_file_location, "ESGF", "CEDS", "CMIP7_anthro")
 # ceds_air_data_location = Path(grid_file_location, "ESGF", "CEDS", "CMIP7_AIR")
 ceds_data_location = Path(grid_file_location, "esgf", "ceds", "CMIP7_anthro")
-ceds_data_location_voc = Path("C:/Users/kikstra/Downloads/temp_VOC")
+ceds_data_location_voc = Path(grid_file_location, "esgf", "ceds", "CMIP7_anthro_VOC")
 # ceds_air_data_location = Path(grid_file_location, "ESGF", "CEDS", "CMIP7_AIR") # AIR should not be different as there is no border treatment in our downscaling 
 
 # %%
@@ -92,15 +124,16 @@ ceds_data_location_voc = Path("C:/Users/kikstra/Downloads/temp_VOC")
 
 # standard:
 gridded_data_location = settings.out_path / HARMONIZATION_VERSION
-weighted_data_location = settings.out_path / HARMONIZATION_VERSION / "weighted"
+weighted_data_location = settings.out_path / HARMONIZATION_VERSION / "weighted" # TODO: consider overwriting the old/original file instead. 
 weighted_data_location.mkdir(parents=True, exist_ok=True)
-# # late-inplace-fix:
-# gridded_data_location = settings.out_path / HARMONIZATION_VERSION / "weighted" / "final"
-# weighted_data_location = settings.out_path / HARMONIZATION_VERSION / "weighted" / "final"
 
 # %%
 
 years = [year for year in PROXY_YEARS if year >= settings.base_year]
+
+from concordia.cmip7.utils import SECTOR_ORDERING_GAS
+
+print(SECTOR_ORDERING_GAS['CO2_em_anthro'])
 
 sector_dict = {
     0: "Agriculture",
