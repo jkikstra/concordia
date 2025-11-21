@@ -5,12 +5,14 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import numpy as np
 import xarray as xr
+from pathlib import Path
 
 # %%
 # functions
 
+# note: # `cell_area: xr.DataArray | None = None` (PEP 604, may require Python 3.10+); alternative would be cell_area: Optional[xr.DataArray] = None; along which we need from typing import Optional
 # From a grid to global anual totals
-def ds_to_annual_emissions_total(gridded_data, var_name, cell_area, keep_sectors=True, sum_dims: list[str] | None = ["lat", "lon"]):
+def ds_to_annual_emissions_total(gridded_data, var_name, cell_area: xr.DataArray | None = None, keep_sectors=True, sum_dims: list[str] | None = ["lat", "lon"]):
     """
     Convert gridded emissions in kg/m2/s to Mt/year.
     
@@ -23,6 +25,19 @@ def ds_to_annual_emissions_total(gridded_data, var_name, cell_area, keep_sectors
     Returns:
     - xr.DataArray of Mt/year, shape (year,) or (sector, year)
     """
+    if cell_area is None:
+
+        from concordia.settings import Settings
+        from concordia.cmip7.CONSTANTS import CONFIG
+        HERE = Path(__file__).parent.parent.parent.parent / "notebooks" / "cmip7"
+        dummy_settings = Settings.from_config(local_config_path=Path(HERE,
+                                                            CONFIG),
+                                                            version=None)
+        
+        areacella = xr.open_dataset(Path(dummy_settings.gridding_path, 
+                             "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc"))
+        cell_area = areacella["areacella"]
+
     da = gridded_data[var_name]
 
     # obtain the seconds in each month for which data is available

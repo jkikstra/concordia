@@ -390,7 +390,7 @@ def ds_attrs(name, model, scenario, version, date):
 
     extra_attrs = dict(
         source_version=version,
-        source_id=f"{DS_ATTRS['institution']}-{model}-{scenario}".replace(" ", "-"),
+        source_id=f"{DS_ATTRS['institution']}-{model}-{scenario}".replace(" ", "-"), # TODO: change to expected scenario naming
         variable_id=name,
         creation_date=date,
         title=title,
