@@ -21,27 +21,17 @@
 import xarray as xr
 from pathlib import Path
 import matplotlib.pyplot as plt
-import pandas_indexing as pix
-import pandas as pd
 import numpy as np
 import os
-import dask
-from dask import delayed, compute
-from dask import config as dask_config
-from dask.diagnostics import ProgressBar
 from dask.utils import SerializableLock
-from typing import Optional
-import seaborn as sns
 
 from tqdm import tqdm
 
-from concordia.cmip7 import utils as cmip7_utils
-from concordia.settings import Settings
 import concordia.cmip7.utils_futureproxy_ceds_bb4cmip as uprox
 from concordia.cmip7.utils_futureproxy_ceds_bb4cmip import _normalize_time_slice
 
 # %%
-from concordia.cmip7.CONSTANTS import GASES, GASES_ESGF_BB4CMIP_VOC, GASES_ESGF_BB4CMIP, CONFIG, PROXY_YEARS
+from concordia.cmip7.CONSTANTS import GASES_ESGF_BB4CMIP_VOC, CONFIG, PROXY_YEARS
 
 # %%
 VERSION = CONFIG
@@ -89,7 +79,7 @@ new_proxies_location = settings.proxy_path
 # ensure output directory exists
 new_proxies_location.mkdir(parents=True, exist_ok=True)
 
-scenario_years = [2022, 2023, 2024, 2025, 2030, 2035, 2040, 2045, 2050, 2055, 2060, 2065, 2070, 2075, 2080, 2085, 2090, 2095, 2100]
+scenario_years = PROXY_YEARS
 
 
 # %%
