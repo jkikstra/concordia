@@ -415,7 +415,7 @@ for month_idx in range(12):
 
     sector_data = {}
 
-    for sector in sectors:
+    for sector in sectors_new:
         bulk = bulk_average[sector]["emissions"].isel(month=month_idx).fillna(0).compute()
         
         speciated_fields = [
