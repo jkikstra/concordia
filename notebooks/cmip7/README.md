@@ -129,7 +129,7 @@ After that, prepare the proxy files for future years:
 
 **TODO:**
 - [ ] clean up post-processing scripts, especially data formatting (see 0-3-0 as starting point, "workflow-postprocess_fix-naming-and-metadata-0-3-0.py" for tools)
-- [ ] ensure correct gridding for VOC-speciation
+- [ ] ensure correct gridding for VOC
 - [ ] Make `workflow-postprocess_add-missing-years-cmip7-ceds-esgf.py`: makes the year 2022 for ceds; just copy the 2022 files from CEDS, and add them to our scenario files in the same format as our scenario files.
 - [ ] Make `workflow-postprocess_add-missing-years-cmip7-bb4cmip7-esgf.py`: makes the year 2022 for bb4cmip7; consider whether this also needs some "pattern-harmonisation" to make the move from 2021 to 2022 more smooth, as spatial patterns will be different; but fire location is of course uncertain
 
