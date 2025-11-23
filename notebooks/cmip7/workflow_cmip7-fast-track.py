@@ -44,7 +44,7 @@ DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["CO2", "Sulf
 run_main: bool = True # not currently used; suggestion/thinking to use in future for "default" (all) workflow, incl. some plots?
 run_main_gridding: bool = True # if false, we'll stop at only running the downscaling of main
 run_anthro_supplemental_voc: bool = False
-run_openburning_supplemental_voc: bool = False # not yet implemented, for the future, see PR https://github.com/jkikstra/concordia/pull/14
+run_openburning_supplemental_voc: bool = False
 # run_anthro_supplemental_solidbiofuel: bool = False # not yet implemented, for the future
 
 # %%
@@ -693,8 +693,9 @@ workflow = WorkflowDriver(
 
 # %%
 # save workflow info in easy-to-vet packets
-workflow.save_info(path = Path(version_path, "workflow_driver_data"),
-                   prefix=settings.version)
+if run_main:
+    workflow.save_info(path = Path(version_path, "workflow_driver_data"),
+                       prefix=settings.version)
 
 # %%
 # check regionmapping and scenarios
@@ -734,75 +735,78 @@ assert_strings_covered(reg_model, reg_mapped)
 
 
 # %%
-downscaled = workflow.harmonize_and_downscale() # For a 1 scenario, this takes about 50 seconds on Jarmo's DELL laptop.
+if run_main:
+    downscaled = workflow.harmonize_and_downscale() # For a 1 scenario, this takes about 50 seconds on Jarmo's DELL laptop.
 
 # %% [markdown]
 # ### Export harmonized scenarios
 
 # %%
-print("Outputs will be placed in " + str(version_path.resolve()))
-data = (
-    workflow.harmonized_data.add_totals()
-    .to_iamc(settings.variable_template, hist_scenario="Synthetic (CEDS/GFED/Global)")
-    # .pipe(rename_alkalinity_addition)
-    .rename_axis(index=str.capitalize)
-)
-print("File: " + f"harmonization-{settings.version}.csv")
-data.to_csv(version_path / f"harmonization-{settings.version}.csv")
+if run_main:
+    print("Outputs will be placed in " + str(version_path.resolve()))
+    data = (
+        workflow.harmonized_data.add_totals()
+        .to_iamc(settings.variable_template, hist_scenario="Synthetic (CEDS/GFED/Global)")
+        # .pipe(rename_alkalinity_addition)
+        .rename_axis(index=str.capitalize)
+    )
+    print("File: " + f"harmonization-{settings.version}.csv")
+    data.to_csv(version_path / f"harmonization-{settings.version}.csv")
 
 # %% [markdown]
 # ### Export downscaled scenarios
 
 # %%
-# TODO: (feature) create a similar exporter to the Harmonized class for Downscaled which combines historic and downscaled data (maybe also harmonized?) and translates to iamc
-
-workflow.downscaled.data.to_csv(
-    version_path / f"downscaled-only-{settings.version}.csv"
-)
-print(
-    "Countries covered (" + str(len(workflow.downscaled.data.loc[~isin(region="World")].reset_index().country.unique())) + "):"
-)
-print(workflow.downscaled.data.loc[~isin(region="World")].reset_index().country.unique())
-
-# %%
-# Get unique countries from each dataframe
-# what countries do we have in each data set?
-countries_with_gdp_data = GDP_per_pathway.pix.unique("country") # as Index
-countries_with_hist_data = hist.pix.unique("country") # as Index
-
-gdp_countries = set(countries_with_gdp_data)
-hist_countries = set(countries_with_hist_data)
-
-# Countries in hist but not in GDP_per_pathway
-in_hist_not_gdp = hist_countries - gdp_countries
-print("Countries in hist but not in GDP_per_pathway:")
-print(sorted(in_hist_not_gdp))
-
-# Countries in GDP_per_pathway but not in hist
-in_gdp_not_hist = gdp_countries - hist_countries
-print("\nCountries in GDP_per_pathway but not in hist:")
-print(sorted(in_gdp_not_hist))
-
-downscaled_countries = set(workflow.downscaled.data.reset_index().country.unique())
-print("\nCountries in GDP but not in downscaled countries:")
-print(list(gdp_countries - downscaled_countries))
-
-# Display counts for reference
-print(f"\nCountries in hist: {len(hist_countries)}")
-print(f"Countries in GDP_per_pathway: {len(gdp_countries)}")
-print(f"Countries in common: {len(hist_countries & gdp_countries)}")
-print(f"Countries downscaled: {len(downscaled_countries)}")
+if run_main:
+    workflow.downscaled.data.to_csv(
+        version_path / f"downscaled-only-{settings.version}.csv"
+    )
+    print(
+        "Countries covered (" + str(len(workflow.downscaled.data.loc[~isin(region="World")].reset_index().country.unique())) + "):"
+    )
+    print(workflow.downscaled.data.loc[~isin(region="World")].reset_index().country.unique())
 
 # %%
-# Total missing data: countries in hist but not in downscaled
-in_hist_not_downscaled = hist_countries - downscaled_countries
-print("Countries in hist but not in downscaled:")
-print(sorted(in_hist_not_downscaled))
+if run_main:
+    # Get unique countries from each dataframe
+    # what countries do we have in each data set?
+    countries_with_gdp_data = GDP_per_pathway.pix.unique("country") # as Index
+    countries_with_hist_data = hist.pix.unique("country") # as Index
 
-missing_emissions = hist.loc[isin(country=list(in_hist_not_downscaled))].groupby(["gas","sector","unit"]).sum().loc[isin(sector='Waste'),2023]
-global_emissions = hist.loc[isin(country='World')].groupby(["gas","sector","unit"]).sum().loc[isin(sector='Waste'),2023]
-print("In %, what share of global emissions is missing because some smaller territories/countries are not downscaled?")
-missing_emissions / global_emissions * 100 # percentage (%) of global emissions that would be missing through these countries
+    gdp_countries = set(countries_with_gdp_data)
+    hist_countries = set(countries_with_hist_data)
+
+    # Countries in hist but not in GDP_per_pathway
+    in_hist_not_gdp = hist_countries - gdp_countries
+    print("Countries in hist but not in GDP_per_pathway:")
+    print(sorted(in_hist_not_gdp))
+
+    # Countries in GDP_per_pathway but not in hist
+    in_gdp_not_hist = gdp_countries - hist_countries
+    print("\nCountries in GDP_per_pathway but not in hist:")
+    print(sorted(in_gdp_not_hist))
+
+    downscaled_countries = set(workflow.downscaled.data.reset_index().country.unique())
+    print("\nCountries in GDP but not in downscaled countries:")
+    print(list(gdp_countries - downscaled_countries))
+
+    # Display counts for reference
+    print(f"\nCountries in hist: {len(hist_countries)}")
+    print(f"Countries in GDP_per_pathway: {len(gdp_countries)}")
+    print(f"Countries in common: {len(hist_countries & gdp_countries)}")
+    print(f"Countries downscaled: {len(downscaled_countries)}")
+
+# %%
+if run_main:
+    # Total missing data: countries in hist but not in downscaled
+    in_hist_not_downscaled = hist_countries - downscaled_countries
+    print("Countries in hist but not in downscaled:")
+    print(sorted(in_hist_not_downscaled))
+
+    missing_emissions = hist.loc[isin(country=list(in_hist_not_downscaled))].groupby(["gas","sector","unit"]).sum().loc[isin(sector='Waste'),2023]
+    global_emissions = hist.loc[isin(country='World')].groupby(["gas","sector","unit"]).sum().loc[isin(sector='Waste'),2023]
+    print("In %, what share of global emissions is missing because some smaller territories/countries are not downscaled?")
+    missing_emissions / global_emissions * 100 # percentage (%) of global emissions that would be missing through these countries
 
 # %% [markdown]
 # ## Alternative 1) Run full processing and create netcdf files
@@ -845,29 +849,49 @@ lock = SerializableLock()
 
 # %%
 # Load VOC data
-from concordia.cmip7.CONSTANTS import GASES_ESGF_CEDS_VOC
+from concordia.cmip7.CONSTANTS import GASES_ESGF_CEDS_VOC, GASES_ESGF_BB4CMIP_VOC
 import xarray as xr
 
-def load_voc_bulk():
+def load_voc_bulk(type="anthro"):
 
     # load VOC (bulk) scenario file
+    if type=="anthro":
 
-    # anthro
-    voc_anthro = xr.open_dataset(
-        # update the file template with:
-        # - discussion on GitHub:  https://github.com/CMIP-Data-Request/Harmonised-Public-Consultation/issues/108
-        # - proper netCDF handling (see Zeb's 0-3-0 fixes)
-        settings.out_path / GRIDDING_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution_id}-{scenario}-{version}_{grid_label}_{start_date}-{end_date}.nc".format(
-        name="VOC-em-anthro",
-        scenario=f"scen-{marker_to_run.lower()}",
-        **cmip7_utils.DS_ATTRS | {"version": VERSION_ESGF}
-    ),
-    chunks={},
-    lock=lock
-    )
-    voc_anthro
+        # anthro
+        voc_anthro = xr.open_dataset(
+            # update the file template with:
+            # - discussion on GitHub:  https://github.com/CMIP-Data-Request/Harmonised-Public-Consultation/issues/108
+            # - proper netCDF handling (see Zeb's 0-3-0 fixes)
+            settings.out_path / GRIDDING_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution_id}-{scenario}-{version}_{grid_label}_{start_date}-{end_date}.nc".format(
+            name="VOC-em-anthro",
+            scenario=f"scen-{marker_to_run.lower()}",
+            **cmip7_utils.DS_ATTRS | {"version": VERSION_ESGF}
+        ),
+        chunks={},
+        lock=lock
+        )
 
-    return voc_anthro
+        return voc_anthro
+    
+    if type=="openburning":
+
+        # openburning
+        voc_openburning = xr.open_dataset(
+            # update the file template with:
+            # - discussion on GitHub:  https://github.com/CMIP-Data-Request/Harmonised-Public-Consultation/issues/108
+            # - proper netCDF handling (see Zeb's 0-3-0 fixes)
+            # settings.out_path / GRIDDING_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution_id}-{scenario}-{version}_{grid_label}_{start_date}-{end_date}.nc".format( # actual
+            settings.out_path / GRIDDING_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution_id}-{scenario}_{grid_label}_{start_date}-{end_date}.nc".format( # remove this after tests
+            name="VOC-em-openburning",
+            scenario=f"scen-{marker_to_run.lower()}", # follow scenarioMIP paper (e.g., esm-scen7-h)
+            **cmip7_utils.DS_ATTRS | {"version": VERSION_ESGF}
+        ),
+        chunks={},
+        lock=lock
+        )
+
+        return voc_openburning
+
 
 
 # %%
@@ -884,8 +908,10 @@ def load_voc_bulk():
 from dask.diagnostics import ProgressBar
 
 PROXY_TIME_RANGE_VOC_CEDS = "2023"
+PROXY_TIME_RANGE_VOC_BB4CMIP = "2014-23"
 
-voc_spec_ratios_location = settings.proxy_path / "VOC_speciation"
+voc_spec_ratios_location_anthro = settings.proxy_path / "VOC_speciation"
+voc_spec_ratios_location_openburning = settings.proxy_path / "NMVOC_speciation"
 
 # loop through all CEDS em-anthro VOC-species from input4MIP files
 # 1. load share data
@@ -896,8 +922,115 @@ voc_spec_ratios_location = settings.proxy_path / "VOC_speciation"
 #   ii. assign sector value
 # 5. Update/set other attributes
 
+# %%
+if run_openburning_supplemental_voc:
+    voc_openburning = load_voc_bulk(type="openburning")
+
+    for v in [GASES_ESGF_BB4CMIP_VOC[0]]:
+        print(f'Reading in shares of {v}')
+        # import file
+        voc_share = xr.open_dataset(
+            # using VOC shares as produced in `notebooks\cmip7\prep_proxyfuture-openburning-from-dres-cmip7-esgf-VOCspeciation.py`
+            voc_spec_ratios_location_openburning / f"{v}_other_voc_em_speciated_NMVOC_openburning_{PROXY_TIME_RANGE_VOC_BB4CMIP}.nc",
+            engine="netcdf4",
+            chunks={},
+            lock=lock
+        )
+
+        # create VOC_em speciated
+        # approach using xarray's alignment capabilities
+        
+        # Create a mapping from voc_anthro sectors to voc_share sectors
+        sector_mapping = {
+            'Agricultural Waste Burning': 'AWB',
+            'Peat Burning': 'PEAT',
+            'Grassland Burning': 'GRSB',
+            'Forest Burning': 'FRTB'
+        }
+
+        # Rename sectors in voc_anthro to match voc_share sector names where possible
+        openburning_to_share_sectors = {v: k for k, v in sector_mapping.items() if v in voc_share.sector.values and k in voc_openburning.sector.values}
+
+        # Initialize result with same structure as voc_anthro
+        voc_spec = xr.Dataset(
+            coords=voc_openburning.coords,
+            attrs=voc_openburning.attrs.copy()
+        )
+        
+        # Initialize the data variable with zeros
+        voc_spec_data = xr.zeros_like(voc_openburning["VOC_em_openburning"])
+
+        # Perform multiplication for matching sectors
+        # print(f'Calculations of emissions of {v}')
+        for share_sector, openburning_sector in openburning_to_share_sectors.items():
+            # Select data from both datasets for matching sectors
+            voc_bulk = voc_openburning["VOC_em_openburning"].sel(sector=openburning_sector)
+            
+            # Get emissions share for this sector and gas
+            share_data = voc_share["emissions_share"].sel(
+                sector=share_sector,
+                gas=voc_share.gas[0]  # Take first gas
+            )
+            
+            # Convert time coordinates to year/month for alignment
+            years = voc_bulk.time.dt.year
+            months = voc_bulk.time.dt.month
+            
+            # Find the index of the sector in the coordinate array
+            sector_idx = list(voc_openburning.sector.values).index(openburning_sector)
+            
+            # Perform multiplication for each time step
+            for time_idx, time_val in enumerate(voc_bulk.time.values):
+                year = years[time_idx].values
+                month = months[time_idx].values
+                
+                # Check if this year/month exists in voc_share
+                if year in share_data.year.values and month in share_data.month.values:
+                    # Get the share data for this specific year/month
+                    share_slice = share_data.sel(year=year, month=month)
+                    
+                    # Get the bulk VOC data for this time step
+                    voc_slice = voc_bulk.isel(time=time_idx)
+                    
+                    # Multiply and assign to result
+                    voc_spec_data[time_idx, :, :, sector_idx] = (voc_slice * share_slice).values
+
+        # Add the computed data to the result dataset
+        gas_variable_name = voc_share.gas.values[0]
+
+        voc_spec[f"{gas_variable_name}"] = voc_spec_data
+        # TODO:
+        # - [ ] update long_name of data (follow CEDS long_name) 
+        # Add the bounds
+        voc_spec['lon_bnds'] = voc_openburning['lon_bnds']
+        voc_spec['time_bnds'] = voc_openburning['time_bnds']
+        voc_spec['lat_bnds'] = voc_openburning['lat_bnds']
+        
+        # Update attributes
+        voc_spec.attrs['variable_id'] = gas_variable_name
+        voc_spec.attrs['title'] = f"Speciated {gas_variable_name} emissions"
+
+        # save out
+        print(f'Writing out emissions of {v}')
+        outfile = settings.out_path / GRIDDING_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution_id}-{scenario}-{version}_{grid_label}_{start_date}-{end_date}.nc".format(
+            name=gas_variable_name.replace("_", "-"),
+            scenario=f"scen-{marker_to_run.lower()}",
+            **cmip7_utils.DS_ATTRS | {"version": VERSION_ESGF}
+        )
+
+        encoding = {
+            gas_variable_name: {
+                "zlib": True,
+                "complevel": 2
+            }
+        }
+        
+        with ProgressBar():
+            voc_spec.to_netcdf(outfile, mode="w", encoding=encoding, compute=True)
+
+# %% 
 if run_anthro_supplemental_voc:
-    voc_anthro = load_voc_bulk()
+    voc_anthro = load_voc_bulk(type="anthro")
     
     for v in GASES_ESGF_CEDS_VOC: # all take about ~6hours for 1 scenario; could consider making this part of the driver parameters
     # for v in [GASES_ESGF_CEDS_VOC[2]]: # only run one to test
@@ -905,14 +1038,15 @@ if run_anthro_supplemental_voc:
         print(f'Reading in shares of {v}')
         # import file 
         voc_share = xr.open_dataset(
-            voc_spec_ratios_location / f"{v}_{PROXY_TIME_RANGE_VOC_CEDS}.nc",
+            # using VOC shares as produced in `notebooks\cmip7\prep_proxyfuture-anthro-from-ceds-cmip7-esgf-VOCspeciation.py`
+            voc_spec_ratios_location_anthro / f"{v}_{PROXY_TIME_RANGE_VOC_CEDS}.nc",
             engine="netcdf4",
             chunks={},
             lock=lock
         )
 
         # create VOC_em speciated
-        # Alternative approach using xarray's alignment capabilities
+        # approach using xarray's alignment capabilities
         
         # Create a mapping from voc_anthro sectors to voc_share sectors
         sector_mapping = {

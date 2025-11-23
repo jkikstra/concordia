@@ -31,7 +31,31 @@ GASES_ESGF_CEDS_VOC = ["VOC01_alcohols_em_speciated_VOC_anthro",
                        "VOC24_acids_em_speciated_VOC_anthro",
                        "VOC25_other_voc_em_speciated_VOC_anthro"]
 
-GASES_ESGF_BB4CMIP_VOC = [] # TBD
+GASES_ESGF_BB4CMIP_VOC = ["C10H16",
+                          "C2H2",
+                          "C2H4", 
+                          "C2H4O", 
+                          "C2H5OH",
+                          "C2H6", 
+                          "C2H6S", 
+                          "C3H6", 
+                          "C3H6O", 
+                          "C3H8", 
+                          "C5H8", 
+                          "C6H6", 
+                          "C7H8", 
+                          "C8H10", 
+                          "CH2O", 
+                          "CH3COCHO", 
+                          "CH3COOH", 
+                          "CH3OH", 
+                          "HCN", 
+                          "HCOOH", 
+                          "HigherAlkanes", 
+                          "HigherAlkenes", 
+                          "HOCH2CHO", 
+                          "MEK", 
+                          "Toluenelump"]
 
 def find_voc_data_variable_string(voc_code, voc_list=GASES_ESGF_CEDS_VOC):
     matching = [s for s in voc_list if voc_code in s]
