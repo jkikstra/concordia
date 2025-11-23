@@ -118,13 +118,22 @@ def main():  # noqa: PLR0912
             if any(notebook.name.startswith(np) for np in notebook_prefixes):
 
                 parameters = get_notebook_parameters(notebook.name,
+                                                     
+                                                     # SCENARIO: Which marker to run
                                                      marker_to_run=marker,
+                                                     
+                                                     # WORKFLOW ELEMENTS: What elements of the workflow 
                                                      run_main=True, # argument not currently a used
                                                      run_main_gridding=True, # produce BC_*, ..., VOC_* .nc files (AIR, anthro, openburning)
-                                                     run_anthro_supplemental_voc=True, # produce VOC01, ..., VOC25 .nc files
-                                                     run_openburning_supplemental_voc=False, # not yet implemented; work in progress
+                                                     run_anthro_supplemental_voc=True, # produce VOC01, ..., VOC25 .nc files (anthro VOC speciation)
+                                                     run_openburning_supplemental_voc=True, # produce C2H2, ..., Toluenelump .nc files (openburning VOC speciation)
+                                                     
+                                                     # VERSIONING 
                                                      GRIDDING_VERSION=GRIDDING_VERSION,
+                                                     
+                                                     # SPECIES: specify if you only want to run a selected set of emissions species
                                                      DO_GRIDDING_ONLY_FOR_THESE_SPECIES=DO_GRIDDING_ONLY_FOR_THESE_SPECIES
+                                                     
                                                      #  ... add here other parameters that you might like to change
                                                      )
 

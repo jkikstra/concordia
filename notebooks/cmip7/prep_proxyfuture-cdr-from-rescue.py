@@ -460,10 +460,10 @@ def plot_maps_sectors(ds, sectors, ncols=3, year=2100, month=1, proj=ccrs.Robins
 # ## Check RESCUE proxy data
 
 # %%
-rescue_folder = Path("C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_testing/input/gridding/proxy_rasters")
+rescue_folder = Path("C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0_testing/input/gridding/iiasa/cdr/rescue")
 
 # %%
-rescue_ds = read_nc_file(f = "CDR_CO2.nc", 
+rescue_ds = read_nc_file(f = "CDR_CO2.nc",
                          loc = rescue_folder)
 
 # %%

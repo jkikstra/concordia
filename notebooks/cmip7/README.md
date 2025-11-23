@@ -1,6 +1,6 @@
-# CMIP7 workflow (fast-track)
+# CMIP7 workflow (fast-track) for emissions gridding
 
-*Last update: 2025-10-23*
+*Last update: 2025-11-23*
 
 This document describes how to produce a new version of emissions grids for the CMIP7 fast-track.
 
@@ -14,12 +14,12 @@ Input4MIPs website documentation is here: https://input4mips-cvs.readthedocs.io/
 
 Input4MIPs version 0-3-0 GitHub Discussion is here: https://docs.google.com/document/d/1E7Wv2APCRY-LRfI6II9pkwtfySGvRm2zPE2oyYP6mak/edit?tab=t.0
 
-## Starting point
+## Starting point for running the gridding workflow
 It is assumed that you have a pre-harmonised scenario. 
 There is harmonisation functionality in this repository. While this was used for the RESCUE project, it is not used in this project, as the scenarios are already harmonised in the `iiasa/emissions_harmonization_historical` repository.
 
-## Naming logic (for the notebooks folder) for cmip7:
-**Note: keeping rescue filenames untouched, until we speak with Matt?** 
+## Naming logic (for the notebooks folder) for CMIP7:
+**Note: the filenames of the RESCUE project (finished before CMIP7) remain unchanged for now and thus do not follow the structure we use for CMIP7.** 
 
 __File naming structure__
 - {project-name} / "{type-of-file}_{description-of-purpose-or-action}_{version}"
@@ -43,9 +43,22 @@ __Helper files__
 
 ## Current Main workflow
 
-**TODO:**
-- [ ] Clarify the use of the work-in-progress `scripts\cmip7\driver_workflow_cmip7-fast-track.py` to drive the scripts in this notebook 
+There is one **main driver script**: 
 
+- `scripts\cmip7\driver_workflow_cmip7-fast-track.py`, which currently includes:
+  - run main (harmonization and) gridding workflow for (up to) the main 10 emissions species
+  - run supplemental anthro VOC speciation gridding workflow
+  - run supplemental openburning VOC speciation 
+
+
+Steps that are available in separate scripts but **still need to be integrated** in the driver script:
+
+- post-processing steps 
+- plotting steps 
+
+Steps that are available in separate scripts and _would ideally be integrated, but won't be integrated on the current timeline_:
+
+- proxy generation files
 
 
 ### Configuration
@@ -70,8 +83,8 @@ Make sure that your data folder has the following:
       * `CMIP7_anthro`: raw CEDS other anthropogenic emissions
   * `iiasa`
     * `cdr`
-      * `rescue`: cdr proxies constructed in the RESCUE project, we only use the `CDR`
-      * `pratama`: enhanced weathering proxy provided by Yoga Pratama (not yet provided)
+      * `rescue`: cdr proxies constructed in the RESCUE project, we only use the `CDR_CO2.nc` file
+      * `pratama_joshi`: enhanced weathering proxy provided by Yoga Pratama and Siddharth Joshi
   * (`proxy_rasters`): will be created during the "Pre-processing" steps, where the proxies will come that will be used for CMIP7 downscaling
   * `example_files`: one example file from the RESCUE project, from which we read the desired resolution
   * `iso_mask`: files from the RESCUE project to create an appropriate iso mask and raster for the downscaling
@@ -81,7 +94,7 @@ Make sure that your data folder has the following:
 * under `history_path`, you need:
   * a file like `cmip7_history_countrylevel_251024.csv` produced in [emissions_harmonization_historical](https://github.com/iiasa/emissions_harmonization_historical), as [COUNTRY_LEVEL_HISTORY](https://github.com/iiasa/emissions_harmonization_historical/blob/28e6d69991205b3a824936538ec62358480d80ed/src/emissions_harmonization_historical/constants_5000.py#L126)
 * under `regionmappings_path`, you need: 
-  * a (set of) file(s) indicating which country belongs to which model-region. This is defined in [common-definitions](https://github.com/IAMconsortium/common-definitions/tree/main/definitions/region/native_regions) and produced in [emissions_harmonization_historical](https://github.com/iiasa/emissions_harmonization_historical/blob/main/notebooks/5010_create-region-mapping.py)
+  * a (set of) file(s) indicating which country belongs to which model-region. This is defined in [common-definitions](https://github.com/IAMconsortium/common-definitions/tree/main/definitions/region/native_regions) and produced in [emissions_harmonization_historical](https://github.com/iiasa/emissions_harmonization_historical/blob/main/notebooks/5010_create-region-mapping.py) - with a few local additions for a small subset of minor territories where not yet present in common-definitions.  
 * under `scenario_path`, you need:
   * the IAM scenario(s) to downscale, as produced in [emissions_harmonization_historical](https://github.com/iiasa/emissions_harmonization_historical/blob/28e6d69991205b3a824936538ec62358480d80ed/scripts/extract-emissions-results.py#L30)
   * `ssp_basic_drivers_release_3.2.beta_full_gdp.csv`: updated country-level GDP projections by SSP
@@ -98,19 +111,13 @@ After that, prepare the proxy files for future years:
 1. `prep_proxyfuture-anthro-from-ceds-cmip7-esgf.py`: prepares proxies for (land-based) anthropogenic emissions, shipping, and aircraft
 1. `prep_proxyfuture-openburning-from-dres-cmip7-esgf.py`: prepares proxies for openburning emissions
 1. `prep_proxyfuture-cdr-from-rescue.py`: prepares proxies for CDR
-1. `prep_proxyfuture-anthro-supplemental-VOCspeciation-from-ceds-cmip7-esgf.py`: should loop over all VOC antro data, filter only 2023, make them into sectors, calculate the total, and assign 'percentages' as values
-
-**TODO:**
-- [ ] Make `prep_proxyfuture-openburning-supplemental-VOCspeciation-from-dres-cmip7-esgf.py`: prepare input for VOC speciation workflow for openburning
-
+1. `prep_proxyfuture-anthro-supplemental-VOCspeciation-from-ceds-cmip7-esgf.py`: loops over all anthro VOC speciated data, filter only 2023, make them into sectors, calculate the total, and assign 'percentages' as values for our share-based-proxy files per sector.
+1. `prep_proxyfuture-openburning-from-dres-cmip7-esgf-VOCspeciation.py`: loops over all openburning VOC speciated data, calculates the means per gridcell for 2014-2023, sums and calculates the shares to assign 'percentages' as values for our share-based-proxy files per sector.
 
 
 ### Workflow
 
-1. `workflow-cmip7-fast-track.py`: includes main species antro, anthro_AIR, openburning + VOC speciation anthro
-
-**TODO:**
-- [ ] update `workflow-cmip7-fast-track.py` to include supplemental VOC speciated data for biomass burning
+1. `workflow-cmip7-fast-track.py`: includes main species anthro, anthro_AIR, openburning, VOC_speciated_anthro, VOC_speciated_openburning
 
 
 ### Post-processing
@@ -122,6 +129,7 @@ After that, prepare the proxy files for future years:
 
 **TODO:**
 - [ ] clean up post-processing scripts, especially data formatting (see 0-3-0 as starting point, "workflow-postprocess_fix-naming-and-metadata-0-3-0.py" for tools)
+- [ ] ensure correct gridding for VOC-speciation
 - [ ] Make `workflow-postprocess_add-missing-years-cmip7-ceds-esgf.py`: makes the year 2022 for ceds; just copy the 2022 files from CEDS, and add them to our scenario files in the same format as our scenario files.
 - [ ] Make `workflow-postprocess_add-missing-years-cmip7-bb4cmip7-esgf.py`: makes the year 2022 for bb4cmip7; consider whether this also needs some "pattern-harmonisation" to make the move from 2021 to 2022 more smooth, as spatial patterns will be different; but fire location is of course uncertain
 

@@ -928,8 +928,9 @@ if run_openburning_supplemental_voc:
 
     for v in [GASES_ESGF_BB4CMIP_VOC[0]]:
         print(f'Reading in shares of {v}')
-        # import file 
+        # import file
         voc_share = xr.open_dataset(
+            # using VOC shares as produced in `notebooks\cmip7\prep_proxyfuture-openburning-from-dres-cmip7-esgf-VOCspeciation.py`
             voc_spec_ratios_location_openburning / f"{v}_other_voc_em_speciated_NMVOC_openburning_{PROXY_TIME_RANGE_VOC_BB4CMIP}.nc",
             engine="netcdf4",
             chunks={},
@@ -1037,6 +1038,7 @@ if run_anthro_supplemental_voc:
         print(f'Reading in shares of {v}')
         # import file 
         voc_share = xr.open_dataset(
+            # using VOC shares as produced in `notebooks\cmip7\prep_proxyfuture-anthro-from-ceds-cmip7-esgf-VOCspeciation.py`
             voc_spec_ratios_location_anthro / f"{v}_{PROXY_TIME_RANGE_VOC_CEDS}.nc",
             engine="netcdf4",
             chunks={},
