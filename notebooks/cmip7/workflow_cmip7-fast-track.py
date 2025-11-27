@@ -41,10 +41,10 @@ GRIDDING_VERSION: str | None = None
 DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["CO2", "Sulfur"]
 
 # Which parts to run
-run_main: bool = True # not currently used; suggestion/thinking to use in future for "default" (all) workflow, incl. some plots?
-run_main_gridding: bool = True # if false, we'll stop at only running the downscaling of main
+run_main: bool = False # skips downscaling and the saving out of data of the main workflow; can still run supplemental workflows with this set to False
+run_main_gridding: bool = False # if false, we'll not run the main gridding workflow
 run_anthro_supplemental_voc: bool = False
-run_openburning_supplemental_voc: bool = False
+run_openburning_supplemental_voc: bool = True
 # run_anthro_supplemental_solidbiofuel: bool = False # not yet implemented, for the future
 
 # %%
@@ -917,7 +917,7 @@ voc_spec_ratios_location_openburning = settings.proxy_path / "NMVOC_speciation"
 # 1. load share data
 # 2. create an "empty"/"template" dataset as a copy of voc_anthro
 # 3. fill with zeroes
-# 4. for each sector, 
+# 4. for each sector,
 #   i. do multiplication
 #   ii. assign sector value
 # 5. Update/set other attributes
@@ -926,7 +926,7 @@ voc_spec_ratios_location_openburning = settings.proxy_path / "NMVOC_speciation"
 if run_openburning_supplemental_voc:
     voc_openburning = load_voc_bulk(type="openburning")
 
-    for v in [GASES_ESGF_BB4CMIP_VOC[0]]:
+    for v in GASES_ESGF_BB4CMIP_VOC:
         print(f'Reading in shares of {v}')
         # import file
         voc_share = xr.open_dataset(
@@ -969,7 +969,7 @@ if run_openburning_supplemental_voc:
             # Get emissions share for this sector and gas
             share_data = voc_share["emissions_share"].sel(
                 sector=share_sector,
-                gas=voc_share.gas[0]  # Take first gas
+                gas=voc_share.gas[0]  # Take first (and only) gas
             )
             
             # Convert time coordinates to year/month for alignment
