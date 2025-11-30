@@ -176,7 +176,16 @@ class WorkflowDriver:
             cell_area=self.indexraster_country.cell_area,
         )
 
-        return {
+        # return {
+        #     output_variable: ConcordiaProxy.from_variables(
+        #         self.variabledefs.for_proxy(output_variable), # does this go wrong when e.g. SO2/Sulfur
+        #         context,
+        #         self.settings.proxy_path,
+        #     )
+        #     for output_variable in self.variabledefs.proxies # e.g. BC_em_openburning
+        # }
+
+        proxies_dict = {
             output_variable: ConcordiaProxy.from_variables(
                 self.variabledefs.for_proxy(output_variable),
                 context,
@@ -184,6 +193,14 @@ class WorkflowDriver:
             )
             for output_variable in self.variabledefs.proxies
         }
+        
+        # Rename Sulfur to SO2 in proxy data if output_variable contains SO2
+        for output_variable, proxy in proxies_dict.items():
+            if 'SO2' in output_variable and 'Sulfur' in proxy.data.gas.values:
+                # Use a direct coordinate rename that preserves order
+                proxy.data.coords['gas'] = proxy.data.coords['gas'].astype(str).str.replace('Sulfur', 'SO2', regex=False)
+        
+        return proxies_dict
 
     def country_groups(
         self, variabledefs: VariableDefinitions | None = None
@@ -249,6 +266,17 @@ class WorkflowDriver:
                 ]
             )
         ]
+
+        # TODO:
+        # - [ ] add renaming of Sulfur to SO2 (in the proxy) until we've replaced that in the proxy generation 
+        # - [ ] code some exception/error that catches when the variable weight is zero; as this is a common issue and the debugging messages later are nontrivial
+
+        # Rename Sulfur to SO2 in variable_weights if SO2 is in regional_proxies
+        if variable_weights and any('SO2' in str(var) for var in regional_proxies):
+            variable_weights = [
+                w.rename(index={'Sulfur': 'SO2'}, level='gas') if 'Sulfur' in w.index.get_level_values('gas') else w
+                for w in variable_weights
+            ]
 
         if not variable_weights:
             # No proxies, so all variables fall into one group with all countries
@@ -501,8 +529,22 @@ class WorkflowDriver:
             )
         ).rename(index=lambda s: s.rsplit(" ", 1)[0] + " s-1", level="unit")
 
+        
         for model, scenario in tabular.pix.unique(["model", "scenario"]):
             yield proxy.grid(tabular.loc[isin(model=model, scenario=scenario)])
+            # Around line 505, add debugging
+            # print(f"Processing {output_variable}: model={model}, scenario={scenario}")
+            # data_slice = tabular.loc[isin(model=model, scenario=scenario)]
+            # print(f"  Data shape: {data_slice.shape}, non-null values: {data_slice.notna().sum().sum()}")
+            # print(f"  Proxy data: min={proxy.data.min().values}, max={proxy.data.max().values}")
+
+            # try:
+            #     yield proxy.grid(data_slice)
+            # except ValueError as e:
+            #     if "must supply at least one object to concatenate" in str(e):
+            #         print(f"  WARNING: No valid gridded data for {output_variable}. Skipping.")
+            #     else:
+            #         raise
 
     def grid(
         self,

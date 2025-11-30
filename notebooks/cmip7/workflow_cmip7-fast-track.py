@@ -70,7 +70,7 @@ import pycountry
 from pandas_indexing import isin, ismatch, assignlevel, extractlevel
 from pandas_indexing.units import set_openscm_registry_as_default
 from ptolemy.raster import IndexRaster
-# import concordia._patches_ptolemy
+import concordia._patches_ptolemy # seemingly not used, not used in this script, but sets fill_value for xarray_reduce to 0 
 
 from aneris import logger
 from concordia import (
@@ -597,7 +597,7 @@ hist_sectors = hist.index.get_level_values("sector").unique()
 iam_sectors = iam_df.index.get_level_values("sector").unique()
 
 missing = set(iam_sectors) - set(hist_sectors)
-print(missing)  # CDR sectors 
+print(f"Separately considering CDR sectors {missing}")  # CDR sectors
 
 expected_sectors_missing_cdr = {
     'Enhanced Weathering', 'BECCS', 'Direct Air Capture', 'Ocean', 'Other CDR'
@@ -669,9 +669,11 @@ workflow = WorkflowDriver(
     # model
     # iam_df, # model
     # iam_df.loc[:, iam_df.columns.intersection(GDP_per_pathway.columns.tolist())], # model ; until GDP is interpolated, do only for years in GDP_per_pathway.columns.tolist()
-    iam_df, 
+    # iam_df,
+    iam_df.rename(index=lambda v: v.replace("Sulfur", "SO2")),
     # hist
-    hist, # select_only_countries_with_all_info(hist),
+    # hist,
+    hist.rename(index=lambda v: v.replace("Sulfur", "SO2")), # select_only_countries_with_all_info(hist),
     # gdp
     GDP_per_pathway, #select_only_countries_with_all_info(GDP_per_pathway),
     # regionmapping
@@ -681,7 +683,7 @@ workflow = WorkflowDriver(
     # indexraster_region
     indexraster_region,
     # variabledefs
-    variabledefs,
+    variabledefs, # NOTE: for Sulfur/SO2 and NMVOC/VOC, there is consistent renaming happening in 
     # harm_overrides
     harm_overrides,
     # settings
@@ -806,7 +808,7 @@ if run_main:
     missing_emissions = hist.loc[isin(country=list(in_hist_not_downscaled))].groupby(["gas","sector","unit"]).sum().loc[isin(sector='Waste'),2023]
     global_emissions = hist.loc[isin(country='World')].groupby(["gas","sector","unit"]).sum().loc[isin(sector='Waste'),2023]
     print("In %, what share of global emissions is missing because some smaller territories/countries are not downscaled?")
-    missing_emissions / global_emissions * 100 # percentage (%) of global emissions that would be missing through these countries
+    print(missing_emissions / global_emissions * 100) # percentage (%) of global emissions that would be missing through these countries
 
 # %% [markdown]
 # ## Alternative 1) Run full processing and create netcdf files
