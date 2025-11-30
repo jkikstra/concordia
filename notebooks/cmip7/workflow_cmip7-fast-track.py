@@ -697,16 +697,48 @@ iam_df.columns
 #     if len(hist.loc[ismatch(country=c)]) < 120:
 #         print(c)
 
+# %% 
+# do variable name replacements to align with CEDS and BB4CMIP7 historical products
+
+# Sulfur -> SO2 (CEDS+BB4CMIP7)
+iam_df = iam_df.rename(index=lambda v: v.replace("Sulfur", "SO2"))
+hist = hist.rename(index=lambda v: v.replace("Sulfur", "SO2"))
+
+# VOC -> NMVOC for anthro sectors (CEDS)
+openburning_sectors = cmip7_utils.SECTOR_ORDERING_DEFAULT['em_openburning']
+iam_df = iam_df.rename(index=lambda v: v.replace("VOC", "NMVOC"))
+hist = hist.rename(index=lambda v: v.replace("VOC", "NMVOC"))
+# Rename NMVOC to NMVOCbulk in iam_df for openburning sectors (BB4CMIP7)
+def rename_voc_to_nmvoc_iam(idx):
+    gas_idx = iam_df.index.names.index("gas")
+    sector_idx = iam_df.index.names.index("sector")
+    if idx[sector_idx] in openburning_sectors and idx[gas_idx] == "NMVOC":
+        idx_list = list(idx)
+        idx_list[gas_idx] = "NMVOCbulk"
+        return tuple(idx_list)
+    return idx
+
+iam_df.index = iam_df.index.map(rename_voc_to_nmvoc_iam)
+
+# Rename NMVOC to NMVOCbulk in hist for openburning sectors
+def rename_voc_to_nmvoc_hist(idx):
+    gas_idx = hist.index.names.index("gas")
+    sector_idx = hist.index.names.index("sector")
+    if idx[sector_idx] in openburning_sectors and idx[gas_idx] == "NMVOC":
+        idx_list = list(idx)
+        idx_list[gas_idx] = "NMVOCbulk"
+        return tuple(idx_list)
+    return idx
+
+hist.index = hist.index.map(rename_voc_to_nmvoc_hist) 
+
 # %%
-workflow = WorkflowDriver( 
+workflow = WorkflowDriver(
     # model
-    # iam_df, # model
     # iam_df.loc[:, iam_df.columns.intersection(GDP_per_pathway.columns.tolist())], # model ; until GDP is interpolated, do only for years in GDP_per_pathway.columns.tolist()
-    # iam_df,
-    iam_df.rename(index=lambda v: v.replace("Sulfur", "SO2")),
+    iam_df,
     # hist
-    # hist,
-    hist.rename(index=lambda v: v.replace("Sulfur", "SO2")), # select_only_countries_with_all_info(hist),
+    hist, # select_only_countries_with_all_info(hist),
     # gdp
     GDP_per_pathway, #select_only_countries_with_all_info(GDP_per_pathway),
     # regionmapping

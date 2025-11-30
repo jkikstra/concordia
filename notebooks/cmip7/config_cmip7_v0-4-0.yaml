@@ -10,7 +10,7 @@ data_path: "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data 
 
 
 variabledefs_path: "$data_path/input/variabledefinitions/variabledefs-cmip7_v0-4-0.csv" 
-variabledefs_path: "$data_path/input/variabledefinitions/variabledefs-cmip7_v0-4-0_fixSO2.csv"
+variabledefs_path: "$data_path/input/variabledefinitions/variabledefs-cmip7_v0-4-0_fixSO2NMVOC.csv"
 
 
 history_path: "$data_path/input/historical" # Needs to be double-checked; and now need to ensure we have GCAM 8s

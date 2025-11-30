@@ -199,6 +199,15 @@ class WorkflowDriver:
             if 'SO2' in output_variable and 'Sulfur' in proxy.data.gas.values:
                 # Use a direct coordinate rename that preserves order
                 proxy.data.coords['gas'] = proxy.data.coords['gas'].astype(str).str.replace('Sulfur', 'SO2', regex=False)
+
+        # Rename VOC to NMVOC in proxy data if output_variable contains VOC
+        for output_variable, proxy in proxies_dict.items():
+            if 'NMVOC' in output_variable and 'VOC' in proxy.data.gas.values and 'openburning' in output_variable:
+                # Use a direct coordinate rename that preserves order
+                proxy.data.coords['gas'] = proxy.data.coords['gas'].astype(str).str.replace('VOC', 'NMVOCbulk', regex=False)
+            if 'NMVOC' in output_variable and 'VOC' in proxy.data.gas.values and 'anthro' in output_variable:
+                # Use a direct coordinate rename that preserves order
+                proxy.data.coords['gas'] = proxy.data.coords['gas'].astype(str).str.replace('VOC', 'NMVOC', regex=False)
         
         return proxies_dict
 

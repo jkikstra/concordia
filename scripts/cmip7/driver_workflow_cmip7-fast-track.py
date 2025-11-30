@@ -89,12 +89,13 @@ def main():  # noqa: PLR0912
     notebooks_dir = DEFAULT_NOTEBOOKS_DIR
     all_notebooks = tuple(sorted(notebooks_dir.glob("*.py")))
 
-    GRIDDING_VERSION_PREFIX = "prehandover_test_"
+    GRIDDING_VERSION_PREFIX = "test_paris_" # appended with the marker
     
     DO_GRIDDING_ONLY_FOR_THESE_SPECIES = None # all species
-    DO_GRIDDING_ONLY_FOR_THESE_SPECIES = ["SO2"] # test just one/some species
+    # DO_GRIDDING_ONLY_FOR_THESE_SPECIES = ["BC", "SO2", "NMVOC", "NMVOCbulk"] # test just one/some species
 
-    DO_GRIDDING_ONLY_FOR_THESE_SECTORS = None # all sectors
+    DO_GRIDDING_ONLY_FOR_THESE_SECTORS = None # all: i.e, same as doing ['anthro', 'openburning', 'AIR_anthro']
+    # DO_GRIDDING_ONLY_FOR_THESE_SECTORS = ["openburning", "anthro"] # test just one/some sectors
 
     SKIP_EXISTING_MAIN_WORKFLOW_FILES = True
     FILE_NAME_ENDING = None # specify in the workflow notebook file itself
