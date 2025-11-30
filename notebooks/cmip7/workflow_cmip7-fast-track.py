@@ -95,6 +95,12 @@ if GRIDDING_VERSION is None:
     GRIDDING_VERSION = f"{marker_to_run}" # default to just the marker abbreviation if no versioning is provided
 SCENARIO_FILE = f"harmonised-gridding_{MODEL_SELECTION}.csv"
 
+# %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
+# filename template
+FILE_NAME_ENDING: str | None = cmip7_utils.filename_for_esgf(marker=marker_to_run, version=VERSION_ESGF)
+
+print(f"Producing experiment: {FILE_NAME_ENDING}")
+
 # %% [markdown]
 # Load unit registry from openSCM for translating units (e.g., to and from CO2eq)
 
@@ -825,9 +831,9 @@ if run_main_gridding: # full run for all 10 species takes about ~1hour for 1 sce
 
         # keep {name} as a placeholder for workflow.grid (escaped as {{name}} here);
         # substitute scenario now using esgf_name computed earlier
-        template_fn="{{name}}_{activity_id}_emissions_{target_mip}_{institution_id}-{scenario}-{version}_{grid_label}_{start_date}-{end_date}.nc".format(
+        template_fn="{{name}}_{FILE_NAME_ENDING}".format(
             **(cmip7_utils.DS_ATTRS | {"version": VERSION_ESGF,
-                                       "scenario": f"scen-{marker_to_run.lower()}"})
+                                       "FILE_NAME_ENDING": FILE_NAME_ENDING})
         ),
         callback=cmip7_utils.DressUp(version=settings.version),
         directory=version_path,

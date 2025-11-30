@@ -1044,3 +1044,6 @@ def read_r_to_da(file, template, flipud=True, dtype="float32"):
         name=Path(file).stem,
     )
     return da
+
+def filename_for_esgf(marker: str, version: str):
+    return f"{DS_ATTRS["activity_id"]}_emissions_{DS_ATTRS["target_mip"]}_{DS_ATTRS["institution_id"]}-{f"esm-scen7-{marker.lower()}"}-{version}_{DS_ATTRS["grid_label"]}_{DS_ATTRS["start_date"]}-{DS_ATTRS["end_date"]}.nc"
