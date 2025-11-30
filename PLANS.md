@@ -46,12 +46,15 @@ Done:
         * other models would still need to be checked.
 
 In progress:
-- [~] Jarmo cleans and updates post-processing scripts (including metadata; CO2 sectors; including variable names SO2/Sulfur; including filenames/scenarionames; including timesteps in netcdf)
+- [~] Jarmo cleans and updates post-processing scripts (including metadata; CO2 sectors; including variable names SO2/Sulfur, NMVOC/VOC; including filenames/scenarionames; including timesteps in netcdf)
     - [x] write a script that checks tha VOC speciation results add up to the total
     - [x] SO2/Sulfur (re)naming in the main workflow 
-    - [ ] NMVOC renaming (for openburning only) in the main workflow 
+    - [x] NMVOC renaming (for openburning only) in the main workflow 
+        - [ ] check if unit also needs to change with (i would think no)
     - [ ] main workflow files written out as correct as possible; metadata
-    - [ ] add global totals in metadata (dressup)
+    - [ ] add global totals in metadata (dressup), e.g.,:
+        - [ ] source_id (institute and scenario name need to be passed in correctly)
+        - [ ] title (scenario name need to be passed in correctly)
     - [ ] other suggestions from GISS
     - [ ] filename structure in main workflow and streamlined in all files
 - [ ] Jarmo ensures that order of post-processing fixes is correct (e.g. CEDS country-border correction also for VOC speciated, after/before 2022?)
