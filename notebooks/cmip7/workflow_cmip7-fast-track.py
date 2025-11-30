@@ -39,6 +39,7 @@ marker_to_run: str = "H" # options: H, HL, M, ML, L, LN, VL
 GRIDDING_VERSION: str | None = None
 
 DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["CO2", "Sulfur"]
+DO_GRIDDING_ONLY_FOR_THESE_SECTORS: list[str] | None = None # all: ['anthro', 'openburning', 'AIR_anthro']
 
 # Which parts to run
 run_main: bool = False # skips downscaling and the saving out of data of the main workflow; can still run supplemental workflows with this set to False
@@ -202,6 +203,8 @@ settings.variabledefs_path
 variabledefs = VariableDefinitions.from_csv(settings.variabledefs_path)
 # variabledefs.data.head()
 
+# %%
+# If only for a few species
 if DO_GRIDDING_ONLY_FOR_THESE_SPECIES is not None:
     # filter only the species that we would like to run here
     print(f"Filtering variable definitions to only include species: {DO_GRIDDING_ONLY_FOR_THESE_SPECIES}")
@@ -221,7 +224,30 @@ if DO_GRIDDING_ONLY_FOR_THESE_SPECIES is not None:
 else:
     print("Using all species from variable definitions")
 
-
+# %%
+# If only for a certain sector (filter by output_variable endings; what comes after '_em_')
+if DO_GRIDDING_ONLY_FOR_THESE_SECTORS is not None:
+    # filter only the sectors that we would like to run here
+    print(f"Filtering variable definitions to only include sectors: {DO_GRIDDING_ONLY_FOR_THESE_SECTORS}")
+    original_count = len(variabledefs.data)
+    
+    # Filter the data to keep only rows where output_variable has one of the specified sectors after "_em_"
+    # e.g., 'SO2_em_anthro' matches 'anthro', 'SO2_em_openburning' matches 'openburning'
+    sector_patterns = [f"_em_{sector}(?:$|_)" for sector in DO_GRIDDING_ONLY_FOR_THESE_SECTORS]
+    pattern = "|".join(sector_patterns)
+    
+    filtered_data = variabledefs.data.loc[
+        variabledefs.data['output_variable'].str.contains(pattern, regex=True, na=False)
+    ]
+    
+    # Create a new VariableDefinitions object with the filtered data
+    variabledefs = VariableDefinitions(data=filtered_data)
+    
+    filtered_count = len(variabledefs.data)
+    print(f"Filtered from {original_count} to {filtered_count} variable definitions")
+    print(f"Sectors in filtered data: {sorted(set(s.split('_em_')[1].split('_')[0] for s in variabledefs.data['output_variable'] if '_em_' in s))}")
+else:
+    print("Using all sectors from variable definitions")
 
 # %% [markdown]
 # ## Read region definitions (using RegionMapping class)
