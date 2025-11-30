@@ -42,10 +42,11 @@ DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["CO2", "Sulf
 DO_GRIDDING_ONLY_FOR_THESE_SECTORS: list[str] | None = None # all: ['anthro', 'openburning', 'AIR_anthro']
 
 # Which parts to run
-run_main: bool = False # skips downscaling and the saving out of data of the main workflow; can still run supplemental workflows with this set to False
-run_main_gridding: bool = False # if false, we'll not run the main gridding workflow
+run_main: bool = True # skips downscaling and the saving out of data of the main workflow; can still run supplemental workflows with this set to False
+run_main_gridding: bool = True # if false, we'll not run the main gridding workflow
+SKIP_EXISTING_MAIN_WORKFLOW_FILES: bool = True # if True, it won't reproduce files already on your disk
 run_anthro_supplemental_voc: bool = False
-run_openburning_supplemental_voc: bool = True
+run_openburning_supplemental_voc: bool = False
 # run_anthro_supplemental_solidbiofuel: bool = False # not yet implemented, for the future
 
 # %%
@@ -863,7 +864,7 @@ if run_main_gridding: # full run for all 10 species takes about ~1hour for 1 sce
         ),
         callback=cmip7_utils.DressUp(version=settings.version),
         directory=version_path,
-        skip_exists=True,
+        skip_exists=SKIP_EXISTING_MAIN_WORKFLOW_FILES,
     )
 
 # %% [markdown]
@@ -929,12 +930,12 @@ def load_voc_bulk(type="anthro"):
 
 
 # %%
+# AIR (anthro) is not required.
 
 
-
-# AIR is not required.
-
-# TODO: add openburning (which has entirely different names/formatting)
+# %% [markdown]
+# # VOC speciation (BB4CMIP, openburnig)
+# **NOTE: currently takes long at ~5mins per VOC species, around 2hrs for all 25 VOC species**
 
 # %%
 # Calculate VOC-speciation data; keep the structure of the VOC (bulk) data

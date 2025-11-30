@@ -22,7 +22,10 @@ def get_notebook_parameters(notebook_name: str,
                             run_openburning_supplemental_voc: bool = False,
                             # run_anthro_supplemental_solidbiofuel: bool = False, # not yet implemented, for the future
                             HISTORY_FILE: str = "cmip7_history_countrylevel_251024.csv",
-                            DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = None
+                            DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = None,
+                            DO_GRIDDING_ONLY_FOR_THESE_SECTORS: list[str] | None = None,
+                            FILE_NAME_ENDING: str | None = None, # normally defined in the workflow itself
+                            SKIP_EXISTING_MAIN_WORKFLOW_FILES: bool = True
                             ) -> dict[str, str]:
     """
     Get parameters for a given notebook
@@ -38,7 +41,11 @@ def get_notebook_parameters(notebook_name: str,
             "run_openburning_supplemental_voc": run_openburning_supplemental_voc,
             # "run_anthro_supplemental_solidbiofuel": run_anthro_supplemental_solidbiofuel, # not yet implemented, for the future
             "HISTORY_FILE": HISTORY_FILE,
-            "DO_GRIDDING_ONLY_FOR_THESE_SPECIES": DO_GRIDDING_ONLY_FOR_THESE_SPECIES
+            "DO_GRIDDING_ONLY_FOR_THESE_SPECIES": DO_GRIDDING_ONLY_FOR_THESE_SPECIES,
+            "DO_GRIDDING_ONLY_FOR_THESE_SECTORS": DO_GRIDDING_ONLY_FOR_THESE_SECTORS,
+            "FILE_NAME_ENDING": FILE_NAME_ENDING,
+            "SKIP_EXISTING_MAIN_WORKFLOW_FILES": SKIP_EXISTING_MAIN_WORKFLOW_FILES,
+
         }
     # elif notebook_name in [
     #     "workflow-postprocess_anthro-pattern-harmonisation.py",
@@ -85,7 +92,12 @@ def main():  # noqa: PLR0912
     GRIDDING_VERSION_PREFIX = "prehandover_test_"
     
     DO_GRIDDING_ONLY_FOR_THESE_SPECIES = None # all species
-    DO_GRIDDING_ONLY_FOR_THESE_SPECIES = ["CO2", "BC", "Sulfur", "VOC"] # test just one species
+    DO_GRIDDING_ONLY_FOR_THESE_SPECIES = ["SO2"] # test just one/some species
+
+    DO_GRIDDING_ONLY_FOR_THESE_SECTORS = None # all sectors
+
+    SKIP_EXISTING_MAIN_WORKFLOW_FILES = True
+    FILE_NAME_ENDING = None # specify in the workflow notebook file itself
 
     # All
     markers = [
@@ -142,14 +154,22 @@ def main():  # noqa: PLR0912
                                                      # WORKFLOW ELEMENTS: What elements of the workflow 
                                                      run_main=True, # argument not currently a used
                                                      run_main_gridding=True, # produce BC_*, ..., VOC_* .nc files (AIR, anthro, openburning)
-                                                     run_anthro_supplemental_voc=True, # produce VOC01, ..., VOC25 .nc files (anthro VOC speciation)
-                                                     run_openburning_supplemental_voc=True, # produce C2H2, ..., Toluenelump .nc files (openburning VOC speciation)
+                                                     run_anthro_supplemental_voc=False, # produce VOC01, ..., VOC25 .nc files (anthro VOC speciation)
+                                                     run_openburning_supplemental_voc=False, # produce C2H2, ..., Toluenelump .nc files (openburning VOC speciation)
                                                      
                                                      # VERSIONING 
                                                      GRIDDING_VERSION=GRIDDING_VERSION,
                                                      
                                                      # SPECIES: specify if you only want to run a selected set of emissions species
-                                                     DO_GRIDDING_ONLY_FOR_THESE_SPECIES=DO_GRIDDING_ONLY_FOR_THESE_SPECIES
+                                                     DO_GRIDDING_ONLY_FOR_THESE_SPECIES=DO_GRIDDING_ONLY_FOR_THESE_SPECIES,
+                                                     # SECTORS: specify if you only want to run a selected set of sectors (anthro, openburning, AIR_anthro)
+                                                     DO_GRIDDING_ONLY_FOR_THESE_SECTORS=DO_GRIDDING_ONLY_FOR_THESE_SECTORS,
+                                                     
+                                                     # overwrite existing files? (only main workflow, not supplemental)
+                                                     SKIP_EXISTING_MAIN_WORKFLOW_FILES=SKIP_EXISTING_MAIN_WORKFLOW_FILES,
+
+                                                     # want to change the default filenamestructure? NOTE: leave unchanged unless you know what you're doing and passing e.g. {{name}} correctly
+                                                     FILE_NAME_ENDING=FILE_NAME_ENDING,
                                                      
                                                      #  ... add here other parameters that you might like to change
                                                      )
