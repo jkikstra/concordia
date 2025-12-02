@@ -58,6 +58,10 @@ In progress:
     - [ ] other suggestions from GISS
     - [ ] filename structure in main workflow and streamlined in all files
 - [ ] Jarmo ensures that order of post-processing fixes is correct (e.g. CEDS country-border correction also for VOC speciated, after/before 2022?)
+- [ ] Jarmo implements H2 for openburning workflow
+    - [x] first checks CMIP6 & CMIP7 historical approach
+    - [ ] then create/write 'proxy' files (i.e. translation file, where forest burning is aggregated -- based on the underlying data for CO proxy to determine the gridpoint conversion factors for forests)
+    - [ ] then integrate in main (?) workflow file
 
 Tasks Jarmo:
 - [ ] Jarmo works on a (semi-automatic) plotting suites
