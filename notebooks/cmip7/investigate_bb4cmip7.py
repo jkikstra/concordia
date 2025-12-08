@@ -16,13 +16,9 @@
 import xarray as xr
 from pathlib import Path
 import matplotlib.pyplot as plt
-import pandas_indexing as pix
-import pandas as pd
 import numpy as np
-from concordia.cmip7 import utils as cmip7_utils
 from typing import Dict, Tuple, List
 from matplotlib.backends.backend_pdf import PdfPages
-from matplotlib import colors
 import cartopy.crs as ccrs
 
 IAMC_COLS = ["model", "scenario", "region", "variable", "unit"] 
