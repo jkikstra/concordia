@@ -1324,11 +1324,8 @@ def _spatial_harmonisation(file, match, cell_area):
         # apply weights (= raw ratios)
         weighted = gridded * weights_exp
 
-        # replace sectors we don't want weighted
-
-        # TODO: 
-        # - [ ] update this `sectors_to_keep`; pull from the difference between lists of sectors in utils/CONSTANTS (and international shipping, because it has no country boundaries)
-        sectors_to_keep = ['Other non-Land CDR', 'BECCS', 'International Shipping']
+        # replace sectors we don't want weighted; because it is not in CEDS
+        sectors_to_keep = ['Other Capture and Removal'] # Note: previously we also had International Shipping here, but in the case that there's a small (global) discrepancy between CEDS and scenario, it is worthwhile addressing that here too.
         sectors_present = [s for s in sectors_to_keep if s in weighted.sector.values]
         if sectors_present:
             weighted[var].loc[dict(sector=sectors_present)] = gridded[var].sel(sector=sectors_present)
@@ -1369,7 +1366,6 @@ def _spatial_harmonisation(file, match, cell_area):
     return emissions_harmonised, var
 
 
-# %% 
 # run the spatial harmonization
 if run_spatial_harmonisation:
     print('run spatial harmonization')
@@ -1424,4 +1420,7 @@ if run_spatial_harmonisation:
 
         emissions_harmonised.close()
 
+
+# %% [markdown]
+# # END OF POSTPROCESSING
 

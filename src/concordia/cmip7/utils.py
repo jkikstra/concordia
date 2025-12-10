@@ -55,6 +55,36 @@ SECTOR_ORDERING_DEFAULT = {
     ],
 }
 
+
+SECTOR_DICT_ANTHRO_DEFAULT = {
+    # as in historical CEDS
+    0: "Agriculture",
+    1: "Energy",
+    2: "Industrial",
+    3: "Transportation",
+    4: "Residential, Commercial, Other",
+    5: "Solvents Production and Application",
+    6: "Waste",
+    7: "International Shipping",
+}
+
+SECTOR_DICT_ANTHRO_CO2_SCENARIO = {
+    # as in future CO2 (with CDR)
+    0: "Agriculture",
+    1: "Energy",
+    2: "Industrial",
+    3: "Transportation",
+    4: "Residential, Commercial, Other",
+    5: "Solvents Production and Application",
+    6: "Waste",
+    7: "International Shipping",
+    # additional CDR-related sectors; to report in the final files
+    # 8: "BECCS",
+    8: "Other Capture and Removal"
+}
+
+
+
 SECTOR_ORDERING_GAS = {
     "CO2_em_anthro": [
         "Agriculture",
