@@ -18,6 +18,7 @@ def get_notebook_parameters(notebook_name: str,
                             SETTINGS_FILE: str = "config_cmip7_v0-4-0.yaml", # preparing for first upload to ESGF 
                             run_main: bool = True,
                             run_main_gridding: bool = True, # if false, we'll stop at only running the downscaling of main
+                            run_openburning_h2: bool = True,
                             run_anthro_supplemental_voc: bool = False,
                             run_openburning_supplemental_voc: bool = False,
                             # run_anthro_supplemental_solidbiofuel: bool = False, # not yet implemented, for the future
@@ -37,6 +38,7 @@ def get_notebook_parameters(notebook_name: str,
             "SETTINGS_FILE": SETTINGS_FILE,
             "run_main": run_main, # currently does nothing
             "run_main_gridding": run_main_gridding,
+            "run_openburning_h2": run_openburning_h2,
             "run_anthro_supplemental_voc": run_anthro_supplemental_voc,
             "run_openburning_supplemental_voc": run_openburning_supplemental_voc,
             # "run_anthro_supplemental_solidbiofuel": run_anthro_supplemental_solidbiofuel, # not yet implemented, for the future
@@ -154,9 +156,10 @@ def main():  # noqa: PLR0912
                                                      
                                                      # WORKFLOW ELEMENTS: What elements of the workflow 
                                                      run_main=True, # argument not currently a used
-                                                     run_main_gridding=True, # produce BC_*, ..., VOC_* .nc files (AIR, anthro, openburning)
-                                                     run_anthro_supplemental_voc=False, # produce VOC01, ..., VOC25 .nc files (anthro VOC speciation)
-                                                     run_openburning_supplemental_voc=False, # produce C2H2, ..., Toluenelump .nc files (openburning VOC speciation)
+                                                     run_main_gridding=True, # produce BC-*, ..., VOC-* .nc files (AIR, anthro, openburning)
+                                                     run_openburning_h2=False, # produce H2-em-openburning_*.nc, requires CO openburning to already have been run
+                                                     run_anthro_supplemental_voc=False, # produce VOC01, ..., VOC25 .nc files (anthro VOC speciation), requires VOC bulk to already have been run
+                                                     run_openburning_supplemental_voc=False, # produce C2H2, ..., Toluenelump .nc files (openburning VOC speciation), requires VOC bulk to already have been run
                                                      
                                                      # VERSIONING 
                                                      GRIDDING_VERSION=GRIDDING_VERSION,

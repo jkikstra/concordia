@@ -47,6 +47,7 @@ run_main_gridding: bool = True # if false, we'll not run the main gridding workf
 SKIP_EXISTING_MAIN_WORKFLOW_FILES: bool = True # if True, it won't reproduce files already on your disk
 run_anthro_supplemental_voc: bool = False
 run_openburning_supplemental_voc: bool = False
+run_openburning_h2: bool = True # produced based on openburning_co
 # run_anthro_supplemental_solidbiofuel: bool = False # not yet implemented, for the future
 run_spatial_harmonisation: bool = True # provides spatial harmonization with CEDS anthro in 2023 (requires having raw CEDS files locally)
 
@@ -906,6 +907,112 @@ if run_main_gridding: # full run for all 10 species takes about ~1hour for 1 sce
 # # END OF MAIN CODE
 
 # %% [markdown]
+# # Start of H2 openburning data
+# Usually takes <2mins for 1 scenario
+
+# %%
+import xarray as xr
+import numpy as np
+
+# STEPS:
+# 1. load CO file
+# 2. load translation file
+# 3 apply translation file (logic: h2_openburning = co_openburning * h2_translation)
+
+if run_openburning_h2:
+    print('Generating H2 openburning emissions from CO openburning and H2/CO emission factor ratios')
+    
+    # Load the CO openburning emissions
+    co_openburning_file = settings.out_path / GRIDDING_VERSION / f"CO-em-openburning_{FILE_NAME_ENDING}"
+    co_openburning = xr.open_dataset(co_openburning_file)
+    
+    # Load the H2/CO emission factor translation file
+    h2_translation_file = settings.proxy_path / "EF_h2_div_EF_co.nc"
+    h2_translation = xr.open_dataset(h2_translation_file)
+    
+    print(co_openburning)
+    print(h2_translation)
+
+
+    # Initialize result with same structure as co_openburning
+    h2_openburning = xr.Dataset(
+        coords=co_openburning.coords,
+        attrs=co_openburning.attrs.copy()
+    )
+
+    # Initialize the data variable with zeros
+    h2_openburning_data = xr.zeros_like(co_openburning["CO_em_openburning"])
+
+
+
+    # Perform multiplication for burning sectors
+    for openburning_sector in np.unique(co_openburning.sector):
+        # Select data from both datasets for matching sectors
+        co_sector = co_openburning["CO_em_openburning"].sel(sector=openburning_sector)
+
+        # Get translation factors for this sector and gas
+        translation_factor_sector = h2_translation["EF_h2_div_EF_co"].sel(
+            sector=openburning_sector
+        )
+
+        # Convert time coordinates to year/month for alignment
+        years = co_sector.time.dt.year
+        months = co_sector.time.dt.month
+
+        # Find the index of the sector in the coordinate array
+        sector_idx = list(co_openburning.sector.values).index(openburning_sector) # TODO: double-check that this sector_idx is correct, and not doing the wrong one
+
+        # Perform multiplication for each time step
+        for time_idx, time_val in enumerate(co_sector.time.values):
+            year = years[time_idx].values
+            month = months[time_idx].values
+
+            # Check if this year/month exists in h2_translation
+            if year in translation_factor_sector.year.values and month in translation_factor_sector.month.values:
+                # Get the share data for this specific year/month
+                translation_slice = translation_factor_sector.sel(year=year, month=month)
+
+                # Get the bulk VOC data for this time step
+                co_slice = co_sector.isel(time=time_idx)
+
+                # Multiply and assign to result
+                h2_openburning_data[time_idx, :, :, sector_idx] = (co_slice * translation_slice).values
+                
+                # Assert that the sectors all align, ignoring dtype
+                assert h2_openburning_data[time_idx, :, :, sector_idx].sector.values == co_slice.sector.values
+                assert h2_openburning_data[time_idx, :, :, sector_idx].sector.values == translation_slice.sector.values
+
+
+    # Add the computed data to the result dataset
+    gas_variable_name = "H2_em_openburning"
+    h2_openburning[gas_variable_name] = h2_openburning_data
+
+    # TODO:
+    # - [ ] update long_name of data (follow CEDS long_name) 
+    # Add the bounds
+    h2_openburning['lon_bnds'] = co_openburning['lon_bnds']
+    h2_openburning['time_bnds'] = co_openburning['time_bnds']
+    h2_openburning['lat_bnds'] = co_openburning['lat_bnds']
+
+    # Update attributes
+    h2_openburning.attrs['variable_id'] = gas_variable_name
+    h2_openburning.attrs['title'] = f"Speciated {gas_variable_name} emissions"
+
+    # save out
+    print('Writing out H2 openburning emissions')
+    outfile = settings.out_path / GRIDDING_VERSION / f"H2-em-openburning_{FILE_NAME_ENDING}"
+
+    encoding = {
+        gas_variable_name: {
+            "zlib": True,
+            "complevel": 2
+        }
+    }
+    h2_openburning.to_netcdf(outfile, mode="w", encoding=encoding, compute=True)
+
+
+
+# %% [markdown]
 # # Start of SUPPLEMENTAL DATA
 
 # %% [markdown]
@@ -920,7 +1027,6 @@ lock = SerializableLock()
 # %%
 # Load VOC data
 from concordia.cmip7.CONSTANTS import GASES_ESGF_CEDS_VOC, GASES_ESGF_BB4CMIP_VOC
-import xarray as xr
 
 def load_voc_bulk(type="anthro"):
 
@@ -1021,7 +1127,7 @@ if run_openburning_supplemental_voc:
         # Rename sectors in voc_anthro to match voc_share sector names where possible
         openburning_to_share_sectors = {v: k for k, v in sector_mapping.items() if v in voc_share.sector.values and k in voc_openburning.sector.values}
 
-        # Initialize result with same structure as voc_anthro
+        # Initialize result with same structure as voc_openburning
         voc_spec = xr.Dataset(
             coords=voc_openburning.coords,
             attrs=voc_openburning.attrs.copy()
