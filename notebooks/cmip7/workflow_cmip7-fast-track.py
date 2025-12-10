@@ -27,7 +27,7 @@
 # **Note:** these options below can also be changed and driven from a driver script. 
 
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
-HISTORY_FILE: str = "cmip7_history_countrylevel_251024.csv"
+HISTORY_FILE: str = "country-history_202511261223_202511040855_202512032146_202512021030_7e32405ade790677a6022ff498395bff00d9792d.csv"
 # Settings
 # SETTINGS_FILE: str = "config_cmip7_esgf_v0_alpha.yaml" # was used for preparing for first upload to ESGF
 SETTINGS_FILE: str = "config_cmip7_v0-4-0.yaml" # for second ESGF version
@@ -633,7 +633,7 @@ missing = set(iam_sectors) - set(hist_sectors)
 print(f"Separately considering CDR sectors {missing}")  # CDR sectors
 
 expected_sectors_missing_cdr = {
-    'Enhanced Weathering', 'BECCS', 'Direct Air Capture', 'Ocean', 'Other CDR'
+    'Enhanced Weathering', 'BECCS', 'Direct Air Capture', 'Ocean', 'Biochar', 'Soil Carbon Management', 'Other CDR'
 }
 assert missing.issubset(expected_sectors_missing_cdr), f"Unexpected missing sectors found: {missing - expected_sectors_missing_cdr}"
 
@@ -886,15 +886,17 @@ cmip7_utils.DS_ATTRS
 
 # %%
 if run_main_gridding: # full run for all 10 species takes about ~1hour for 1 scenario
-    res = workflow.grid(
 
+    experiment_name = cmip7_utils.scenario_name_prefix(m=marker_to_run)
+
+    res = workflow.grid(
         # keep {name} as a placeholder for workflow.grid (escaped as {{name}} here);
         # substitute scenario now using esgf_name computed earlier
         template_fn="{{name}}_{FILE_NAME_ENDING}".format(
             **(cmip7_utils.DS_ATTRS | {"version": VERSION_ESGF,
                                        "FILE_NAME_ENDING": FILE_NAME_ENDING})
         ),
-        callback=cmip7_utils.DressUp(version=settings.version),
+        callback=cmip7_utils.DressUp(version=settings.version, marker_scenario_name=experiment_name),
         directory=version_path,
         skip_exists=SKIP_EXISTING_MAIN_WORKFLOW_FILES,
     )

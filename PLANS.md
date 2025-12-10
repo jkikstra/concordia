@@ -70,6 +70,7 @@ Tasks Jarmo:
     - [ ] work on biochar and soil carbon sequestration + potentially other land-use (TBD; potentially push to 0-5-0)
 - [ ] Annika/Jarmo: zeroes/NAs streamlining between historical-CEDS and our gridded-scenario data for sectors with no/zero emissions.
 - [ ] Jarmo: check that fill_value=0 of the ptolemy_patch is working OK 
+- [x] Jarmo: update history and scenario files
 
 Tasks Annika:
 - [x] VOC biomass
@@ -77,7 +78,7 @@ Tasks Annika:
     - [~] 2022 CEDS: 
         * Option A (preferred): remove what we have created, replace with CEDS ESGF file values
         * Option B: remove year altogether in CEDS + update metadata and description in line with that
-        * OPtion C:   remove year altogether in CEDS as well as removing it in openburning (to try to avoid having different years in our dataset, letting everyone just interpolate between 2021 and 2023 which shouldn't be too bad)
+        * Option C:   remove year altogether in CEDS as well as removing it in openburning (to try to avoid having different years in our dataset, letting everyone just interpolate between 2021 and 2023 which shouldn't be too bad)
     - [~] 2022 openburning: keep as is, just check that it looks OK
 
 Tasks Marco:

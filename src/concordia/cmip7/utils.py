@@ -65,10 +65,13 @@ SECTOR_ORDERING_GAS = {
         "Solvents Production and Application",
         "Waste",
         "International Shipping",
+        # additional CDR-related sectors; for the harmonization and gridding stage
         "BECCS",
         "Direct Air Capture",
         "Enhanced Weathering",
         "Ocean",
+        "Biochar",
+        "Soil Carbon Management",
         "Other CDR",
         # "Deforestation and other LUC",
         # "OAE Calcination Emissions",
@@ -333,10 +336,13 @@ def reaggregate_sectors_cdr(ds, name):
 
         # do the reverse of the disaggregation/splitting of CDR in:
         # https://github.com/openscm/gcages/blob/f6ee64156480c9085d290369033c3fbdeeee33ad/src/gcages/cmip7_scenariomip/pre_processing/reaggregation/basic.py#L1281-L1288
+        # BECCS
         print("Move gridded BECCS back into the Energy sector")
         ds = _aggregate_sectors(ds,
                                 sector_detail_to_aggregate="BECCS",
                                 sector_to_aggregate_into="Energy")
+        
+        # other CDR
         print("Move gridded Ocean CDR back into an aggregate Other CDR sector")
         ds = _aggregate_sectors(ds,
                                 sector_detail_to_aggregate="Ocean",
@@ -348,6 +354,14 @@ def reaggregate_sectors_cdr(ds, name):
         print("Move gridded DAC back into an aggregate Other CDR sector")
         ds = _aggregate_sectors(ds,
                                 sector_detail_to_aggregate="Direct Air Capture",
+                                sector_to_aggregate_into="Other CDR")
+        print("Add/Move gridded Biochar into an aggregate Other CDR sector")
+        ds = _aggregate_sectors(ds,
+                                sector_detail_to_aggregate="Biochar",
+                                sector_to_aggregate_into="Other CDR")
+        print("Add/Move gridded Soil Carbon Management into an aggregate Other CDR sector")
+        ds = _aggregate_sectors(ds,
+                                sector_detail_to_aggregate="Soil Carbon Management",
                                 sector_to_aggregate_into="Other CDR")
         
         # Update the sector coordinate attributes for all changes
