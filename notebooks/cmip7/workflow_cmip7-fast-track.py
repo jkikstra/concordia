@@ -27,7 +27,7 @@
 # **Note:** these options below can also be changed and driven from a driver script. 
 
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
-HISTORY_FILE: str = "cmip7_history_countrylevel_251024.csv"
+HISTORY_FILE: str = "country-history_202511261223_202511040855_202512032146_202512021030_7e32405ade790677a6022ff498395bff00d9792d.csv"
 # Settings
 # SETTINGS_FILE: str = "config_cmip7_esgf_v0_alpha.yaml" # was used for preparing for first upload to ESGF
 SETTINGS_FILE: str = "config_cmip7_v0-4-0.yaml" # for second ESGF version
@@ -49,6 +49,7 @@ run_anthro_supplemental_voc: bool = False
 run_openburning_supplemental_voc: bool = False
 run_openburning_h2: bool = True # produced based on openburning_co
 # run_anthro_supplemental_solidbiofuel: bool = False # not yet implemented, for the future
+run_spatial_harmonisation: bool = True # provides spatial harmonization with CEDS anthro in 2023 (requires having raw CEDS files locally)
 
 # %%
 # validate that we're receiving what we're expecting
@@ -634,7 +635,7 @@ missing = set(iam_sectors) - set(hist_sectors)
 print(f"Separately considering CDR sectors {missing}")  # CDR sectors
 
 expected_sectors_missing_cdr = {
-    'Enhanced Weathering', 'BECCS', 'Direct Air Capture', 'Ocean', 'Other CDR'
+    'Enhanced Weathering', 'BECCS', 'Direct Air Capture', 'Ocean', 'Biochar', 'Soil Carbon Management', 'Other CDR'
 }
 assert missing.issubset(expected_sectors_missing_cdr), f"Unexpected missing sectors found: {missing - expected_sectors_missing_cdr}"
 
@@ -887,15 +888,17 @@ cmip7_utils.DS_ATTRS
 
 # %%
 if run_main_gridding: # full run for all 10 species takes about ~1hour for 1 scenario
-    res = workflow.grid(
 
+    experiment_name = cmip7_utils.scenario_name_prefix(m=marker_to_run)
+
+    res = workflow.grid(
         # keep {name} as a placeholder for workflow.grid (escaped as {{name}} here);
         # substitute scenario now using esgf_name computed earlier
         template_fn="{{name}}_{FILE_NAME_ENDING}".format(
             **(cmip7_utils.DS_ATTRS | {"version": VERSION_ESGF,
                                        "FILE_NAME_ENDING": FILE_NAME_ENDING})
         ),
-        callback=cmip7_utils.DressUp(version=settings.version),
+        callback=cmip7_utils.DressUp(version=settings.version, marker_scenario_name=experiment_name),
         directory=version_path,
         skip_exists=SKIP_EXISTING_MAIN_WORKFLOW_FILES,
     )
@@ -1316,4 +1319,214 @@ if run_anthro_supplemental_voc:
 
 # %% [markdown]
 # # END OF SUPPLEMENTAL DATA CODE
+
+
+
+# %% [markdown]
+# # START OF POSTPROCESSING
+# ## 1. Spatial Harmonization
+# NOTE: runtime is about ~3 mins per file
+
+
+# %% [markdown]
+# # Start of Post-processing: pattern harmonisation
+
+# COPY functionality mostly from "notebooks\cmip7\workflow-postprocess_anthro-pattern-harmonisation.py"
+# TODO:
+# - [x] move some code into src
+# - [x] apply here in the main workflow, for ease of use
+# - [ ] ensure it runs on VOC speciation too (naming?)
+# - [x] ensure to not delete all Attributes data
+#
+
+# %%
+# imports for spatial harmonization
+from concordia.cmip7.utils import calculate_ratio, return_nc_output_files_main_voc
+import xarray as xr
+from tqdm import tqdm
+
+def copy_attributes(
+    source: xr.Dataset, target: xr.Dataset
+) -> xr.Dataset:
+    """
+    Copy attributes from source to target
+
+    Parameters
+    ----------
+    source
+        Source dataset from which to copy attributes
+
+    target
+        Target dataset to which to copy attributes
+
+    Returns
+    -------
+    :
+        `target` with updated attributes
+
+        Note that the operation occurs in place,
+        so the input `target` object is also affected
+        (returning `target` is done for convenience)
+    """
+    target.attrs.update(source.attrs)
+    return target
+
+
+
+# %%  editable=true slideshow={"slide_type": ""} tags=["parameters"]
+# parameters for spatial harmonization (beyond what is above)
+
+ceds_data_location: Path = Path(settings.gridding_path, "esgf", "ceds", "CMIP7_anthro")
+ceds_data_location_voc: Path = Path(settings.gridding_path, "esgf", "ceds", "CMIP7_anthro_VOC")
+
+# %% 
+# helper functions
+def _what_emissions_variable_type(file, files_main=[], files_voc=[]):
+    if file in files_main:
+        type = "em_anthro"
+    elif file in files_voc:
+        type = "em_speciated_VOC_anthro"
+    return type
+
+# %%
+# derived locations
+# gridded_data_location = settings.out_path / HARMONIZATION_VERSION # is standard `settings.out_path / GRIDDING_VERSION``
+# weighted_data_location = settings.out_path / HARMONIZATION_VERSION / "weighted" # TODO: consider overwriting the old/original file instead. 
+# weighted_data_location.mkdir(parents=True, exist_ok=True)
+
+
+from concordia.cmip7.CONSTANTS import PROXY_YEARS, find_voc_data_variable_string
+from concordia.cmip7.utils import SECTOR_ORDERING_GAS, SECTOR_ORDERING_DEFAULT, SECTOR_DICT_ANTHRO_DEFAULT, SECTOR_DICT_ANTHRO_CO2_SCENARIO
+years = [year for year in PROXY_YEARS if year >= settings.base_year] # all years, but not 2022 (before 2023); which should come directly from CEDS anthro (and CEDS AIR)
+
+def _spatial_harmonisation(file, match, cell_area):
+    
+    # step 1: find ratio grid between baseyear historical(CEDS) and baseyear scenario(gridded)
+    # open datasets (no dask)
+    ceds = xr.open_dataset(match)
+    gridded = xr.open_dataset(file)
+
+    try:
+        # variable name
+        if file in files_main:
+            var = f"{gas}_{type}"
+        if file in files_voc:
+            var = find_voc_data_variable_string(gas)
+
+        # rename sectors; from numbers to full names
+        ceds = ceds.assign_coords(sector=pd.Series(ceds["sector"].values).map(SECTOR_DICT_ANTHRO_DEFAULT).values)
+        reference = ceds.where(ceds.time.dt.year == 2023, drop=True)
+        gridded_23 = gridded.where(gridded.time.dt.year == 2023, drop=True)
+
+        # calculate relative difference (vectorized)
+        pct_diff23 = calculate_ratio(reference, gridded_23, gas)
+        weights = pct_diff23.to_dataset(name=var) # all 1 if no adjustment needed, otherwise most gridpoints close to 1 but not exactly 1
+
+        # expand weights to all years
+        n_repeat = gridded.sizes["time"] // weights.sizes["time"]
+        weights_exp = xr.concat([weights] * n_repeat, dim="time")
+        weights_exp = weights_exp.assign_coords(time=gridded.time)
+
+        # apply weights (= raw ratios)
+        weighted = gridded * weights_exp
+
+        # replace sectors we don't want weighted; because it is not in CEDS
+        sectors_to_keep = ['Other Capture and Removal'] # Note: previously we also had International Shipping here, but in the case that there's a small (global) discrepancy between CEDS and scenario, it is worthwhile addressing that here too.
+        sectors_present = [s for s in sectors_to_keep if s in weighted.sector.values]
+        if sectors_present:
+            weighted[var].loc[dict(sector=sectors_present)] = gridded[var].sel(sector=sectors_present)
+
+        # step 2: calculate how much to the global total to make the adjustment perfect for the future (ensure same global emissions)
+        # 2.1. multiply the two grids by cell_area to get (total) emissions -- instead of emissions per m2
+        # 2.2. calculate the difference between the global total from our gridding, and the 'weighted' (=spatially adjusted) data; per sector, per year
+        # 2.3. apply the scalar to the 'weighted' emissions; per sector, per year, to obtain the desired grid
+
+        # 2.1:
+        # calculate sectoral global totals
+        
+        total_emissions_gridded = cell_area * gridded.drop_vars(["lon_bnds", "lat_bnds", "time_bnds"])
+        gridded_global = total_emissions_gridded[var].groupby("sector").sum(dim=("lat", "lon")).astype("float64")
+        
+        total_emissions_weighted = cell_area * weighted
+        weighted_global = total_emissions_weighted[var].groupby("sector").sum(dim=("lat", "lon")).astype("float64")
+
+        # 2.2.
+        global_scalar = xr.where(weighted_global != 0,
+                                gridded_global / weighted_global,
+                                0)
+
+        # 2.3
+        emissions_harmonised = weighted * global_scalar
+
+    finally:
+        # Close datasets to release file locks
+        if 'ceds' in locals():
+            ceds.close()
+        if 'gridded' in locals():
+            gridded.close()
+        if 'weighted' in locals():
+            weighted.close()
+        if 'areacella' in locals():
+            areacella.close()
+    
+    return emissions_harmonised, var
+
+
+# run the spatial harmonization
+if run_spatial_harmonisation:
+    print('run spatial harmonization')
+
+    # files that are produced above, that may need correction
+    # TODO:
+    # - [ ] make this more robust to potentially running a second time; e.g. only if not already run, and only if in the DO_GRIDDING_ONLY_FOR_THESE_SPECIES?
+    files_main, files_voc = return_nc_output_files_main_voc(gridded_data_location=settings.out_path / GRIDDING_VERSION)
+
+
+    # areas of gridcells for calculatings totals
+    areacella = xr.open_dataset(Path(settings.gridding_path, "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc"))
+    cell_area = areacella["areacella"]
+
+    for file in tqdm(files_main + files_voc, desc="Processing files"): # all
+        gas = file.name.split("-")[0]
+        type = _what_emissions_variable_type(file, files_main, files_voc)
+        outfile = file
+
+        print(f'Processing {gas}')
+
+        # match reference file: check whether there's a raw CEDS history file on your system to harmonise against
+        # all_files = 
+        if file in files_main:
+            match = next(ceds_data_location.glob(f"{gas}-*.nc"), None)
+            if match is None:
+                print(f"Warning: No CEDS file found for {gas} in {ceds_data_location}")
+                continue
+        if file in files_voc:
+            match = next(ceds_data_location_voc.glob(f"{gas}-*.nc"), None)
+            if match is None:
+                print(f"Warning: No VOC CEDS file found for {gas} in {ceds_data_location_voc}")
+                continue
+
+
+        emissions_harmonised, var = _spatial_harmonisation(file=file, match=match, cell_area=cell_area)
+
+        # Load original gridded dataset to copy attributes
+        gridded_original = xr.open_dataset(file)
+        copy_attributes(source=gridded_original, 
+                        target=emissions_harmonised)
+        gridded_original.close()
+
+        # remove old file (from previous loop in processing)
+        outfile.unlink(missing_ok=True)
+        # save weighted dataset (no dask)
+        encoding = {var: {"zlib": True, "complevel": 2}}
+
+        # TODO:
+        # - [ ] this used to be `weighted.to_netcdf()` - are we sure that the change to `emissions_harmonised` is correct
+        emissions_harmonised.to_netcdf(outfile, encoding=encoding)
+
+        emissions_harmonised.close()
+
+
+# %% [markdown]
+# # END OF POSTPROCESSING
 

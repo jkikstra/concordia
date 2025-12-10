@@ -58,10 +58,10 @@ In progress:
     - [ ] other suggestions from GISS
     - [ ] filename structure in main workflow and streamlined in all files
 - [ ] Jarmo ensures that order of post-processing fixes is correct (e.g. CEDS country-border correction also for VOC speciated, after/before 2022?)
-- [ ] Jarmo implements H2 for openburning workflow
+- [x] Jarmo implements H2 for openburning workflow
     - [x] first checks CMIP6 & CMIP7 historical approach
-    - [ ] then create/write 'proxy' files (i.e. translation file, where forest burning is aggregated -- based on the underlying data for CO proxy to determine the gridpoint conversion factors for forests)
-    - [ ] then integrate in main (?) workflow file
+    - [x] then create/write 'proxy' files (i.e. translation file, where forest burning is aggregated -- based on the underlying data for CO proxy to determine the gridpoint conversion factors for forests)
+    - [x] then integrate in main (?) workflow file
 
 Tasks Jarmo:
 - [ ] Jarmo works on a (semi-automatic) plotting suites
@@ -70,6 +70,7 @@ Tasks Jarmo:
     - [ ] work on biochar and soil carbon sequestration + potentially other land-use (TBD; potentially push to 0-5-0)
 - [ ] Annika/Jarmo: zeroes/NAs streamlining between historical-CEDS and our gridded-scenario data for sectors with no/zero emissions.
 - [ ] Jarmo: check that fill_value=0 of the ptolemy_patch is working OK 
+- [x] Jarmo: update history and scenario files
 
 Tasks Annika:
 - [x] VOC biomass
@@ -77,7 +78,7 @@ Tasks Annika:
     - [~] 2022 CEDS: 
         * Option A (preferred): remove what we have created, replace with CEDS ESGF file values
         * Option B: remove year altogether in CEDS + update metadata and description in line with that
-        * OPtion C:   remove year altogether in CEDS as well as removing it in openburning (to try to avoid having different years in our dataset, letting everyone just interpolate between 2021 and 2023 which shouldn't be too bad)
+        * Option C:   remove year altogether in CEDS as well as removing it in openburning (to try to avoid having different years in our dataset, letting everyone just interpolate between 2021 and 2023 which shouldn't be too bad)
     - [~] 2022 openburning: keep as is, just check that it looks OK
 
 Tasks Marco:
@@ -85,53 +86,13 @@ Tasks Marco:
 - [ ] perform run for H and VL, run all plotting, and check that the data is correct (share the plots with Jarmo too)
 - [ ] consider ways to run (on unicc?), to deal with storage space issues (if necessary)
 - [ ] input4mips (metdadata) validation script; see README.md in CMIP7 notebooks, section "Validation: data format checking for input4MIPs" -- ensure that the netCDF metadata is correct for upload to ESGF
-- [ ] ensure information for biochar and soil carbon sequestration CDR are pre-processed for all IAMs (focus first on the high-priority scenarios). See main notes here: https://docs.google.com/document/d/1H9sKOkTLC1oDxEWUNurXqilkEoz3obH5J5rk5PCTXvk/edit?tab=t.ozl8f8vi3kgh (with email by Jarmo on November 26, 2025 04:09). 
-
-
-DELETE: Futher (older) notes: we need to include these emissions (removals) in the emissions reporting. The reason is that, even though it is land-based, it is not included in any land-use/land-use change variable product, and thus ESMs won't be able to tell anything about these emissions from the land-use product provided by Louises, thus we must include it on the emissions side. So far we haven't included this information. It should first be added in gcages, then in harmonization (harmonize as zero, just like other CDR methods that are not covered in CEDS), then be included in the gridding workflow (similar to other CDR like ERW) and then be aggregated into other CDR. Gridding proxy files still need to be determined. Could use AGLAND (agricultural land) from the RESCUE file as a (good enough?) starting point. 
-    - Some information per model (collected by Jarmo so far):
-        - AIM: biochar and soil carbon sequestration are reported under 'Emissions|CO2|Other Capture and Removal'
-            - Emissions: not under CO2|AFOLU, but under 'Emissions|CO2|Other Capture and Removal'
-            - Carbon Removal: don't use, as it is under the 'Emissions' tree where we are already gridding it
-        - COFFEE: Luiz Bernardo says that Gerd Angelkorte will make sure that this will be separated in the upcoming submission
-            - Emissions: ...
-            - Carbon Removal:
-                - ...
-                - ...
-        - GCAM: ...tbd - ask Steve Smith / Xin Zhao / Christoph Bertram / Mel George
-            - Emissions: ...
-            - Carbon Removal:
-                - ...
-                - ...
-        - IMAGE: does not have biochar or soil carbon sequestration
-            - Emissions: N/A
-            - Carbon Removal: N/A
-        - MESSAGE: ...tbd - ask Yazhen Wu/Oliver Fricko/Yoga Pratama
-            - Emissions: ...
-            - Carbon Removal:
-                - ...
-                - ...
-        - REMIND: Laurin says it is probably reported under CO2|AFOLU, Florian Humpenöder is yet to confirm
-            - Emissions: under AFOLU
-            - Carbon Removal: yes
-                - no 'Carbon Removal|Land Use|Biochar'
-                - Carbon Removal|Land Use|Soil Carbon Management
-        - WITCH: 
-            - Emissions: under AFOLU
-            - Carbon Removal: yes 
-                - Carbon Removal|Land Use|Biochar (NOTE: reporting misses a few model years of data) 
-                - Carbon Removal|Land Use|Soil Carbon Management
-    - related notes:
-        - not yet sure what to do with Agroforestry (check with Louise/Detlef/Ben/others: how would this be best included in ESMs)
-        
-
-
+- [x] ensure information for biochar and soil carbon sequestration CDR are pre-processed for all IAMs (focus first on the high-priority scenarios). See main notes here: https://docs.google.com/document/d/1H9sKOkTLC1oDxEWUNurXqilkEoz3obH5J5rk5PCTXvk/edit?tab=t.ozl8f8vi3kgh (with email by Jarmo on November 26, 2025 04:09). 
 
 
 Other (minor) things to be decided:
 - [x] decision on Ukraine (esp. transportation): war emissions from transportation are only <5% of what they were pre-war; can we do a believable fix in harmonization? --> DECISION: don't try to patch this for v0-4-0
 - [~] double-check soil carbon sequestration and biochar; which models do it and where do they put it. If under AFOLU (AIM under Other Capture and Removal) then we may need to adjust gridding. 
-- [ ] Fix small countries issue: https://github.com/iiasa/emissions_harmonization_historical/issues/30#issuecomment-3574985850
+- [x] Fix small countries issue: https://github.com/iiasa/emissions_harmonization_historical/issues/30#issuecomment-3574985850
     - [ ] double-check history treatment of sdn_ssd, isr_pse, srb_ksv
 
 ### Update 30.10.2025

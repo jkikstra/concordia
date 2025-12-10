@@ -22,7 +22,7 @@ def get_notebook_parameters(notebook_name: str,
                             run_anthro_supplemental_voc: bool = False,
                             run_openburning_supplemental_voc: bool = False,
                             # run_anthro_supplemental_solidbiofuel: bool = False, # not yet implemented, for the future
-                            HISTORY_FILE: str = "cmip7_history_countrylevel_251024.csv",
+                            HISTORY_FILE: str = "country-history_202511261223_202511040855_202512032146_202512021030_7e32405ade790677a6022ff498395bff00d9792d.csv",
                             DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = None,
                             DO_GRIDDING_ONLY_FOR_THESE_SECTORS: list[str] | None = None,
                             FILE_NAME_ENDING: str | None = None, # normally defined in the workflow itself
