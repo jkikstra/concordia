@@ -73,14 +73,6 @@ SECTOR_ORDERING_GAS = {
         "Biochar",
         "Soil Carbon Management",
         "Other CDR",
-        # "Deforestation and other LUC",
-        # "OAE Calcination Emissions",
-        # "CDR Afforestation",
-        # "CDR BECCS",
-        # "CDR DACCS",
-        # "CDR EW",
-        # "CDR Industry",
-        # "CDR OAE Uptake Ocean",
     ]
 }
 
@@ -121,11 +113,16 @@ DATA_HANDLES = {
     "em_removal": "cdr",
 }
 
+from input4mips_validation.io import (
+    generate_creation_timestamp,
+    generate_tracking_id,
+)
+
 DS_ATTRS = dict(
     Conventions="CF-1.8",
     activity_id="input4MIPs",
     comment="Gridded emissions produced after harmonization and downscaling as part of the ScenarioMIP-CMIP7. See https://github.com/iiasa/emissions_harmonization_historical, https://github.com/IAMconsortium/concordia, and https://github.com/iiasa/aneris for documentation on the processes.",
-    contact="Jarmo S. Kikstra (kikstra@iiasa.ac.at)",
+    contact="kikstra@iiasa.ac.at",
     data_structure="grid",
     dataset_category="emissions",
     external_variables="gridcell_area",
@@ -136,16 +133,19 @@ DS_ATTRS = dict(
     license="Creative Commons Attribution-ShareAlike 4.0 International License (https://creativecommons.org/licenses). Further information about this data, including some limitations, can be found via the further_info_url (recorded as a global attribute in this file). The data producers and data providers make no warranty, either express or implied, including, but not limited to, warranties of merchantability and fitness for a particular purpose. All liabilities arising from the supply of the information (including any liability arising in negligence) are excluded to the fullest extent permitted by law.",
     institution="International Institue for Applied Systems Analysis - Integrated Assessment Modeling Consortium",
     institution_id="IIASA-IAMC",
-    mip_era="CMIP6plus", # for v0-3-0 this was CMIP6Plus; switch to CMIP7 if the data looks all fine
+    mip_era="CMIP7",
     nominal_resolution="50 km",
     realm="atmos",
     references="See: https://github.com/IAMconsortium/concordia and https://github.com/iiasa/emissions_harmonization_historical for references",
     source="Scenarios generated as part of the ScenarioMIP-CMIP7 project, see https://wcrp-cmip.org/mips/scenariomip/",
     table_id="input4MIPs",
-    target_mip="CMIP6plus", # later: ScenarioMIP?
+    target_mip="CMIP7", # Should this be ScenarioMIP? what is target_mip?
     product="primary-emissions-data",
     start_date="202201",
     end_date="210012",
+    creation_date=generate_creation_timestamp(),
+    tracking_id=generate_tracking_id(),
+    units="kg m-2 s-1"
 )
 
 
@@ -364,6 +364,9 @@ def reaggregate_sectors_cdr(ds, name):
                                 sector_detail_to_aggregate="Soil Carbon Management",
                                 sector_to_aggregate_into="Other CDR")
         
+        # rename Other CDR
+        ds = _rename_cdr_sectors(ds, name=name)
+        
         # Update the sector coordinate attributes for all changes
         if 'ids' in ds.sector.attrs:
             # Create new ids mapping with updated sector names
@@ -393,33 +396,33 @@ def set_var_encoding(ds, name):
     return ds
 
 
-def ds_attrs(name, model, scenario, version, date):
+def ds_attrs(name, marker_scenario_name, version, date):
     gas, rest = name.split("_", 1)
     handle = DATA_HANDLES[rest]
     title = (
-        f"Future {handle} emissions of {gas} in {scenario}"
-        if name != "TA_em_anthro"
-        else f"{ALKALINITY_ADDITION_LONGNAME} in {scenario}"
+        f"Future {handle} emissions of {gas} in {marker_scenario_name}"
     )
 
     extra_attrs = dict(
         source_version=version,
-        source_id=f"{DS_ATTRS['institution']}-{model}-{scenario}".replace(" ", "-"), # TODO: change to expected scenario naming
+        source_id=f"{DS_ATTRS['institution_id']}-{version}",
         variable_id=name,
         creation_date=date,
         title=title,
         reporting_unit=f"Mass flux of {gas}",
+        long_name=f"{name} anthropogenic emissions"
     )
     attrs = DS_ATTRS | extra_attrs
     return attrs
 
 
 class DressUp:
-    def __init__(self, version) -> None:
+    def __init__(self, version, marker_scenario_name) -> None:
         self.version = version
+        self.marker_scenario_name = marker_scenario_name
         self.date = str(datetime.datetime.today())
 
-    def __call__(self, ds, model, scenario, **kwargs):
+    def __call__(self, ds, **kwargs):
         vars = list(ds.data_vars)
         assert len(vars) == 1, vars
 
@@ -441,9 +444,9 @@ class DressUp:
             .pipe(set_sector_encoding)
             .pipe(update_attrs, ATTRS)
             .pipe(clean_var, name, gas, handle)
-            .assign_attrs(ds_attrs(name, model, scenario, self.version, self.date))
+            .assign_attrs(ds_attrs(name, self.marker_scenario_name, self.version, self.date))
             .pipe(reaggregate_sectors_cdr, name)
-            .pipe(_rename_cdr_sectors, name)
+            # .pipe(_rename_cdr_sectors, name)
         )
 
 
@@ -1059,5 +1062,95 @@ def read_r_to_da(file, template, flipud=True, dtype="float32"):
     )
     return da
 
+def scenario_name_prefix(m):
+    return f"esm-scen7-{m.lower()}"
+
 def filename_for_esgf(marker: str, version: str):
-    return f"{DS_ATTRS["activity_id"]}_emissions_{DS_ATTRS["target_mip"]}_{DS_ATTRS["institution_id"]}-{f"esm-scen7-{marker.lower()}"}-{version}_{DS_ATTRS["grid_label"]}_{DS_ATTRS["start_date"]}-{DS_ATTRS["end_date"]}.nc"
+    return f"{DS_ATTRS["activity_id"]}_emissions_{DS_ATTRS["target_mip"]}_{DS_ATTRS["institution_id"]}-{scenario_name_prefix(marker)}-{version}_{DS_ATTRS["grid_label"]}_{DS_ATTRS["start_date"]}-{DS_ATTRS["end_date"]}.nc"
+
+
+# Post-processing
+# - Spatial harmonisation utility functions
+def calculate_ratio(ceds_da, scen_da, gas, empty_treatment="fill_zeroes", type="em_anthro"):
+    """
+    Compute the ratio between a CEDS reference dataset
+    and a scenario dataset for a specific gas, handling missing sectors.
+
+    Returns an xarray DataArray with 'sector' dimension and all other coordinates intact.
+    """
+    
+    sectors = scen_da.sector.values
+    ratio_list = []  # store per-sector ratios
+    sector_names = []
+
+    var_name = f"{gas}_{type}"
+
+    for sector in sectors:
+
+        # check if sector exists in each dataset
+        sector_in_ceds = sector in ceds_da.sector.values
+        sector_in_scen = sector in scen_da.sector.values
+
+        if empty_treatment == "skip":
+            if not sector_in_ceds or not sector_in_scen:
+                print(f"Skipping sector '{sector}' - missing in {'CEDS' if not sector_in_ceds else 'scenario'} data")
+                continue
+
+        # handle missing sectors by filling zeros
+        if empty_treatment == "fill_zeroes":
+            # CEDS sector
+            if sector_in_ceds:
+                ceds_sector = ceds_da.sel(sector=sector)
+            else:
+                template_sector = ceds_da.isel(sector=0).squeeze()
+                ceds_sector = xr.zeros_like(template_sector).expand_dims(sector=[sector])
+
+            # Scenario sector
+            if sector_in_scen:
+                scen_sector = scen_da.sel(sector=sector)
+            else:
+                template_sector = scen_da.isel(sector=0).squeeze()
+                scen_sector = xr.zeros_like(template_sector).expand_dims(sector=[sector])
+
+        # select the numeric data variable only
+        if var_name in ceds_sector.data_vars:
+            ceds_values = ceds_sector[var_name]
+        else:
+            ceds_values = ceds_sector[list(ceds_sector.data_vars)[0]]
+
+        if var_name in scen_sector.data_vars:
+            scen_values = scen_sector[var_name]
+        else:
+            scen_values = scen_sector[list(scen_sector.data_vars)[0]]
+        
+        # compute ratio safely
+        mask = scen_values != 0.0
+        ratio_sector = xr.where(mask, ceds_values / scen_values, 1.0)
+        
+        # ensure sector dimension exists
+        if 'sector' not in ratio_sector.dims:
+            ratio_sector = ratio_sector.expand_dims(sector=[sector])
+
+        ratio_list.append(ratio_sector)
+        sector_names.append(sector)
+
+    # concatenate all sectors along 'sector' dimension
+    full_ratio = xr.concat(ratio_list, dim='sector')
+    full_ratio = full_ratio.assign_coords(sector=sector_names)
+
+    return full_ratio
+
+def return_nc_output_files_main_voc(gridded_data_location):
+
+    files_main = [
+        file
+        for file in gridded_data_location.glob("*.nc")
+        if "anthro" in file.name and "-AIR-" not in file.name and "speciated" not in file.name
+    ]
+    files_voc = [
+        file
+        for file in gridded_data_location.glob("*.nc")
+        if "anthro" in file.name and "-AIR-" not in file.name and "speciated" in file.name
+    ]
+
+    return files_main, files_voc
