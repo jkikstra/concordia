@@ -9,8 +9,9 @@ out_path: "C:/Users/kikstra/Documents/GitHub/concordia/results" # Jarmo; 19.09.2
 data_path: "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0-4-0" # Jarmo; 22.10.2025 and later
 
 
-variabledefs_path: "$data_path/input/variabledefinitions/variabledefs-cmip7_v0-4-0.csv" 
-variabledefs_path: "$data_path/input/variabledefinitions/variabledefs-cmip7_v0-4-0_fixSO2NMVOC.csv"
+# variabledefs_path: "$data_path/input/variabledefinitions/variabledefs-cmip7_v0-4-0.csv" 
+# variabledefs_path: "$data_path/input/variabledefinitions/variabledefs-cmip7_v0-4-0_fixSO2NMVOC.csv"
+variabledefs_path: "$data_path/input/variabledefinitions/variabledefs-cmip7_v0-4-0_fixSO2NMVOC_BiocharSCM.csv"
 
 
 history_path: "$data_path/input/historical" # Needs to be double-checked; and now need to ensure we have GCAM 8s
