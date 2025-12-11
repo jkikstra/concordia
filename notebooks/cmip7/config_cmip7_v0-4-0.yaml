@@ -19,7 +19,7 @@ scenario_path: "$data_path/input/scenarios/final-high-priority-20251210" # from 
 regionmappings_path: "$data_path/input/regionmappings/cc69ed0a415a63c7ce7372d5a36c088d9cbee055" # hand-fixed GCAM 8s
 gridding_path: "$data_path/input/gridding"
 proxy_path: "$data_path/input/gridding/proxy_rasters" 
-postprocess_path: "$data_path/input/postprocessing" # not used. Was used in rescue for adding HFCs from pre-specified pathways; not used in this version of CMIP7 because we do global pathways of minor species like HFCs somewhere else 
+postprocess_path: "$gridding_path/esgf/ceds" # Used for spatial harmonization to CEDS anthro in CMIP7. In RESCUE, this was used for adding HFCs from pre-specified pathways; it is used for that in this version of CMIP7 because we do global pathways of minor species like HFCs somewhere else 
 
 variable_template: "CMIP7 Harmonization|Emissions|{gas}|{sector}"
 # base_year: 2022 # actual harmonization year is 2023 - but the scenario files for BB4CMIP7 should start in 2022 (note that 2022 should be overwritten with the CEDS 2022 file)
