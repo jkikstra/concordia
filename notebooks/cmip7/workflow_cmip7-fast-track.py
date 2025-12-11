@@ -916,7 +916,9 @@ if run_main_gridding: # full run for all 10 species takes about ~1hour for 1 sce
             **(cmip7_utils.DS_ATTRS | {"version": VERSION_ESGF,
                                        "FILE_NAME_ENDING": FILE_NAME_ENDING})
         ),
-        callback=cmip7_utils.DressUp(version=settings.version, marker_scenario_name=experiment_name),
+        callback=cmip7_utils.DressUp(version=settings.version,
+                                     marker_scenario_name=experiment_name, 
+                                     settings=settings),
         directory=version_path,
         skip_exists=SKIP_EXISTING_MAIN_WORKFLOW_FILES,
     )
@@ -1076,7 +1078,7 @@ if run_spatial_harmonisation:
         type = _what_emissions_variable_type(file, files_main, files_voc)
         outfile = file
 
-        print(f'Processing {gas}')
+        print(f'Applying spatial corrections to: {gas} - do we need any?')
 
         # match reference file: check whether there's a raw CEDS history file on your system to harmonise against
         if file in files_main:
@@ -1094,6 +1096,8 @@ if run_spatial_harmonisation:
         if DONT_SPATIALLY_HARMONISE_SPECIATED_VOC:
             # only run for MAIN CEDS (anthro) species; not VOC species; not any species we are not running in this specific run (if already run in a previous run for the same folder)
             from concordia.cmip7.CONSTANTS import GASES_ESGF_CEDS
+            
+            # check that we're only doing the recently/currently run gas
             if DO_GRIDDING_ONLY_FOR_THESE_SPECIES is not None:
                 # Only process species in the filtered list
                 if gas not in DO_GRIDDING_ONLY_FOR_THESE_SPECIES:
@@ -1104,6 +1108,15 @@ if run_spatial_harmonisation:
                 if file in files_main and gas not in GASES_ESGF_CEDS:
                     print(f"Skipping {gas} (not in GASES_ESGF_CEDS)")
                     continue
+
+            # check that we're only doing the recently/currently run sector
+            sector = type.split("_", 1)[1]
+            if DO_GRIDDING_ONLY_FOR_THESE_SECTORS is not None:
+                # Only process species in the filtered list
+                if sector not in DO_GRIDDING_ONLY_FOR_THESE_SECTORS:
+                    print(f"Skipping {sector} (not in DO_GRIDDING_ONLY_FOR_THESE_SECTORS)")
+                    continue
+        print(f'Applying spatial corrections to: {gas}_{type}')
 
         emissions_harmonised, var = _spatial_harmonisation(file=file, match=match, cell_area=cell_area)
 

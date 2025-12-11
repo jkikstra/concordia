@@ -48,11 +48,22 @@ SECTOR_ORDERING_DEFAULT = {
         "International Shipping"
     ],
     "em_openburning": [
-        "Agricultural Waste Burning",
+        "Agricultural Waste Burning", # on fields
         "Forest Burning",
         "Grassland Burning",
         "Peat Burning",
     ],
+    "CO2_em_anthro": [
+        "Agriculture",
+        "Energy",
+        "Industrial",
+        "Transportation",
+        "Residential, Commercial, Other",
+        "Solvents Production and Application",
+        "Waste",
+        "International Shipping",
+        "Other Capture and Removal"
+    ]
 }
 
 
@@ -327,6 +338,36 @@ def _rename_cdr_sectors(ds,name,
     else:
         return ds
 
+def sectors_as_integer_ids(ds):
+
+    if ds.attrs.get("variable_id") == 'CO2_em_anthro':
+        sector_ordering_default = SECTOR_ORDERING_DEFAULT['CO2_em_anthro']
+    elif ds.attrs.get("variable_id").split("_", 1)[1] == 'em_anthro':
+        sector_ordering_default = SECTOR_ORDERING_DEFAULT['em_anthro']
+    elif ds.attrs.get("variable_id") == 'em_openburning':
+        sector_ordering_default = SECTOR_ORDERING_DEFAULT['em_openburning']
+    elif ds.attrs.get("variable_id") == 'em_AIR_anthro':
+        return ds # there is no sector level in Aircraft
+
+    in_sectors = list(ds.sector.values)
+    assert in_sectors == sector_ordering_default, "Have to shuffle order too probably to avoid confusing people"
+
+    # Create sector coordinate
+    sector_indices = np.arange(len(in_sectors))
+    ds = ds.assign_coords(sector=(["sector"], sector_indices))
+
+    # Set sector attributes
+    ds["sector"].attrs["long_name"] = "sector"
+    ds["sector"].attrs["bounds"] = "sector_bnds"
+    ds["sector"].attrs["ids"] = "; ".join(
+        f"{i}: {sector}" for i, sector in zip(sector_indices, sector_ordering_default)
+    )
+
+    # Should there also be sector bounds?
+    # ...
+
+    return ds
+
 def reaggregate_sectors_cdr(ds, name):
 
     if name == "CO2_em_anthro":
@@ -445,6 +486,68 @@ def ds_attrs(name, marker_scenario_name, version, date):
     attrs = DS_ATTRS | extra_attrs
     return attrs
 
+from concordia.cmip7.CONSTANTS import PROXY_YEARS
+from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total
+
+from concordia.settings import Settings
+
+def return_cell_area(settings=None, GRIDDING_VERSION="cell-area", SETTINGS_FILE="config_cmip7_v0-4-0.yaml"):
+
+    if settings is None:
+        try:
+            # Try to get __file__ (works when running as script)
+            HERE = Path(__file__).parent
+            # Also check if HERE resolved to just current directory, which indicates path resolution failed
+            if str(HERE) == "." or HERE == Path("."):
+                raise NameError("HERE resolved to current directory, using fallback")
+        except NameError:
+            # When running in notebook/papermill, use a more robust approach
+            # Find the concordia repository root and navigate to notebooks/cmip7
+            current_path = Path.cwd()
+            
+            # Look for the concordia root directory (contains pyproject.toml)
+            concordia_root = None
+            for parent in [current_path] + list(current_path.parents):
+                if (parent / "pyproject.toml").exists() and (parent / "src" / "concordia").exists():
+                    concordia_root = parent
+                    break
+            
+            if concordia_root is None:
+                raise RuntimeError("Could not find concordia repository root")
+            
+            HERE = concordia_root / "notebooks" / "cmip7"
+
+        settings = Settings.from_config(version=GRIDDING_VERSION,
+                                        local_config_path=Path(HERE,
+                                                            SETTINGS_FILE))
+    
+
+    areacella = xr.open_dataset(Path(settings.gridding_path, "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc"))
+    cell_area = areacella["areacella"]
+
+    return cell_area
+
+def add_file_global_sum_totals_attrs(ds, name, first_year=str(PROXY_YEARS[0]), last_year=str(PROXY_YEARS[-1])):
+
+    cell_area = return_cell_area()
+
+    sumfirstyear = round(float(ds_to_annual_emissions_total( # takes about 5-10 seconds
+            gridded_data=ds.sel(time=first_year),
+            var_name=name,
+            cell_area=cell_area,
+            keep_sectors=False
+        ).sel(year=int(first_year))),2)
+    sumlastyear = round(float(ds_to_annual_emissions_total( # takes about 5-10 seconds
+            gridded_data=ds.sel(time=last_year),
+            var_name=name,
+            cell_area=cell_area,
+            keep_sectors=False
+        ).sel(year=int(last_year))),2)
+
+    ds.attrs[f'global_total_emissions_{first_year}'] = f'{sumfirstyear} Tg/year'
+    ds.attrs[f'global_total_emissions_{last_year}'] = f'{sumlastyear} Tg/year'
+    
+    return ds
 
 class DressUp:
     def __init__(self, version, marker_scenario_name) -> None:
@@ -476,7 +579,10 @@ class DressUp:
             .pipe(clean_var, name, gas, handle)
             .assign_attrs(ds_attrs(name, self.marker_scenario_name, self.version, self.date))
             .pipe(reaggregate_sectors_cdr, name)
-            # .pipe(_rename_cdr_sectors, name)
+            .pipe(add_file_global_sum_totals_attrs, name=name) # responding to comment from Faluvegi (GISS)
+            # .pipe(fix_2022) # TODO
+            # .pipe(sectors_as_integer_ids) # TODO: TURN ON NEXT COMMIT
+            # .pipe(further_attributes_formatting) # TODO
         )
 
 
