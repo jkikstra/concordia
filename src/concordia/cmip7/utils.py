@@ -437,17 +437,6 @@ def reaggregate_sectors_cdr(ds, name):
         
         # rename Other CDR
         ds = _rename_cdr_sectors(ds, name=name)
-        
-        # Update the sector coordinate attributes for all changes
-        if 'ids' in ds.sector.attrs:
-            # Create new ids mapping with updated sector names
-            new_ids_list = []
-            for i, sector in enumerate(ds.sector.values):
-                new_ids_list.append(f"{i}: {sector}")
-            
-            # Update the ids attribute
-            ds.sector.attrs['ids'] = "; ".join(new_ids_list)
-            # print(f"Updated sector ids for {name}")
 
         return ds
     else:
@@ -496,7 +485,7 @@ def return_cell_area(settings=None, GRIDDING_VERSION="cell-area", SETTINGS_FILE=
     if settings is None:
         try:
             # Try to get __file__ (works when running as script)
-            HERE = Path(__file__).parent
+            HERE = Path(__file__).parent.parent.parent.parent / "notebooks" / "cmip7"
             # Also check if HERE resolved to just current directory, which indicates path resolution failed
             if str(HERE) == "." or HERE == Path("."):
                 raise NameError("HERE resolved to current directory, using fallback")

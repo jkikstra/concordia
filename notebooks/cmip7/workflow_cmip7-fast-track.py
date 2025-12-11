@@ -917,8 +917,7 @@ if run_main_gridding: # full run for all 10 species takes about ~1hour for 1 sce
                                        "FILE_NAME_ENDING": FILE_NAME_ENDING})
         ),
         callback=cmip7_utils.DressUp(version=settings.version,
-                                     marker_scenario_name=experiment_name, 
-                                     settings=settings),
+                                     marker_scenario_name=experiment_name),
         directory=version_path,
         skip_exists=SKIP_EXISTING_MAIN_WORKFLOW_FILES,
     )
