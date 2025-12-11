@@ -485,10 +485,24 @@ def add_time_bounds(ds):
     
     time_values = ds.time.values
     
+    # Convert to cftime if needed
+    if hasattr(time_values[0], 'year'):
+        # Already cftime objects
+        time_cftime = time_values
+    else:
+        # Convert numpy.datetime64 to pandas DatetimeIndex, then to cftime
+        import pandas as pd
+        time_pd = pd.to_datetime(time_values)
+        time_cftime = np.array([
+            DatetimeNoLeap(t.year, t.month, t.day, t.hour, t.minute, t.second, 
+                          t.microsecond, has_year_zero=True)
+            for t in time_pd
+        ])
+    
     # Create lower bounds: 1st of current month
     time_lower = np.array([
         DatetimeNoLeap(t.year, t.month, 1, 0, 0, 0, 0, has_year_zero=True)
-        for t in time_values
+        for t in time_cftime
     ])
     
     # Create upper bounds: 1st of next month
@@ -498,7 +512,7 @@ def add_time_bounds(ds):
             t.month + 1 if t.month < 12 else 1,
             1, 0, 0, 0, 0, has_year_zero=True
         )
-        for t in time_values
+        for t in time_cftime
     ])
     
     # Stack into shape (time, 2)
@@ -514,12 +528,20 @@ def add_time_bounds(ds):
 
 def reorder_dimensions(ds):
 
+    # Reorder dimensions based on variable type
     if ds.attrs.get("variable_id").split("_", 1)[1] == 'em_anthro':
         ds = ds.transpose("lon", "lat", "time", "sector", "bound")
     elif ds.attrs.get("variable_id").split("_", 1)[1] == 'em_openburning':
         ds = ds.transpose("lon", "lat", "time", "sector", "bound") # adds sector, where in CMIP6 this was part of a separate 'shares' sector
     elif ds.attrs.get("variable_id").split("_", 1)[1] == 'em_AIR_anthro':
-        ds = ds.transpose("lon", "lat", "time", "level")
+        ds = ds.transpose("lon", "lat", "time", "level", "bound")
+    
+    # Reorder data variables
+    var_id = ds.attrs.get("variable_id")
+    bounds_vars = [v for v in ['lat_bnds', 'lon_bnds', 'time_bnds', 'sector_bnds'] if v in ds.data_vars]
+    
+    data_var_order = [var_id] + bounds_vars
+    ds = ds[data_var_order]
 
     return ds
 
