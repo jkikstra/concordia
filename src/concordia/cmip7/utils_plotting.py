@@ -12,7 +12,64 @@ from pathlib import Path
 
 # note: # `cell_area: xr.DataArray | None = None` (PEP 604, may require Python 3.10+); alternative would be cell_area: Optional[xr.DataArray] = None; along which we need from typing import Optional
 # From a grid to global anual totals
-def ds_to_annual_emissions_total(gridded_data, var_name, cell_area: xr.DataArray | None = None, keep_sectors=True, sum_dims: list[str] | None = ["lat", "lon"]):
+def ds_to_annual_emissions_total_faster(gridded_data, var_name, cell_area: xr.DataArray | None = None, keep_sectors=True, sum_dims: list[str] | None = ["lat", "lon"]):
+    """
+    Convert gridded emissions in kg/m2/s to Mt/year using dask for faster computation.
+    
+    Parameters:
+    - gridded_data: xr.Dataset containing the emission variable
+    - var_name: str, name of the variable to convert
+    - cell_area: xr.DataArray of shape (lat, lon), in m2
+    - keep_sectors: bool, if True, retain sector info
+    - sum_dims: list of dimensions to sum over (spatial dimensions)
+    
+    Returns:
+    - xr.DataArray of Mt/year, shape (year,) or (sector, year)
+    """
+    da = gridded_data[var_name]
+    
+    # Chunk the data for dask processing (if not already chunked)
+    if not hasattr(da.data, 'chunks'):
+        # Chunk along time and spatial dimensions for efficiency
+        chunks = {'time': 12}  # Process 12 months at a time
+        da = da.chunk(chunks)
+    
+    # 1. Get seconds per month
+    seconds_per_month = da.time.dt.days_in_month * 24 * 60 * 60
+    
+    # 2. Build dimension list for summing
+    sum_dims_to_use = (sum_dims or []).copy()
+    if "level" in da.dims:
+        sum_dims_to_use.append("level")
+    
+    # 3. Apply multiplications and spatial sum
+    monthly = seconds_per_month * da  # kg/m2/s -> kg/m2/month
+    area_weighted = cell_area * monthly  # kg/m2/month -> kg/month
+    
+    if sum_dims_to_use:
+        kg_per_month = area_weighted.sum(dim=sum_dims_to_use)
+    else:
+        kg_per_month = area_weighted
+    
+    # 4. Group by year and sum
+    kg_per_year = kg_per_month.groupby("time.year").sum()
+    
+    # 5. Convert to Mt/year
+    result = kg_per_year * 1e-9
+    
+    # 6. Sum sectors if needed
+    if "sector" in result.dims and not keep_sectors:
+        result = result.sum(dim="sector")
+    
+    # 7. Rename and ensure proper naming
+    result.name = var_name
+    
+    return result.compute()
+
+
+# note: # `cell_area: xr.DataArray | None = None` (PEP 604, may require Python 3.10+); alternative would be cell_area: Optional[xr.DataArray] = None; along which we need from typing import Optional
+# From a grid to global anual totals
+def ds_to_annual_emissions_total(gridded_data, var_name, cell_area: xr.DataArray | None = None, keep_sectors=True, sum_dims: list[str] | None = ["lat", "lon"], faster=True):
     """
     Convert gridded emissions in kg/m2/s to Mt/year.
     
@@ -37,6 +94,17 @@ def ds_to_annual_emissions_total(gridded_data, var_name, cell_area: xr.DataArray
         areacella = xr.open_dataset(Path(dummy_settings.gridding_path, 
                              "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc"))
         cell_area = areacella["areacella"]
+
+    
+    if faster:
+        # Pass all arguments except 'faster' itself
+        return ds_to_annual_emissions_total_faster(
+            gridded_data=gridded_data,
+            var_name=var_name,
+            cell_area=cell_area,
+            keep_sectors=keep_sectors,
+            sum_dims=sum_dims
+        )
 
     da = gridded_data[var_name]
 

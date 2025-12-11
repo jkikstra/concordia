@@ -71,6 +71,7 @@ Tasks Jarmo:
 - [ ] Annika/Jarmo: zeroes/NAs streamlining between historical-CEDS and our gridded-scenario data for sectors with no/zero emissions.
 - [ ] Jarmo: check that fill_value=0 of the ptolemy_patch is working OK 
 - [x] Jarmo: update history and scenario files
+- [ ] IMPORTANT: ensure that 2023 adds up fully for anthro, add a scalar before the spatial harmonization step? (currently we're few tenths/hundredths of a percentage too low, due to small countries) -- note: check that for AIR, and shipping, it's fine. --> hmm Shipping is also slightly too low; check for CEDS historical with the annual sum function --> ...
 
 Tasks Annika:
 - [x] VOC biomass

@@ -1549,6 +1549,24 @@ if run_anthro_supplemental_voc:
 
 # %% [markdown]
 # # CONTINUED POSTPROCESSING
+
+# %%
+# helper functions
+def return_emission_names(file):
+
+    # Extract variable name and type from filename
+    # filename format: "{gas}-em-{type}_{FILE_NAME_ENDING}" or "{gas}_{FILE_NAME_ENDING}"
+    if "-em-" in file.name:
+        parts = file.name.replace(f"_{FILE_NAME_ENDING}", "").split("-em-")
+        gas_name = parts[0]
+        type_name = parts[1]
+        var = f"{gas_name.replace("-","_")}_em_{type_name.replace("-","_")}"
+    else:
+        raise ValueError(f"Unrecognized file format: {file.name}. Expected format: '{{gas}}-em-{{type}}_{{FILE_NAME_ENDING}}'")
+
+    return gas_name, var, type_name
+
+# %% [markdown]
 # ## 2. additional formatting (if not addressed above already)
 
 
@@ -1559,11 +1577,46 @@ if run_anthro_supplemental_voc:
 
 # %% [markdown]
 # # CONTINUED POSTPROCESSING
-# ## 3. plotting
+# ## 3. writing out some check files
+
 
 
 # %% 
-# ...
+# Total emissions (<1min per file)
+save_total_emissions_as_csv = True
+save_and_plot_total_emissions_as_csv = True
+
+if save_total_emissions_as_csv or save_and_plot_total_emissions_as_csv:
+    from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total
+
+    areacella = xr.open_dataset(Path(settings.gridding_path, "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc"))
+    cell_area = areacella["areacella"]
+
+    for file in tqdm((settings.out_path / GRIDDING_VERSION).glob("*.nc"), "Check: calculating total annual emissions from the gridded files"): # loop over all produced files
+        gas_name, var, type_name = return_emission_names(file)
+
+        folder_totals = settings.out_path / GRIDDING_VERSION / "check_annual_totals"
+        folder_totals.mkdir(parents=True, exist_ok=True)
+
+        # load full nc file
+        scen = xr.open_dataset(file)
+        # convert to global annual totals
+        scen_sectors_df = ds_to_annual_emissions_total( # takes about 10-30 seconds
+            gridded_data=scen,
+            var_name=var,
+            cell_area=cell_area,
+            keep_sectors=True
+        ).to_pandas()
+        scen_sectors_df.to_csv(folder_totals / f"{var.replace("_","-")}_{FILE_NAME_ENDING.rstrip('.nc')}_annual_totals_by_sector.csv")
+
+        scen_df = ds_to_annual_emissions_total( # takes about 5-10 seconds
+            gridded_data=scen,
+            var_name=var,
+            cell_area=cell_area,
+            keep_sectors=False
+        ).to_pandas().to_frame(name='emissions_Mt_year')
+        scen_df.to_csv(folder_totals / f"{var.replace("_","-")}_{FILE_NAME_ENDING.rstrip('.nc')}_annual_totals.csv")
+
 
 
 
