@@ -15,11 +15,16 @@ from pathlib import Path
 import pyreadr
 from attrs import define
 from cattrs import structure, transform_error
+from cftime import DatetimeNoLeap
 from pandas_indexing import concat, isin, semijoin
 from tqdm.auto import tqdm
 
 from ..settings import FtpSettings
 
+
+from concordia.cmip7.CONSTANTS import PROXY_YEARS
+from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total
+from concordia.settings import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -344,9 +349,9 @@ def sectors_as_integer_ids(ds):
         sector_ordering_default = SECTOR_ORDERING_DEFAULT['CO2_em_anthro']
     elif ds.attrs.get("variable_id").split("_", 1)[1] == 'em_anthro':
         sector_ordering_default = SECTOR_ORDERING_DEFAULT['em_anthro']
-    elif ds.attrs.get("variable_id") == 'em_openburning':
+    elif ds.attrs.get("variable_id").split("_", 1)[1] == 'em_openburning':
         sector_ordering_default = SECTOR_ORDERING_DEFAULT['em_openburning']
-    elif ds.attrs.get("variable_id") == 'em_AIR_anthro':
+    elif ds.attrs.get("variable_id").split("_", 1)[1] == 'em_AIR_anthro':
         return ds # there is no sector level in Aircraft
 
     in_sectors = list(ds.sector.values)
@@ -363,8 +368,18 @@ def sectors_as_integer_ids(ds):
         f"{i}: {sector}" for i, sector in zip(sector_indices, sector_ordering_default)
     )
 
-    # Should there also be sector bounds?
-    # ...
+    # Add sector bounds
+    # - Create bounds as 2D arrays: (n_coords, 2)
+    sector_lower = ds.sector.values - 0.5
+    sector_upper = ds.sector.values + 0.5
+    
+    # Stack into shape (n_coords, 2)
+    sector_bnds_array = np.column_stack([sector_lower, sector_upper])
+    
+    # Assign as coordinates
+    ds = ds.assign({
+        "sector_bnds": (("sector", "bound"), sector_bnds_array),
+    })
 
     return ds
 
@@ -443,6 +458,72 @@ def reaggregate_sectors_cdr(ds, name):
         return ds
 
 
+def add_lon_lat_bounds(ds, lon_cell_size=0.5, lat_cell_size=0.5):
+    """Add lat/lon bounds following CF conventions"""
+    
+    # Create bounds as 2D arrays: (n_coords, 2)
+    lon_lower = ds.lon.values - lon_cell_size/2
+    lon_upper = ds.lon.values + lon_cell_size/2
+    lat_lower = ds.lat.values - lat_cell_size/2
+    lat_upper = ds.lat.values + lat_cell_size/2
+    
+    # Stack into shape (n_coords, 2)
+    lon_bnds_array = np.column_stack([lon_lower, lon_upper])
+    lat_bnds_array = np.column_stack([lat_lower, lat_upper])
+    
+    # Assign as coordinates
+    ds = ds.assign({
+        "lon_bnds": (("lon", "bound"), lon_bnds_array),
+        "lat_bnds": (("lat", "bound"), lat_bnds_array),
+    })
+    
+    return ds
+
+
+def add_time_bounds(ds):
+    """Add monthly time bounds (1st to 1st of next month)"""
+    
+    time_values = ds.time.values
+    
+    # Create lower bounds: 1st of current month
+    time_lower = np.array([
+        DatetimeNoLeap(t.year, t.month, 1, 0, 0, 0, 0, has_year_zero=True)
+        for t in time_values
+    ])
+    
+    # Create upper bounds: 1st of next month
+    time_upper = np.array([
+        DatetimeNoLeap(
+            t.year if t.month < 12 else t.year + 1,
+            t.month + 1 if t.month < 12 else 1,
+            1, 0, 0, 0, 0, has_year_zero=True
+        )
+        for t in time_values
+    ])
+    
+    # Stack into shape (time, 2)
+    time_bnds_array = np.column_stack([time_lower, time_upper])
+    
+    # Assign as data variable
+    ds = ds.assign({
+        "time_bnds": (("time", "bound"), time_bnds_array),
+    })
+    
+    return ds
+
+
+def reorder_dimensions(ds):
+
+    if ds.attrs.get("variable_id").split("_", 1)[1] == 'em_anthro':
+        ds = ds.transpose("lon", "lat", "time", "sector", "bound")
+    elif ds.attrs.get("variable_id").split("_", 1)[1] == 'em_openburning':
+        ds = ds.transpose("lon", "lat", "time", "sector", "bound") # adds sector, where in CMIP6 this was part of a separate 'shares' sector
+    elif ds.attrs.get("variable_id").split("_", 1)[1] == 'em_AIR_anthro':
+        ds = ds.transpose("lon", "lat", "time", "level")
+
+    return ds
+
+
 def set_var_encoding(ds, name):
     da = ds[name]
     da.encoding.update(
@@ -474,11 +555,6 @@ def ds_attrs(name, marker_scenario_name, version, date):
     )
     attrs = DS_ATTRS | extra_attrs
     return attrs
-
-from concordia.cmip7.CONSTANTS import PROXY_YEARS
-from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total
-
-from concordia.settings import Settings
 
 def return_cell_area(settings=None, GRIDDING_VERSION="cell-area", SETTINGS_FILE="config_cmip7_v0-4-0.yaml"):
 
@@ -570,8 +646,11 @@ class DressUp:
             .pipe(reaggregate_sectors_cdr, name)
             .pipe(add_file_global_sum_totals_attrs, name=name) # responding to comment from Faluvegi (GISS)
             # .pipe(fix_2022) # TODO
-            # .pipe(sectors_as_integer_ids) # TODO: TURN ON NEXT COMMIT
-            # .pipe(further_attributes_formatting) # TODO
+            .pipe(sectors_as_integer_ids) # also adds sector_bnds
+            .pipe(add_lon_lat_bounds) # add lat/lon bnds
+            .pipe(add_time_bounds) # add time bnds
+            # .pipe(further_attributes_formatting) # TODO; e.g. 'data_usage_tips' and others
+            .pipe(reorder_dimensions) # https://github.com/PCMDI/input4MIPs_CVs/discussions/386#discussioncomment-14994936
         )
 
 
