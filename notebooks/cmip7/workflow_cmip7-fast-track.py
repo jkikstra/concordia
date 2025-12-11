@@ -31,15 +31,13 @@ HISTORY_FILE: str = "country-history_202511261223_202511040855_202512032146_2025
 # Settings
 # SETTINGS_FILE: str = "config_cmip7_esgf_v0_alpha.yaml" # was used for preparing for first upload to ESGF
 SETTINGS_FILE: str = "config_cmip7_v0-4-0.yaml" # for second ESGF version
-VERSION_ESGF: str = "0-4-0" # for second ESGF version
+VERSION_ESGF: str = "1-0-x" # for second ESGF version
 
 # Which scenario to run from the markers
-marker_to_run: str = "H" # options: H, HL, M, ML, L, LN, VL
+marker_to_run: str = "VL" # options: H, HL, M, ML, L, LN, VL
 
 GRIDDING_VERSION: str | None = None
 
-DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["CO2", "Sulfur"]
-DO_GRIDDING_ONLY_FOR_THESE_SECTORS: list[str] | None = None # all: ['anthro', 'openburning', 'AIR_anthro']
 
 # Which parts to run
 run_main: bool = True # skips downscaling and the saving out of data of the main workflow; can still run supplemental workflows with this set to False
@@ -51,6 +49,12 @@ run_openburning_h2: bool = True # produced based on openburning_co
 # run_anthro_supplemental_solidbiofuel: bool = False # not yet implemented, for the future
 run_spatial_harmonisation: bool = True # provides spatial harmonization with CEDS anthro in 2023 (requires having raw CEDS files locally)
 
+# main: files to produce (species, sector)
+DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["CO2", "Sulfur"]
+DO_GRIDDING_ONLY_FOR_THESE_SECTORS: list[str] | None = None # all: ['anthro', 'openburning', 'AIR_anthro']
+# supplemental: VOC files to produce
+# - anthro
+DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["VOC01_alcohols_em_speciated_VOC_anthro"]
 # %%
 # validate that we're receiving what we're expecting
 print(f"\n\nGRIDDING_VERSION received: {GRIDDING_VERSION}\n\n")
@@ -1016,8 +1020,8 @@ if run_openburning_h2:
 # # Start of SUPPLEMENTAL DATA
 
 # %% [markdown]
-# # VOC speciation (CEDS, anthro)
-# **NOTE: currently takes long at ~20mins per VOC species ~= 8hrs for all 23 VOC species**
+# # VOC speciation
+# **NOTE: currently takes quite long, especially anthro VOC speciation
 
 
 # %%
@@ -1027,6 +1031,7 @@ lock = SerializableLock()
 # %%
 # Load VOC data
 from concordia.cmip7.CONSTANTS import GASES_ESGF_CEDS_VOC, GASES_ESGF_BB4CMIP_VOC
+from concordia.cmip7.utils import scenario_name_prefix
 
 def load_voc_bulk(type="anthro"):
 
@@ -1039,8 +1044,8 @@ def load_voc_bulk(type="anthro"):
             # - discussion on GitHub:  https://github.com/CMIP-Data-Request/Harmonised-Public-Consultation/issues/108
             # - proper netCDF handling (see Zeb's 0-3-0 fixes)
             settings.out_path / GRIDDING_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution_id}-{scenario}-{version}_{grid_label}_{start_date}-{end_date}.nc".format(
-            name="VOC-em-anthro",
-            scenario=f"scen-{marker_to_run.lower()}",
+            name="NMVOC-em-anthro",
+            scenario=scenario_name_prefix(marker_to_run),
             **cmip7_utils.DS_ATTRS | {"version": VERSION_ESGF}
         ),
         chunks={},
@@ -1058,8 +1063,8 @@ def load_voc_bulk(type="anthro"):
             # - proper netCDF handling (see Zeb's 0-3-0 fixes)
             # settings.out_path / GRIDDING_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution_id}-{scenario}-{version}_{grid_label}_{start_date}-{end_date}.nc".format( # actual
             settings.out_path / GRIDDING_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution_id}-{scenario}_{grid_label}_{start_date}-{end_date}.nc".format( # remove this after tests
-            name="VOC-em-openburning",
-            scenario=f"scen-{marker_to_run.lower()}", # follow scenarioMIP paper (e.g., esm-scen7-h)
+            name="NMVOC-em-openburning",
+            scenario=scenario_name_prefix(marker_to_run), # follow scenarioMIP paper (e.g., esm-scen7-h)
             **cmip7_utils.DS_ATTRS | {"version": VERSION_ESGF}
         ),
         chunks={},
@@ -1190,7 +1195,7 @@ if run_openburning_supplemental_voc:
         print(f'Writing out emissions of {v}')
         outfile = settings.out_path / GRIDDING_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution_id}-{scenario}-{version}_{grid_label}_{start_date}-{end_date}.nc".format(
             name=gas_variable_name.replace("_", "-"),
-            scenario=f"scen-{marker_to_run.lower()}",
+            scenario=scenario_name_prefix(marker_to_run),
             **cmip7_utils.DS_ATTRS | {"version": VERSION_ESGF}
         )
 
@@ -1204,13 +1209,20 @@ if run_openburning_supplemental_voc:
         with ProgressBar():
             voc_spec.to_netcdf(outfile, mode="w", encoding=encoding, compute=True)
 
+# %% [markdown]
+# ## VOC speciation (CEDS, anthro)
+# **NOTE: runtime ~20mins per VOC species ~= 8hrs for all 23 VOC species**
+
+
 # %% 
+# TODO:
+# - [ ] speed up this loop
 if run_anthro_supplemental_voc:
     voc_anthro = load_voc_bulk(type="anthro")
     
-    for v in GASES_ESGF_CEDS_VOC: # all take about ~6hours for 1 scenario; could consider making this part of the driver parameters
-    # for v in [GASES_ESGF_CEDS_VOC[2]]: # only run one to test
-    # for v in GASES_ESGF_CEDS_VOC[0:2]: # run a few to test
+    if DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES is None:
+        DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES = GASES_ESGF_CEDS_VOC # by default, run all
+    for v in DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES: # all take about ~6hours for 1 scenario; could consider making this part of the driver parameters
         print(f'Reading in shares of {v}')
         # import file 
         voc_share = xr.open_dataset(
@@ -1246,13 +1258,13 @@ if run_anthro_supplemental_voc:
         )
         
         # Initialize the data variable with zeros
-        voc_spec_data = xr.zeros_like(voc_anthro["VOC_em_anthro"])
+        voc_spec_data = xr.zeros_like(voc_anthro["NMVOC_em_anthro"])
         
         # Perform multiplication for matching sectors
         # print(f'Calculations of emissions of {v}')
         for share_sector, anthro_sector in anthro_to_share_sectors.items():
             # Select data from both datasets for matching sectors
-            voc_bulk = voc_anthro["VOC_em_anthro"].sel(sector=anthro_sector)
+            voc_bulk = voc_anthro["NMVOC_em_anthro"].sel(sector=anthro_sector)
             
             # Get emissions share for this sector and gas
             share_data = voc_share["emissions_share"].sel(
@@ -1288,7 +1300,7 @@ if run_anthro_supplemental_voc:
 
         voc_spec[f"{gas_variable_name}"] = voc_spec_data
         # TODO:
-        # - [ ] update long_name of data (follow CEDS long_name) 
+        # - [ ] update long_name of data (follow CEDS long_name)
         # Add the bounds
         voc_spec['lon_bnds'] = voc_anthro['lon_bnds']
         voc_spec['time_bnds'] = voc_anthro['time_bnds']
