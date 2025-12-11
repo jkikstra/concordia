@@ -1128,6 +1128,37 @@ if run_spatial_harmonisation:
 # %% [markdown]
 # # END OF MAIN CODE
 
+# %%
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+
+
 # %% [markdown]
 # # Start of H2 openburning data
 # Usually takes <2mins for 1 scenario
@@ -1210,7 +1241,7 @@ if run_openburning_h2:
     h2_openburning[gas_variable_name] = h2_openburning_data
 
     # TODO:
-    # - [ ] update long_name of data (follow CEDS long_name) 
+    # - [ ] update long_name of data (follow CEDS long_name)
     # Add the bounds
     h2_openburning['lon_bnds'] = co_openburning['lon_bnds']
     h2_openburning['time_bnds'] = co_openburning['time_bnds']
@@ -1233,6 +1264,36 @@ if run_openburning_h2:
     h2_openburning.to_netcdf(outfile, mode="w", encoding=encoding, compute=True)
 
 
+# %%
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+
 
 # %% [markdown]
 # # Start of SUPPLEMENTAL DATA
@@ -1249,18 +1310,13 @@ lock = SerializableLock()
 # %%
 # Load VOC data
 from concordia.cmip7.CONSTANTS import GASES_ESGF_CEDS_VOC, GASES_ESGF_BB4CMIP_VOC
-from concordia.cmip7.utils import scenario_name_prefix
 
 def load_voc_bulk(type="anthro"):
 
     # load VOC (bulk) scenario file
-    if type=="anthro":
-
+    if type=="anthro":        
         # anthro
         voc_anthro = xr.open_dataset(
-            # update the file template with:
-            # - discussion on GitHub:  https://github.com/CMIP-Data-Request/Harmonised-Public-Consultation/issues/108
-            # - proper netCDF handling (see Zeb's 0-3-0 fixes)
             settings.out_path / GRIDDING_VERSION / f"NMVOC-em-anthro_{FILE_NAME_ENDING}",
         chunks={},
         lock=lock
@@ -1272,10 +1328,6 @@ def load_voc_bulk(type="anthro"):
 
         # openburning
         voc_openburning = xr.open_dataset(
-            # update the file template with:
-            # - discussion on GitHub:  https://github.com/CMIP-Data-Request/Harmonised-Public-Consultation/issues/108
-            # - proper netCDF handling (see Zeb's 0-3-0 fixes)
-            # settings.out_path / GRIDDING_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution_id}-{scenario}-{version}_{grid_label}_{start_date}-{end_date}.nc".format( # actual
             settings.out_path / GRIDDING_VERSION / f"NMVOCbulk-em-openburning_{FILE_NAME_ENDING}",
         chunks={},
         lock=lock
@@ -1288,6 +1340,35 @@ def load_voc_bulk(type="anthro"):
 # %%
 # AIR (anthro) is not required.
 
+# %%
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
 
 # %% [markdown]
 # # VOC speciation (BB4CMIP, openburnig)
@@ -1398,7 +1479,7 @@ if run_openburning_supplemental_voc:
 
         voc_spec[f"{gas_variable_name}"] = voc_spec_data
         # TODO:
-        # - [ ] update long_name of data (follow CEDS long_name) 
+        # - [ ] update long_name of data (follow CEDS long_name)
         # Add the bounds
         voc_spec['lon_bnds'] = voc_openburning['lon_bnds']
         voc_spec['time_bnds'] = voc_openburning['time_bnds']
@@ -1406,7 +1487,7 @@ if run_openburning_supplemental_voc:
         
         # Update attributes
         voc_spec.attrs['variable_id'] = gas_variable_name
-        voc_spec.attrs['title'] = f"Speciated {gas_variable_name} emissions"
+        voc_spec.attrs['title'] = f"Future openburning emissions of speciated {gas_variable_name}"
 
         # save out
         print(f'Writing out emissions of {v}')
@@ -1422,6 +1503,37 @@ if run_openburning_supplemental_voc:
         
         with ProgressBar():
             voc_spec.to_netcdf(outfile, mode="w", encoding=encoding, compute=True)
+
+# %%
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+
 
 # %% [markdown]
 # ## VOC speciation (CEDS, anthro)
@@ -1522,7 +1634,7 @@ if run_anthro_supplemental_voc:
         
         # Update attributes
         voc_spec.attrs['variable_id'] = gas_variable_name
-        voc_spec.attrs['title'] = f"Future openburning emissions of speciated {gas_variable_name}"
+        voc_spec.attrs['title'] = f"Speciated {gas_variable_name} emissions"
 
         # save out
         print(f'Writing out emissions of {v}')
@@ -1544,7 +1656,35 @@ if run_anthro_supplemental_voc:
 # # END OF SUPPLEMENTAL DATA CODE
 
 
-
+# %%
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
+# -----------------------------
 
 
 # %% [markdown]
