@@ -36,6 +36,7 @@ VERSION_ESGF: str = "1-0-x" # for second ESGF version
 # Which scenario to run from the markers
 marker_to_run: str = "VL" # options: H, HL, M, ML, L, LN, VL
 
+# What folder to save this run in
 GRIDDING_VERSION: str | None = None
 
 
@@ -50,11 +51,13 @@ run_openburning_h2: bool = True # produced based on openburning_co
 run_spatial_harmonisation: bool = True # provides spatial harmonization with CEDS anthro in 2023 (requires having raw CEDS files locally)
 
 # main: files to produce (species, sector)
-DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["CO2", "Sulfur"]
+DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["CO2", "SO2"]
 DO_GRIDDING_ONLY_FOR_THESE_SECTORS: list[str] | None = None # all: ['anthro', 'openburning', 'AIR_anthro']
 # supplemental: VOC files to produce
 # - anthro
 DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["VOC01_alcohols_em_speciated_VOC_anthro"]
+# - openburning
+DO_VOC_SPECIATION_OPENBURNING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["C10H16"]
 # %%
 # validate that we're receiving what we're expecting
 print(f"\n\nGRIDDING_VERSION received: {GRIDDING_VERSION}\n\n")
@@ -1043,11 +1046,7 @@ def load_voc_bulk(type="anthro"):
             # update the file template with:
             # - discussion on GitHub:  https://github.com/CMIP-Data-Request/Harmonised-Public-Consultation/issues/108
             # - proper netCDF handling (see Zeb's 0-3-0 fixes)
-            settings.out_path / GRIDDING_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution_id}-{scenario}-{version}_{grid_label}_{start_date}-{end_date}.nc".format(
-            name="NMVOC-em-anthro",
-            scenario=scenario_name_prefix(marker_to_run),
-            **cmip7_utils.DS_ATTRS | {"version": VERSION_ESGF}
-        ),
+            settings.out_path / GRIDDING_VERSION / f"NMVOC-em-anthro_{FILE_NAME_ENDING}",
         chunks={},
         lock=lock
         )
@@ -1062,11 +1061,7 @@ def load_voc_bulk(type="anthro"):
             # - discussion on GitHub:  https://github.com/CMIP-Data-Request/Harmonised-Public-Consultation/issues/108
             # - proper netCDF handling (see Zeb's 0-3-0 fixes)
             # settings.out_path / GRIDDING_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution_id}-{scenario}-{version}_{grid_label}_{start_date}-{end_date}.nc".format( # actual
-            settings.out_path / GRIDDING_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution_id}-{scenario}_{grid_label}_{start_date}-{end_date}.nc".format( # remove this after tests
-            name="NMVOC-em-openburning",
-            scenario=scenario_name_prefix(marker_to_run), # follow scenarioMIP paper (e.g., esm-scen7-h)
-            **cmip7_utils.DS_ATTRS | {"version": VERSION_ESGF}
-        ),
+            settings.out_path / GRIDDING_VERSION / f"NMVOCbulk-em-openburning_{FILE_NAME_ENDING}",
         chunks={},
         lock=lock
         )
@@ -1104,10 +1099,17 @@ voc_spec_ratios_location_openburning = settings.proxy_path / "NMVOC_speciation"
 # 5. Update/set other attributes
 
 # %%
+# TODO:
+# - [ ] speed up this loop
+
+
+
 if run_openburning_supplemental_voc:
     voc_openburning = load_voc_bulk(type="openburning")
 
-    for v in GASES_ESGF_BB4CMIP_VOC:
+    if DO_VOC_SPECIATION_OPENBURNING_ONLY_FOR_THESE_SPECIES is None:
+        DO_VOC_SPECIATION_OPENBURNING_ONLY_FOR_THESE_SPECIES = GASES_ESGF_BB4CMIP_VOC # by default, run all
+    for v in DO_VOC_SPECIATION_OPENBURNING_ONLY_FOR_THESE_SPECIES:
         print(f'Reading in shares of {v}')
         # import file
         voc_share = xr.open_dataset(
@@ -1139,13 +1141,13 @@ if run_openburning_supplemental_voc:
         )
         
         # Initialize the data variable with zeros
-        voc_spec_data = xr.zeros_like(voc_openburning["VOC_em_openburning"])
+        voc_spec_data = xr.zeros_like(voc_openburning["NMVOCbulk_em_openburning"])
 
         # Perform multiplication for matching sectors
         # print(f'Calculations of emissions of {v}')
         for share_sector, openburning_sector in openburning_to_share_sectors.items():
             # Select data from both datasets for matching sectors
-            voc_bulk = voc_openburning["VOC_em_openburning"].sel(sector=openburning_sector)
+            voc_bulk = voc_openburning["NMVOCbulk_em_openburning"].sel(sector=openburning_sector)
             
             # Get emissions share for this sector and gas
             share_data = voc_share["emissions_share"].sel(
@@ -1193,11 +1195,8 @@ if run_openburning_supplemental_voc:
 
         # save out
         print(f'Writing out emissions of {v}')
-        outfile = settings.out_path / GRIDDING_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution_id}-{scenario}-{version}_{grid_label}_{start_date}-{end_date}.nc".format(
-            name=gas_variable_name.replace("_", "-"),
-            scenario=scenario_name_prefix(marker_to_run),
-            **cmip7_utils.DS_ATTRS | {"version": VERSION_ESGF}
-        )
+        name = gas_variable_name.replace("_", "-")
+        outfile = settings.out_path / GRIDDING_VERSION / f"{name}_{FILE_NAME_ENDING}"
 
         encoding = {
             gas_variable_name: {
@@ -1312,11 +1311,8 @@ if run_anthro_supplemental_voc:
 
         # save out
         print(f'Writing out emissions of {v}')
-        outfile = settings.out_path / GRIDDING_VERSION / "{name}_{activity_id}_emissions_{target_mip}_{institution_id}-{scenario}-{version}_{grid_label}_{start_date}-{end_date}.nc".format(
-            name=gas_variable_name.replace("_", "-"),
-            scenario=f"scen-{marker_to_run.lower()}",
-            **cmip7_utils.DS_ATTRS | {"version": VERSION_ESGF}
-        )
+        name = gas_variable_name.replace("_", "-")
+        outfile = settings.out_path / GRIDDING_VERSION / "{name}_{FILE_NAME_ENDING}"
 
         encoding = {
             gas_variable_name: {
