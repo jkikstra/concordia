@@ -1071,7 +1071,7 @@ if run_spatial_harmonisation:
     cell_area = areacella["areacella"]
 
     # for file in tqdm(files_main + files_voc, desc="Processing files"): # all
-    for file in tqdm(files_main, desc="Processing files"): # all
+    for file in tqdm(files_main, desc="Processing files"): # only main
         gas = file.name.split("-")[0]
         type = _what_emissions_variable_type(file, files_main, files_voc)
         outfile = file
@@ -1222,7 +1222,7 @@ if run_openburning_h2:
 
     # save out
     print('Writing out H2 openburning emissions')
-    outfile = settings.out_path / GRIDDING_VERSION / f"H2-em-openburning_{FILE_NAME_ENDING}"
+    outfile = settings.out_path / GRIDDING_VERSION / f"{gas_variable_name.replace("_","-")}_{FILE_NAME_ENDING}"
 
     encoding = {
         gas_variable_name: {
@@ -1394,7 +1394,7 @@ if run_openburning_supplemental_voc:
                     voc_spec_data[time_idx, :, :, sector_idx] = (voc_slice * share_slice).values
 
         # Add the computed data to the result dataset
-        gas_variable_name = voc_share.gas.values[0]
+        gas_variable_name = f"NMVOC_{voc_share.gas.values[0]}_em_speciated_VOC_openburning"
 
         voc_spec[f"{gas_variable_name}"] = voc_spec_data
         # TODO:
@@ -1522,7 +1522,7 @@ if run_anthro_supplemental_voc:
         
         # Update attributes
         voc_spec.attrs['variable_id'] = gas_variable_name
-        voc_spec.attrs['title'] = f"Speciated {gas_variable_name} emissions"
+        voc_spec.attrs['title'] = f"Future openburning emissions of speciated {gas_variable_name}"
 
         # save out
         print(f'Writing out emissions of {v}')
