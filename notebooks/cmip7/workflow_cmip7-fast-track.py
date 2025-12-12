@@ -95,6 +95,10 @@ from concordia.workflow import WorkflowDriver
 from concordia.cmip7.CONSTANTS import return_marker_information
 from concordia.cmip7.dask_setup_alternative import setup_dask_client # to enable running with dask also from VSCode Interactive Window
 
+from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total
+from tqdm import tqdm
+import xarray as xr
+import numpy as np
 
 # %%
 # Scenario information
@@ -945,7 +949,6 @@ if run_main_gridding: # full run for all 10 species takes about ~1hour for 1 sce
 # imports and helper functions for spatial harmonization
 from concordia.cmip7.utils import calculate_ratio, return_nc_output_files_main_voc
 import xarray as xr
-from tqdm import tqdm
 from concordia.cmip7.CONSTANTS import PROXY_YEARS, find_voc_data_variable_string
 from concordia.cmip7.utils import SECTOR_ORDERING_GAS, SECTOR_ORDERING_DEFAULT, SECTOR_DICT_ANTHRO_DEFAULT, SECTOR_DICT_ANTHRO_CO2_SCENARIO
 
