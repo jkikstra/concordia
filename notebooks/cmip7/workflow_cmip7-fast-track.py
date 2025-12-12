@@ -31,22 +31,23 @@ HISTORY_FILE: str = "country-history_202511261223_202511040855_202512032146_2025
 # Settings
 # SETTINGS_FILE: str = "config_cmip7_esgf_v0_alpha.yaml" # was used for preparing for first upload to ESGF
 SETTINGS_FILE: str = "config_cmip7_v0-4-0.yaml" # for second ESGF version
-VERSION_ESGF: str = "1-0-x" # for second ESGF version
+VERSION_ESGF: str = "v2-1-testing-produce-all" # for second ESGF version
 
 # Which scenario to run from the markers
 marker_to_run: str = "VL" # options: H, HL, M, ML, L, LN, VL
 
 # What folder to save this run in
 GRIDDING_VERSION: str | None = None
+GRIDDING_VERSION: str | None = f"{VERSION_ESGF}_{marker_to_run}"
 
 
 # Which parts to run
 run_main: bool = True # skips downscaling and the saving out of data of the main workflow; can still run supplemental workflows with this set to False
 run_main_gridding: bool = True # if false, we'll not run the main gridding workflow
 SKIP_EXISTING_MAIN_WORKFLOW_FILES: bool = False # if True, it won't reproduce files already on your disk
-run_anthro_supplemental_voc: bool = False
-run_openburning_supplemental_voc: bool = False
-run_openburning_h2: bool = False # produced based on openburning_co
+run_anthro_supplemental_voc: bool = True
+run_openburning_supplemental_voc: bool = True
+run_openburning_h2: bool = True # produced based on openburning_co
 # run_anthro_supplemental_solidbiofuel: bool = False # not yet implemented, for the future
 run_spatial_harmonisation: bool = True # provides spatial harmonization with CEDS anthro in 2023 (requires having raw CEDS files locally)
 
@@ -92,8 +93,9 @@ from concordia.cmip7 import utils as cmip7_utils # update to cmip7 utils (e.g. f
 from concordia.settings import Settings
 from concordia.utils import MultiLineFormatter
 from concordia.workflow import WorkflowDriver
-from concordia.cmip7.CONSTANTS import return_marker_information
+from concordia.cmip7.CONSTANTS import return_marker_information, PROXY_YEARS, find_voc_data_variable_string
 from concordia.cmip7.dask_setup_alternative import setup_dask_client # to enable running with dask also from VSCode Interactive Window
+from concordia.cmip7.utils import calculate_ratio, return_nc_output_files_main_voc, SECTOR_ORDERING_GAS, SECTOR_ORDERING_DEFAULT, SECTOR_DICT_ANTHRO_DEFAULT, SECTOR_DICT_ANTHRO_CO2_SCENARIO
 
 from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total
 from tqdm import tqdm
@@ -946,13 +948,7 @@ if run_main_gridding: # full run for all 10 species takes about ~1hour for 1 sce
 #
 
 # %%
-# imports and helper functions for spatial harmonization
-from concordia.cmip7.utils import calculate_ratio, return_nc_output_files_main_voc
-import xarray as xr
-from concordia.cmip7.CONSTANTS import PROXY_YEARS, find_voc_data_variable_string
-from concordia.cmip7.utils import SECTOR_ORDERING_GAS, SECTOR_ORDERING_DEFAULT, SECTOR_DICT_ANTHRO_DEFAULT, SECTOR_DICT_ANTHRO_CO2_SCENARIO
-
-
+# helper functions for spatial harmonization
 def copy_attributes(
     source: xr.Dataset, target: xr.Dataset
 ) -> xr.Dataset:
@@ -1179,6 +1175,22 @@ if run_spatial_harmonisation:
 # Usually takes <2mins for 1 scenario
 
 # %%
+
+def _to_sector_integers_and_reorder(ds, type_name='em_openburning'):
+    # translate/map sectors
+    # Map sector names to integer indices based on SECTOR_ORDERING_DEFAULT
+    sector_ordering = SECTOR_ORDERING_DEFAULT[type_name]
+    sector_name_to_id = {name: idx for idx, name in enumerate(sector_ordering)}
+    
+    # Rename sectors in h2_translation to use integer IDs
+    ds = h2_translation.assign_coords(
+        sector=([sector_name_to_id.get(s, s) for s in h2_translation.sector.values])
+    )
+    
+    return ds
+
+
+# %%
 import xarray as xr
 import numpy as np
 
@@ -1197,10 +1209,7 @@ if run_openburning_h2:
     # Load the H2/CO emission factor translation file
     h2_translation_file = settings.proxy_path / "EF_h2_div_EF_co.nc"
     h2_translation = xr.open_dataset(h2_translation_file)
-    
-    print(co_openburning)
-    print(h2_translation)
-
+    h2_translation = _to_sector_integers_and_reorder(h2_translation)
 
     # Initialize result with same structure as co_openburning
     h2_openburning = xr.Dataset(
@@ -1210,8 +1219,6 @@ if run_openburning_h2:
 
     # Initialize the data variable with zeros
     h2_openburning_data = xr.zeros_like(co_openburning["CO_em_openburning"])
-
-
 
     # Perform multiplication for burning sectors
     for openburning_sector in np.unique(co_openburning.sector):
@@ -1244,11 +1251,11 @@ if run_openburning_h2:
                 co_slice = co_sector.isel(time=time_idx)
 
                 # Multiply and assign to result
-                h2_openburning_data[time_idx, :, :, sector_idx] = (co_slice * translation_slice).values
+                h2_openburning_data[:, :, time_idx, sector_idx] = (co_slice * translation_slice).values
                 
                 # Assert that the sectors all align, ignoring dtype
-                assert h2_openburning_data[time_idx, :, :, sector_idx].sector.values == co_slice.sector.values
-                assert h2_openburning_data[time_idx, :, :, sector_idx].sector.values == translation_slice.sector.values
+                assert h2_openburning_data[:, :, time_idx, sector_idx].sector.values == co_slice.sector.values
+                assert h2_openburning_data[:, :, time_idx, sector_idx].sector.values == translation_slice.sector.values
 
 
     # Add the computed data to the result dataset
