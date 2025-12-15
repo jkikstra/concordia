@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.4
+#       jupytext_version: 1.17.3
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -199,7 +199,7 @@ ceds_data_location: Path | None = None # if None here, it is replaced by setting
 ceds_data_location_voc: Path | None = None # if None here, it is replaced by settings.ceds_data_location_voc later on
 ceds_data_location_AIR: Path | None = None # if None here, it is replaced by settings.ceds_data_location_voc later on
 
-#%%
+# %%
 if ceds_data_location is None:
     ceds_data_location = settings.postprocess_path / "CMIP7_anthro"
 if ceds_data_location_voc is None:
@@ -747,7 +747,7 @@ iam_df.columns
 #     if len(hist.loc[ismatch(country=c)]) < 120:
 #         print(c)
 
-# %% 
+# %%
 # do variable name replacements to align with CEDS and BB4CMIP7 historical products
 
 # Sulfur -> SO2 (CEDS+BB4CMIP7)
@@ -846,7 +846,7 @@ assert_strings_covered(reg_model, reg_mapped)
 # workflow.harmdown_regionlevel(workflow.variabledefs) # second step, looks to work fine and quick, too
 # workflow.harmdown_countrylevel(workflow.variabledefs) # third step, requires gdp to be available from the HARMONIZATION_YEAR onward
 
-# %% 
+# %%
 # hot-patch to deal with proxies that have NA values
 # see src/concordia/_patches_ptolemy.py
 
@@ -1101,7 +1101,7 @@ if run_spatial_harmonisation:
         # add
         if f"{gas}_{type}" == "CO2_em_anthro":
             ceds = xr.concat([ceds, xr.zeros_like(gridded.sel(time='2023',sector=[8,9]))], dim="sector")
-
+        
         # try:
         # variable name
         if file in files_main:
@@ -1273,6 +1273,7 @@ if run_spatial_harmonisation:
 
         # reorder dimensions when no computations are required anymore; except replacing 2022
         emissions_harmonised = emissions_harmonised.pipe(reorder_dimensions)
+                
         # replace 2022 CEDS data; anthro
         if type == "em_anthro":
             if gas == "CO2":
@@ -1281,15 +1282,17 @@ if run_spatial_harmonisation:
             else:
                 ceds_2022 = xr.open_dataset(next(ceds_data_location.glob(f"{gas}-*.nc"))).sel(time='2022').pipe(reorder_dimensions, bound_var_name="bound")
         # replace values
+        
         emissions_harmonised = emissions_harmonised.pipe(reorder_dimensions, bound_var_name="bound")
-        emissions_harmonised[f"{gas}_{type}"].loc[
-            dict(time=emissions_harmonised.time[0:12]) # the first twelve months
-        ].values = ceds_2022[f"{gas}_{type}"].values # ceds data ends in 2023, so not the last but the penultimate year
-        
-        
+
+        emissions_harmonised[f"{gas}_{type}"].loc[dict(time=ceds_2022.time)] = ceds_2022[f"{gas}_{type}"]
+
         # Add global sums as metadata
         emissions_harmonised = emissions_harmonised.pipe(add_file_global_sum_totals_attrs, name=f"{gas}_{type}") # add totals after 2022 is added
 
+        xr.testing.assert_allclose(ceds_2022[f"{gas}_{type}"], emissions_harmonised.sel(time='2022')[f"{gas}_{type}"], rtol=0, atol=0)
+        #assert np.allclose(test_difference, 0)
+        
         # Save out the updated file
         emissions_harmonised.to_netcdf(outfile, encoding=encoding)
         emissions_harmonised.close() # close the connection to the file
@@ -1329,13 +1332,11 @@ if run_spatial_harmonisation:
 # -----------------------------
 # -----------------------------
 
-
 # %% [markdown]
 # # Start of H2 openburning data
 # Usually takes <2mins for 1 scenario
 
 # %%
-
 def _to_sector_integers_and_reorder(ds, type_name='em_openburning'):
     # translate/map sectors
     # Map sector names to integer indices based on SECTOR_ORDERING_DEFAULT
@@ -1725,7 +1726,7 @@ if run_openburning_supplemental_voc:
 # **NOTE: runtime ~20mins per VOC species ~= 8hrs for all 23 VOC species**
 
 
-# %% 
+# %%
 # TODO:
 # - [ ] speed up this loop
 if run_anthro_supplemental_voc:
@@ -1889,7 +1890,7 @@ if run_anthro_supplemental_voc:
 # ## 2. additional formatting (if not addressed above already)
 
 
-# %% 
+# %%
 # ...
 
 
@@ -1897,14 +1898,13 @@ if run_anthro_supplemental_voc:
 # %% [markdown]
 # # CONTINUED POSTPROCESSING
 # ## 3. writing out some check files
+#
+#
 
-
-
-# %% 
+# %%
 # Total emissions (<1min per file)
 save_total_emissions_as_csv = True
 CALCULATE_TOTALS_GASES: list[str] | None = None # e.g. ["CO2", "SO2", "VOC01_alcohols", "VOC02_ethane", "NMVOC-C2H2", "NMVOC-C10H16"]; default is run all
-
 
 if save_total_emissions_as_csv:
     from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total
@@ -1946,7 +1946,6 @@ if save_total_emissions_as_csv:
 # ## 4.1. alignment with historical; from 'notebooks\cmip7\check_gridded-scenarios-compare-to-ceds-esgf.py'
 
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
-
 plot_timeseries: bool = True
 PLOT_GASES: list[str] | None = None # e.g. ["CO2", "SO2", "VOC01_alcohols", "VOC02_ethane", "NMVOC-C2H2", "NMVOC-C10H16"]; default is run all
 PLOT_GASES: list[str] | None = ['CO2'] # e.g. ["CO2", "SO2", "VOC01_alcohols", "VOC02_ethane", "NMVOC-C2H2", "NMVOC-C10H16"]; default is run all
@@ -1981,7 +1980,6 @@ LOCATIONS = {
 }
 
 # %%
-
 folder_plots = settings.out_path / GRIDDING_VERSION / "plots"
 folder_plots.mkdir(parents=True, exist_ok=True)
 
@@ -2039,11 +2037,270 @@ for file in tqdm((settings.out_path / GRIDDING_VERSION).glob("*.nc"), "Check: ca
                         continue
 
 
+# %% [markdown]
+# ## 4.2. alignment with downscaled scenario information
+
+# %%
+if DO_GRIDDING_ONLY_FOR_THESE_SPECIES is None:
+    CALCULATE_TOTALS_GASES = list(downscaled.index.get_level_values("gas").unique())
+else:
+    CALCULATE_TOTALS_GASES = DO_GRIDDING_ONLY_FOR_THESE_SPECIES
+
+# %%
+SECTOR_DICT_BURNING = {
+    0: 'Agricultural Waste Burning',
+    1: 'Forest Burning',
+    2: 'Grassland Burning',
+    3: 'Peat Burning'
+}
+
+# %%
+if save_total_emissions_as_csv:
+    from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total
+
+    folder_totals = settings.out_path / GRIDDING_VERSION / "check_annual_totals"
+    folder_totals.mkdir(parents=True, exist_ok=True)
+
+    areacella = xr.open_dataset(
+        Path(settings.gridding_path, "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc")
+    )
+    cell_area = areacella["areacella"]
+
+    all_gases_df_list = []
+
+    for file in tqdm((settings.out_path / GRIDDING_VERSION).glob("*.nc"),
+                     desc="Calculating total annual emissions from the gridded files"):
+
+        gas_name, var, type_name = return_emission_names(file)
+
+        if gas_name not in CALCULATE_TOTALS_GASES:
+            continue
+        
+        print(gas_name)
+        
+        scen = xr.open_dataset(file)
+
+        if "AIR" in file.stem:
+            da = ds_to_annual_emissions_total(
+                gridded_data=scen,
+                var_name=var,
+                cell_area=cell_area,
+                keep_sectors=False
+            )
+
+            # Convert Series/DataArray to DataFrame
+            if isinstance(da, xr.DataArray):
+                df = da.to_dataframe(name="emissions").reset_index()
+            elif isinstance(da, pd.Series):
+                df = da.reset_index(name="emissions")
+            else:
+                raise TypeError(f"Unexpected type: {type(da)}")
+
+            df["gas"] = gas_name
+            df["sector"] = "Aircraft"
+
+        elif "anthro" in file.stem:
+            da = ds_to_annual_emissions_total(
+                gridded_data=scen,
+                var_name=var,
+                cell_area=cell_area,
+                keep_sectors=True
+            )
+
+            if isinstance(da, xr.DataArray):
+                df = da.to_dataframe(name="emissions").reset_index()
+            elif isinstance(da, pd.Series):
+                df = da.reset_index(name="emissions")
+            else:
+                raise TypeError(f"Unexpected type: {type(da)}")
+
+            df["gas"] = gas_name
+
+            # rename sectors based on gas
+            if gas_name == "CO2":
+                df["sector"] = df["sector"].map(SECTOR_DICT_ANTHRO_CO2_SCENARIO)
+            else:
+                df["sector"] = df["sector"].map(SECTOR_DICT_ANTHRO_DEFAULT)
+
+        else:
+            da = ds_to_annual_emissions_total(
+                gridded_data=scen,
+                var_name=var,
+                cell_area=cell_area,
+                keep_sectors=True
+            )
+
+            if isinstance(da, xr.DataArray):
+                df = da.to_dataframe(name="emissions").reset_index()
+            elif isinstance(da, pd.Series):
+                df = da.reset_index(name="emissions")
+            else:
+                raise TypeError(f"Unexpected type: {type(da)}")
+
+            df["gas"] = gas_name
+            df["sector"] = df["sector"].map(SECTOR_DICT_BURNING)
+
+        # Pivot to wide format: years as columns
+        df_wide = df.pivot(index=["gas", "sector"], columns="year", values="emissions")
+        all_gases_df_list.append(df_wide)
+
+    
+    # Combine all files into one MultiIndex DataFrame
+    combined_df = pd.concat(all_gases_df_list).sort_index()
+
+    parts = file.stem.split("_")
+    new_stem = "_".join(parts[1:])
+    
+    combined_df.to_csv(folder_totals / f"{new_stem}_combined-annual-totals.csv")
+
+combined_df
+
+# %%
+downscaled_reference = downscaled.groupby(level=["gas","sector"]).sum()
+
+# %%
+# List of CDR sectors to combine
+source_sectors = [
+    "Biochar", 
+    "Direct Air Capture", 
+    "Enhanced Weathering", 
+    "Ocean", 
+    "Other CDR", 
+    "Soil Carbon Management"
+]
+
+# Function to map old sectors to new one
+def map_sector(s):
+    if s in source_sectors:
+        return "Other Capture and Removal"
+    return s
 
 
+# %%
+# Only apply to gas = "CO2"
+idx = downscaled_reference.index.to_frame()
+mask = idx["gas"] == "CO2"
+
+# Map the sectors
+idx.loc[mask, "sector"] = idx.loc[mask, "sector"].map(map_sector)
+
+# Set the MultiIndex back
+downscaled_reference.index = pd.MultiIndex.from_frame(idx)
+
+downscaled_ref = downscaled_reference.groupby(level=["gas", "sector"]).sum()
+
+downscaled_ref
+
+# %%
+downscaled.index.get_level_values("sector").unique()
+
+# %%
+# ok we have to make them comparable; retain only years that exist in gridded
+combined_df.columns = combined_df.columns.astype(int)
+downscaled_ref.columns = downscaled_ref.columns.astype(int)
+
+# find common years
+common_years = combined_df.columns.intersection(downscaled_ref.columns)
+
+# subset both to those years
+combined_df = combined_df[common_years]
+downscaled_ref = downscaled_ref[common_years]
+
+# %%
+# rename the downscaled sectors
+SECTOR_RENAME_DOWNSCALED = {
+    "Energy Sector": "Energy",
+    "Industrial Sector": "Industrial",
+    "Residential Commercial Other": "Residential, Commercial, Other",
+    "Transportation Sector": "Transportation",
+}
+downscaled_ref = downscaled_ref.rename(
+    index=SECTOR_RENAME_DOWNSCALED,
+    level="sector"
+)
+
+# %%
+difference = combined_df - downscaled_ref
+difference.to_csv(folder_totals / f"{new_stem}_reaggregated-gridded-minus-downscaled.csv")
+
+# %%
+#combined_totals = combined_df.groupby(level=["gas"]).sum()
+
+difference_totals = difference.groupby(level=["gas"]).sum()
+(difference_totals/combined_totals)*100
+
+# %%
+sectors = difference.index.get_level_values("sector").unique()
+
+# %%
+df_long = (
+    combined_df
+    .reset_index()
+    .melt(
+        id_vars=["gas", "sector"],
+        var_name="year",
+        value_name="emissions"
+    )
+)
+
+# make sure year is numeric
+df_long["year"] = df_long["year"].astype(int)
+
+# %%
+ref_long = (
+    downscaled_ref
+    .reset_index()
+    .melt(
+        id_vars=["gas", "sector"],
+        var_name="year",
+        value_name="emissions"
+    )
+)
+
+# make sure year is numeric
+ref_long["year"] = ref_long["year"].astype(int)
+
+# %%
+import seaborn as sns
 
 
+# %%
+df_long["variant"] = "gridded"
+ref_long["variant"] = "downscaled"
 
+# %%
+plot_df = pd.concat([df_long, ref_long], ignore_index=True)
+plot_df
+
+# %%
+for gas in CALCULATE_TOTALS_GASES:
+
+    # Filter your data
+    data = plot_df[plot_df["gas"] == f"{gas}"]
+
+    # Create a FacetGrid with independent y
+    g = sns.FacetGrid(
+        data,
+        col="sector",
+        col_wrap=3,
+        height=4,
+        aspect=1.6,
+        sharey=False  # guaranteed to make y-axis independent
+    )
+    
+    # Map the lineplot
+    g.map_dataframe(
+        sns.lineplot,
+        x="year",
+        y="emissions",
+        hue="variant"
+    )
+    
+    # Add legend inside each facet (or outside if desired)
+    g.add_legend(title="Variant")
+    
+    g.savefig(folder_totals / f"{gas}_{new_stem}_reaggregated-comparison.png")
+    plt.show()
 
 # %% [markdown]
 # # END OF POSTPROCESSING
