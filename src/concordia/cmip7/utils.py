@@ -537,15 +537,15 @@ def add_time_bounds(ds):
     return ds
 
 
-def reorder_dimensions(ds):
+def reorder_dimensions(ds, bound_var_name="bound"):
 
     # Reorder dimensions based on variable type
     if ds.attrs.get("variable_id").split("_", 1)[1] == 'em_anthro':
-        ds = ds.transpose("lon", "lat", "time", "sector", "bound")
+        ds = ds.transpose("lon", "lat", "time", "sector", bound_var_name)
     elif ds.attrs.get("variable_id").split("_", 1)[1] == 'em_openburning':
-        ds = ds.transpose("lon", "lat", "time", "sector", "bound") # adds sector, where in CMIP6 this was part of a separate 'shares' sector
+        ds = ds.transpose("lon", "lat", "time", "sector", bound_var_name) # adds sector, where in CMIP6 this was part of a separate 'shares' sector
     elif ds.attrs.get("variable_id").split("_", 1)[1] == 'em_AIR_anthro':
-        ds = ds.transpose("lon", "lat", "time", "level", "bound")
+        ds = ds.transpose("lon", "lat", "time", "level", bound_var_name)
     
     # Reorder data variables
     var_id = ds.attrs.get("variable_id")

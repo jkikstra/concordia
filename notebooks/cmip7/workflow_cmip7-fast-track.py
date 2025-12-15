@@ -31,7 +31,7 @@ HISTORY_FILE: str = "country-history_202511261223_202511040855_202512032146_2025
 # Settings
 # SETTINGS_FILE: str = "config_cmip7_esgf_v0_alpha.yaml" # was used for preparing for first upload to ESGF
 SETTINGS_FILE: str = "config_cmip7_v0-4-0.yaml" # for second ESGF version
-VERSION_ESGF: str = "v2-2-testing" # for second ESGF version
+VERSION_ESGF: str = "v3-0-testing" # for second ESGF version
 
 # Which scenario to run from the markers
 marker_to_run: str = "VL" # options: H, HL, M, ML, L, LN, VL
@@ -95,7 +95,7 @@ from concordia.utils import MultiLineFormatter
 from concordia.workflow import WorkflowDriver
 from concordia.cmip7.CONSTANTS import return_marker_information, PROXY_YEARS, find_voc_data_variable_string
 from concordia.cmip7.dask_setup_alternative import setup_dask_client # to enable running with dask also from VSCode Interactive Window
-from concordia.cmip7.utils import calculate_ratio, return_nc_output_files_main_voc, SECTOR_ORDERING_GAS, SECTOR_ORDERING_DEFAULT, SECTOR_DICT_ANTHRO_DEFAULT, SECTOR_DICT_ANTHRO_CO2_SCENARIO, reorder_dimensions
+from concordia.cmip7.utils import calculate_ratio, return_nc_output_files_main_voc, SECTOR_ORDERING_GAS, SECTOR_ORDERING_DEFAULT, SECTOR_DICT_ANTHRO_DEFAULT, SECTOR_DICT_ANTHRO_CO2_SCENARIO, reorder_dimensions, add_file_global_sum_totals_attrs
 
 
 from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total, plot_place_timeseries, plot_place_area_average_timeseries
@@ -195,15 +195,17 @@ def load_result(var_name, FILE_NAME_ENDING=FILE_NAME_ENDING, settings=settings, 
 
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
 # location for reading in raw historical (anthropogenic) emissions data for spatial harmonization
-ceds_data_location: Path | None = None # can be defined in SETTINGS_FILE; if None here, it is replaced by settings.ceds_data_location later on
-ceds_data_location_voc: Path | None = None # can be defined in SETTINGS_FILE; if None here, it is replaced by settings.ceds_data_location_voc later on
+ceds_data_location: Path | None = None # if None here, it is replaced by settings.ceds_data_location later on
+ceds_data_location_voc: Path | None = None # if None here, it is replaced by settings.ceds_data_location_voc later on
+ceds_data_location_AIR: Path | None = None # if None here, it is replaced by settings.ceds_data_location_voc later on
 
 #%%
 if ceds_data_location is None:
     ceds_data_location = settings.postprocess_path / "CMIP7_anthro"
 if ceds_data_location_voc is None:
     ceds_data_location_voc = settings.postprocess_path / "CMIP7_anthro_VOC"
-
+if ceds_data_location_AIR is None:
+    ceds_data_location_AIR = settings.postprocess_path / "CMIP7_AIR"
 
 # %% [markdown]
 # Set logger (uses setting)
@@ -1269,15 +1271,29 @@ if run_spatial_harmonisation:
         # save weighted dataset (no dask)
         encoding = {var: {"zlib": True, "complevel": 2}}
 
-        from concordia.cmip7.utils import add_file_global_sum_totals_attrs
-        (
-            emissions_harmonised
-            .pipe(add_file_global_sum_totals_attrs, name=f"{gas}_{type}") # add totals when no computations are required anymore
-            .pipe(reorder_dimensions) # only reorder_dimensions when no computations are required anymore
-            .to_netcdf(outfile, encoding=encoding)
-        )
+        # reorder dimensions when no computations are required anymore; except replacing 2022
+        emissions_harmonised = emissions_harmonised.pipe(reorder_dimensions)
+        # replace 2022 CEDS data; anthro
+        if type == "em_anthro":
+            if gas == "CO2":
+                ceds_2022 = xr.concat([xr.open_dataset(next(ceds_data_location.glob(f"{gas}-*.nc"))).sel(time='2022').pipe(reorder_dimensions, bound_var_name="bound"),
+                                    xr.zeros_like(emissions_harmonised.sel(time='2022',sector=[8,9]))], dim="sector")
+            else:
+                ceds_2022 = xr.open_dataset(next(ceds_data_location.glob(f"{gas}-*.nc"))).sel(time='2022').pipe(reorder_dimensions, bound_var_name="bound")
+        # replace values
+        emissions_harmonised = emissions_harmonised.pipe(reorder_dimensions, bound_var_name="bound")
+        emissions_harmonised[f"{gas}_{type}"].loc[
+            dict(time=emissions_harmonised.time[0:12]) # the first twelve months
+        ].values = ceds_2022[f"{gas}_{type}"].values # ceds data ends in 2023, so not the last but the penultimate year
+        
+        
+        # Add global sums as metadata
+        emissions_harmonised = emissions_harmonised.pipe(add_file_global_sum_totals_attrs, name=f"{gas}_{type}") # add totals after 2022 is added
 
-        emissions_harmonised.close()
+        # Save out the updated file
+        emissions_harmonised.to_netcdf(outfile, encoding=encoding)
+        emissions_harmonised.close() # close the connection to the file
+
 
 
 # %% [markdown]
@@ -1565,7 +1581,7 @@ voc_spec_ratios_location_openburning = settings.proxy_path / "NMVOC_speciation"
 # TODO:
 # - [ ] speed up this loop
 
-
+# DO_VOC_SPECIATION_OPENBURNING_ONLY_FOR_THESE_SPECIES = GASES_ESGF_BB4CMIP_VOC[:2]
 
 if run_openburning_supplemental_voc:
     voc_openburning = load_voc_bulk(type="openburning")
@@ -1981,7 +1997,7 @@ for file in tqdm((settings.out_path / GRIDDING_VERSION).glob("*.nc"), "Check: ca
             print(scen_ds)
 
             match = next(ceds_data_location.glob(f"{gas_name}-*.nc"), None)
-            ceds_ds = xr.open_dataset(match)
+            ceds_ds = xr.open_dataset(match) # TODO: for CO2, add zeroes for CDR sectors in ceds history for plotting
             print(ceds_ds)
 
             AVAILABLE_SECTORS = [k for k in scen_ds.sector.values if SECTOR_DICT_ANTHRO_CO2_SCENARIO[k] in PLOT_SECTORS]
@@ -2013,7 +2029,7 @@ for file in tqdm((settings.out_path / GRIDDING_VERSION).glob("*.nc"), "Check: ca
                                             sector=sec, sector_name=sector_name,
                                             lat_range=2.0, lon_range=2.0,
                                             type=f"em_{type_name}")
-                        plt.savefig(folder_plots / f"{place}_area_timeseries_{g}_{sec}.png", 
+                        plt.savefig(folder_plots / f"{place}_area_timeseries_{gas_name}_{sector_name}.png", 
                                     dpi=300,
                                     bbox_inches='tight')
                         plt.show()
@@ -2024,24 +2040,6 @@ for file in tqdm((settings.out_path / GRIDDING_VERSION).glob("*.nc"), "Check: ca
 
 
 
-        # load full nc file
-        scen = xr.open_dataset(file)
-        # convert to global annual totals
-        scen_sectors_df = ds_to_annual_emissions_total( # takes about 10-30 seconds
-            gridded_data=scen,
-            var_name=var,
-            cell_area=cell_area,
-            keep_sectors=True
-        ).to_pandas()
-        scen_sectors_df.to_csv(folder_totals / f"{var.replace("_","-")}_{FILE_NAME_ENDING.rstrip('.nc')}_annual_totals_by_sector.csv")
-
-        scen_df = ds_to_annual_emissions_total( # takes about 5-10 seconds
-            gridded_data=scen,
-            var_name=var,
-            cell_area=cell_area,
-            keep_sectors=False
-        ).to_pandas().to_frame(name='emissions_Mt_year')
-        scen_df.to_csv(folder_totals / f"{var.replace("_","-")}_{FILE_NAME_ENDING.rstrip('.nc')}_annual_totals.csv")
 
 
 
