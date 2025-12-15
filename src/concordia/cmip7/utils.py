@@ -240,8 +240,8 @@ def convert_to_datetime(ds: xr.Dataset) -> xr.Dataset:
                 "time",
                 dates,
                 encoding=dict(
-                    units="days since 2023-1-1 0:0:0",
-                    calendar="noleap",
+                    units="days since 2022-1-1 0:0:0",
+                    calendar="365_day",
                     dtype=np.dtype(float),
                 ),
             )
