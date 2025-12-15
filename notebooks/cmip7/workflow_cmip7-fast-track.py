@@ -1412,11 +1412,11 @@ if run_openburning_h2:
                 co_slice = co_sector.isel(time=time_idx)
 
                 # Multiply and assign to result
-                h2_openburning_data[:, :, time_idx, sector_idx] = (co_slice * translation_slice).values # sensitive to coordinate order
+                h2_openburning_data[time_idx, :, :, sector_idx] = (co_slice * translation_slice).values # sensitive to coordinate order
                 
                 # Assert that the sectors all align, ignoring dtype
-                assert h2_openburning_data[:, :, time_idx, sector_idx].sector.values == co_slice.sector.values
-                assert h2_openburning_data[:, :, time_idx, sector_idx].sector.values == translation_slice.sector.values
+                assert h2_openburning_data[time_idx, :, :, sector_idx].sector.values == co_slice.sector.values
+                assert h2_openburning_data[time_idx, :, :, sector_idx].sector.values == translation_slice.sector.values
 
 
     # Add the computed data to the result dataset
