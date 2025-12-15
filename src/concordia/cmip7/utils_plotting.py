@@ -436,3 +436,139 @@ def plot_maps_seasonal(ds, sectors, variable, ncols=2, year=2100, proj=ccrs.Robi
 
 
 # %%
+# Timeseries Plots for checking against historical data
+
+
+
+# Timeseries Plots 
+def plot_place_timeseries(ceds_ds, scen_ds,
+                          lat=39.9042, lon=116.4074,
+                          place='Beijing',
+                          gas='CO', sector=1, sector_name='Energy',
+                          type="em_anthro"):
+    """
+    Plot timeseries for PLACE (e.g. Beijing) gridpoint comparing CEDS and scenario data
+    
+    Parameters:
+    - ceds_ds: CEDS dataset
+    - scen_ds: Scenario dataset  
+    - gas: Gas species (e.g., 'CO', 'CO2')
+    - sector: Sector name
+    """
+    
+    # Select closest gridpoint to PLACE for both datasets
+    ceds_place = ceds_ds.sel(
+        lat=lat, 
+        lon=lon, 
+        method="nearest"
+    ).sel(sector=sector)
+    
+    scen_place = scen_ds.sel(
+        lat=lat,
+        lon=lon, 
+        method="nearest"
+    ).sel(sector=sector)
+    
+    # Get the variable name
+    var_name = f'{gas}_{type}'
+    
+    # Extract the timeseries data
+    ceds_ts = ceds_place[var_name]
+    scen_ts = scen_place[var_name]
+    
+    # Create the plot
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
+    # Plot both timeseries
+    ceds_ts.plot(ax=ax, label='CEDS Historical', marker='o', linewidth=2)
+    scen_ts.plot(ax=ax, label='CMIP7 Scenario', marker='s', linewidth=2)
+    
+    # Get actual coordinates of selected gridpoint
+    actual_lat = float(ceds_place.lat.values)
+    actual_lon = float(ceds_place.lon.values)
+    
+    # Formatting
+    ax.set_title(f'{gas} Emissions - {place} gridpoint\n'
+                f'Sector: {sector_name}\n'
+                f'Gridpoint: {actual_lat:.2f}°N, {actual_lon:.2f}°E', 
+                fontsize=14)
+    ax.set_xlabel('Time')
+    ax.set_ylabel(f'{gas} emissions (kg/m²/s)')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    
+    # Print some info
+    print(f"{place} coordinates: {lat}°N, {lon}°E")
+    print(f"Selected gridpoint: {actual_lat:.2f}°N, {actual_lon:.2f}°E")
+    print(f"Distance: ~{np.sqrt((actual_lat-lat)**2 + (actual_lon-lon)**2)*111:.1f} km")
+    
+    return fig, ax
+
+# Alternative: Select multiple nearby gridpoints and average them
+def plot_place_area_average_timeseries(ceds_ds, scen_ds, gas='CO', sector=1, sector_name='Energy',
+                                       lat=39.9042, lon=116.4074,
+                                       place='Beijing',
+                                       lat_range=1.0, lon_range=1.0,
+                                       type="em_anthro"):
+    """
+    Plot timeseries for PLACE (e.g., Beijing) area (average of nearby gridpoints)
+    
+    Parameters:
+    - lat_range, lon_range: degrees around PLACE to include in average
+    """
+    
+    # Define bounding box around PLACE
+    lat_min = lat - lat_range/2
+    lat_max = lat + lat_range/2
+    lon_min = lon - lon_range/2  
+    lon_max = lon + lon_range/2
+    
+    # Select area around PLACE
+    ceds_area = ceds_ds.sel(
+        lat=slice(lat_min, lat_max),
+        lon=slice(lon_min, lon_max),
+        sector=sector
+    )
+    
+    scen_area = scen_ds.sel(
+        lat=slice(lat_min, lat_max),
+        lon=slice(lon_min, lon_max), 
+        sector=sector
+    )
+    
+    # Get variable name
+    var_name = f'{gas}_{type}'
+    
+    # Average over the spatial area
+    ceds_ts = ceds_area[var_name].mean(dim=['lat', 'lon'])
+    scen_ts = scen_area[var_name].mean(dim=['lat', 'lon'])
+    
+    # Create the plot
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
+    # Plot both timeseries
+    ceds_ts.plot(ax=ax, label='CEDS Historical', marker='o', linewidth=2)
+    scen_ts.plot(ax=ax, label='CMIP7 Scenario', marker='s', linewidth=2)
+    
+    # Formatting
+    ax.set_title(f'{gas} Emissions - {place} Area Average\n'
+                f'Sector: {sector_name}\n'
+                f'Area: {lat_range}° × {lon_range}° around {place}',
+                fontsize=14)
+    ax.set_xlabel('Time')
+    ax.set_ylabel(f'{gas} emissions (kg/m²/s)')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    
+    # Print some info
+    n_gridpoints = len(ceds_area.lat) * len(ceds_area.lon)
+    print(f"{place} area: {lat_range}° × {lon_range}°")
+    print(f"Number of gridpoints averaged: {n_gridpoints}")
+    
+    return fig, ax
+
+# %%

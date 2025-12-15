@@ -67,6 +67,7 @@ SECTOR_ORDERING_DEFAULT = {
         "Solvents Production and Application",
         "Waste",
         "International Shipping",
+        "BECCS",
         "Other Capture and Removal"
     ]
 }
@@ -95,8 +96,8 @@ SECTOR_DICT_ANTHRO_CO2_SCENARIO = {
     6: "Waste",
     7: "International Shipping",
     # additional CDR-related sectors; to report in the final files
-    # 8: "BECCS",
-    8: "Other Capture and Removal"
+    8: "BECCS",
+    9: "Other Capture and Removal"
 }
 
 
@@ -343,7 +344,22 @@ def _rename_cdr_sectors(ds,name,
     else:
         return ds
 
-def sectors_as_integer_ids(ds):
+def _add_sector_bounds(ds):
+    # - Create bounds as 2D arrays: (n_coords, 2)
+    sector_lower = ds.sector.values - 0.5
+    sector_upper = ds.sector.values + 0.5
+    
+    # Stack into shape (n_coords, 2)
+    sector_bnds_array = np.column_stack([sector_lower, sector_upper])
+    
+    # Assign as coordinates
+    ds = ds.assign({
+        "sector_bnds": (("sector", "bound"), sector_bnds_array),
+    })
+
+    return ds
+
+def sectors_as_integer_ids(ds, add_sector_bounds=True):
 
     if ds.attrs.get("variable_id") == 'CO2_em_anthro':
         sector_ordering_default = SECTOR_ORDERING_DEFAULT['CO2_em_anthro']
@@ -369,17 +385,8 @@ def sectors_as_integer_ids(ds):
     )
 
     # Add sector bounds
-    # - Create bounds as 2D arrays: (n_coords, 2)
-    sector_lower = ds.sector.values - 0.5
-    sector_upper = ds.sector.values + 0.5
-    
-    # Stack into shape (n_coords, 2)
-    sector_bnds_array = np.column_stack([sector_lower, sector_upper])
-    
-    # Assign as coordinates
-    ds = ds.assign({
-        "sector_bnds": (("sector", "bound"), sector_bnds_array),
-    })
+    if add_sector_bounds:
+        ds = _add_sector_bounds(ds)
 
     return ds
 
@@ -422,11 +429,15 @@ def reaggregate_sectors_cdr(ds, name):
 
         # do the reverse of the disaggregation/splitting of CDR in:
         # https://github.com/openscm/gcages/blob/f6ee64156480c9085d290369033c3fbdeeee33ad/src/gcages/cmip7_scenariomip/pre_processing/reaggregation/basic.py#L1281-L1288
-        # BECCS
-        print("Move gridded BECCS back into the Energy sector")
-        ds = _aggregate_sectors(ds,
-                                sector_detail_to_aggregate="BECCS",
-                                sector_to_aggregate_into="Energy")
+        
+        # TODO:
+        # - [ ] loop; derive list from CONSTANTS/utils
+        
+        # # BECCS
+        # print("Move gridded BECCS back into the Energy sector")
+        # ds = _aggregate_sectors(ds,
+        #                         sector_detail_to_aggregate="BECCS",
+        #                         sector_to_aggregate_into="Energy")
         
         # other CDR
         print("Move gridded Ocean CDR back into an aggregate Other CDR sector")
@@ -604,10 +615,15 @@ def return_cell_area(settings=None, GRIDDING_VERSION="cell-area", SETTINGS_FILE=
             
             HERE = concordia_root / "notebooks" / "cmip7"
 
-        settings = Settings.from_config(version=GRIDDING_VERSION,
+        try:
+            settings = Settings.from_config(version=GRIDDING_VERSION,
                                         local_config_path=Path(HERE,
                                                             SETTINGS_FILE))
-    
+        except FileNotFoundError:
+            HERE = Path(__file__).parent.parent.parent / "notebooks" / "cmip7"
+            settings = Settings.from_config(version=GRIDDING_VERSION,
+                                    local_config_path=Path(HERE,
+                                                        SETTINGS_FILE))
 
     areacella = xr.open_dataset(Path(settings.gridding_path, "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc"))
     cell_area = areacella["areacella"]
@@ -666,13 +682,13 @@ class DressUp:
             .pipe(clean_var, name, gas, handle)
             .assign_attrs(ds_attrs(name, self.marker_scenario_name, self.version, self.date))
             .pipe(reaggregate_sectors_cdr, name)
-            .pipe(add_file_global_sum_totals_attrs, name=name) # responding to comment from Faluvegi (GISS)
+            # .pipe(add_file_global_sum_totals_attrs, name=name) # responding to comment from Faluvegi (GISS); do in main workflow script
             # .pipe(fix_2022) # TODO
             .pipe(sectors_as_integer_ids) # also adds sector_bnds
             .pipe(add_lon_lat_bounds) # add lat/lon bnds
             .pipe(add_time_bounds) # add time bnds
             # .pipe(further_attributes_formatting) # TODO; e.g. 'data_usage_tips' and others
-            .pipe(reorder_dimensions) # https://github.com/PCMDI/input4MIPs_CVs/discussions/386#discussioncomment-14994936
+            # .pipe(reorder_dimensions) # https://github.com/PCMDI/input4MIPs_CVs/discussions/386#discussioncomment-14994936
         )
 
 
