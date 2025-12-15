@@ -2058,7 +2058,7 @@ SECTOR_DICT_BURNING = {
 if save_total_emissions_as_csv:
     from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total
 
-    folder_totals = settings.out_path / GRIDDING_VERSION / "check_annual_totals"
+    folder_totals = settings.out_path / GRIDDING_VERSION / "check_annual_totals_ext"
     folder_totals.mkdir(parents=True, exist_ok=True)
 
     areacella = xr.open_dataset(
@@ -2224,6 +2224,10 @@ difference = combined_df - downscaled_ref
 difference.to_csv(folder_totals / f"{new_stem}_reaggregated-gridded-minus-downscaled.csv")
 
 # %%
+relative = difference/combined_df*100
+relative.to_csv(folder_totals / f"{new_stem}_relative-difference.csv")
+
+# %%
 #combined_totals = combined_df.groupby(level=["gas"]).sum()
 
 difference_totals = difference.groupby(level=["gas"]).sum()
@@ -2262,7 +2266,6 @@ ref_long["year"] = ref_long["year"].astype(int)
 
 # %%
 import seaborn as sns
-
 
 # %%
 df_long["variant"] = "gridded"
