@@ -539,20 +539,33 @@ def add_time_bounds(ds):
 
 def reorder_dimensions(ds, bound_var_name="bound"):
 
-    # Reorder dimensions based on variable type
+    # Reorder dimensions based on variable type (only for dimensions that exist)
     if ds.attrs.get("variable_id").split("_", 1)[1] == 'em_anthro':
-        ds = ds.transpose("lon", "lat", "time", "sector", bound_var_name)
+        dim_order = ("lon", "lat", "time", "sector", bound_var_name)
     elif ds.attrs.get("variable_id").split("_", 1)[1] == 'em_openburning':
-        ds = ds.transpose("lon", "lat", "time", "sector", bound_var_name) # adds sector, where in CMIP6 this was part of a separate 'shares' sector
+        dim_order = ("lon", "lat", "time", "sector", bound_var_name)
     elif ds.attrs.get("variable_id").split("_", 1)[1] == 'em_AIR_anthro':
-        ds = ds.transpose("lon", "lat", "time", "level", bound_var_name)
-    
+        dim_order = ("lon", "lat", "time", "level", bound_var_name)
+    else:
+        dim_order = None
+
+    # Only transpose if there are dimensions to transpose
+    if dim_order:
+        # Filter to only dimensions that actually exist in the dataset
+        existing_dims = [d for d in dim_order if d in ds.dims]
+        if existing_dims:
+            ds = ds.transpose(*existing_dims)
+
+    # Note: Coordinates automatically follow dimension order after transpose, so no explicit reordering needed
+
     # Reorder data variables
     var_id = ds.attrs.get("variable_id")
     bounds_vars = [v for v in ['lat_bnds', 'lon_bnds', 'time_bnds', 'sector_bnds'] if v in ds.data_vars]
-    
-    data_var_order = [var_id] + bounds_vars
-    ds = ds[data_var_order]
+
+    # Only include var_id if it exists in data_vars
+    data_var_order = ([var_id] if var_id in ds.data_vars else []) + bounds_vars
+    if data_var_order:
+        ds = ds[data_var_order]
 
     return ds
 

@@ -31,10 +31,10 @@ HISTORY_FILE: str = "country-history_202511261223_202511040855_202512032146_2025
 # Settings
 # SETTINGS_FILE: str = "config_cmip7_esgf_v0_alpha.yaml" # was used for preparing for first upload to ESGF
 SETTINGS_FILE: str = "config_cmip7_v0-4-0.yaml" # for second ESGF version
-VERSION_ESGF: str = "v3-0-testing" # for second ESGF version
+VERSION_ESGF: str = "v3-1-testing" # for second ESGF version
 
 # Which scenario to run from the markers
-marker_to_run: str = "VL" # options: H, HL, M, ML, L, LN, VL
+marker_to_run: str = "H" # options: H, HL, M, ML, L, LN, VL
 
 # What folder to save this run in
 GRIDDING_VERSION: str | None = None
@@ -93,7 +93,7 @@ from concordia.cmip7 import utils as cmip7_utils # update to cmip7 utils (e.g. f
 from concordia.settings import Settings
 from concordia.utils import MultiLineFormatter
 from concordia.workflow import WorkflowDriver
-from concordia.cmip7.CONSTANTS import return_marker_information, PROXY_YEARS, find_voc_data_variable_string
+from concordia.cmip7.CONSTANTS import return_marker_information, PROXY_YEARS, find_voc_data_variable_string, GASES_ESGF_CEDS, GASES_ESGF_BB4CMIP
 from concordia.cmip7.dask_setup_alternative import setup_dask_client # to enable running with dask also from VSCode Interactive Window
 from concordia.cmip7.utils import calculate_ratio, return_nc_output_files_main_voc, SECTOR_ORDERING_GAS, SECTOR_ORDERING_DEFAULT, SECTOR_DICT_ANTHRO_DEFAULT, SECTOR_DICT_ANTHRO_CO2_SCENARIO, reorder_dimensions, add_file_global_sum_totals_attrs
 
@@ -1034,7 +1034,7 @@ def _what_emissions_variable_type(file, files_main=[], files_voc=[]):
 # %%
 years = [year for year in PROXY_YEARS if year >= settings.base_year] # all years, but not 2022 (before 2023); which should come directly from CEDS anthro (and CEDS AIR)
 
-# run the spatial harmonization
+# run the spatial harmonization (only em_anthro)
 if run_spatial_harmonisation:
     print('run spatial harmonization')
 
@@ -1886,12 +1886,343 @@ if run_anthro_supplemental_voc:
 # # CONTINUED POSTPROCESSING
 
 
+# %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
+plot_timeseries: bool = True
+PLOT_GASES: list[str] | None = None # e.g. ["CO2", "SO2", "VOC01_alcohols", "VOC02_ethane", "NMVOC-C2H2", "NMVOC-C10H16"]; default is run all
+PLOT_GASES: list[str] | None = ['CO2'] # e.g. ["CO2", "SO2", "VOC01_alcohols", "VOC02_ethane", "NMVOC-C2H2", "NMVOC-C10H16"]; default is run all
+
+PLOT_SECTORS: list[str] | None = None # e.g. ['Energy', 'Residential, Commercial, Other'] default is run all
+PLOT_SECTORS: list[str] | None = SECTOR_ORDERING_DEFAULT['em_anthro'] # default is run all
+
+
+
 # %% [markdown]
-# ## 2. additional formatting (if not addressed above already)
+# ## 2. plot differences/harmonized maps compared to historical
+
+# %% [markdown]
+# ## 2.1. plot compared to CEDS (anthro)
 
 
 # %%
-# ...
+import cartopy.crs as ccrs
+from matplotlib import colors
+import cartopy.feature as cfeature # for country borders
+import cftime
+
+def shifted_white_colormap(cmap_name="GnBu", vmin=None, vmax=None, vcenter=0):
+    cmap = plt.get_cmap(cmap_name)
+    new_cmap = cmap(np.linspace(0, 1, 256))
+
+    # Optionally, set the color corresponding to the midpoint (0) to white
+    midpoint_index = 128  # halfway in 256-color map
+    new_cmap[midpoint_index] = [1, 1, 1, 1]  # RGBA for white
+
+    # Handle case where all values are zero (vmin=vmax=vcenter=0)
+    if vmin == vmax == vcenter == 0:
+        vmin, vmax = -1, 1  # Set default range when all zeros
+
+    return colors.ListedColormap(new_cmap), colors.TwoSlopeNorm(vmin=vmin, vcenter=vcenter, vmax=vmax)
+def plot_ceds_vs_scenario_comparison(ceds_da, scen_da, gas, sectors, time_slice,
+                                     anthro_bb_air = "CEDS_anthro", # CEDS_anthro, BB4CMIP7, CEDS_AIR
+                                     figsize_per_panel=(4, 3), proj=ccrs.Robinson(),
+                                     colour_scale_max_percentile = 98,
+                                     empty_treatment="fill_zeroes" # alternative: "skip"
+                                     ):
+    """
+    Plot comparison between CEDS and scenario data in 4 columns.
+    
+    Handles cases where 'time' or 'sector' may only have one value (not a dimension).
+    """
+    
+    # 1. Ensure time dimension exists and has monotonic coordinates; remove duplicates
+    if 'time' in ceds_da.dims:
+        ceds_da = ceds_da.sortby('time')
+        _, unique_indices = np.unique(ceds_da.time.values, return_index=True)
+        ceds_da = ceds_da.isel(time=np.sort(unique_indices))
+    
+    if 'time' in scen_da.dims:
+        scen_da = scen_da.sortby('time')
+        _, unique_indices = np.unique(scen_da.time.values, return_index=True)
+        scen_da = scen_da.isel(time=np.sort(unique_indices))
+    
+    try:
+        # Select time and squeeze, handling both dimension and non-dimension cases
+        if 'time' in ceds_da.dims:
+            ceds_slice = ceds_da.sel(time=time_slice, method='nearest')
+        else:
+            ceds_slice = ceds_da
+            
+        if 'time' in scen_da.dims:
+            scen_slice = scen_da.sel(time=time_slice, method='nearest')
+        else:
+            scen_slice = scen_da
+        
+        ceds_slice = ceds_slice.squeeze()
+        scen_slice = scen_slice.squeeze()
+    except KeyError as e:
+        print(f"Error selecting time slice {time_slice}. The time coordinate may be missing or invalid: {e}")
+        return # Exit the function
+    
+    # 2. Pre-check sector availability
+    has_sector_dim_ceds = 'sector' in ceds_da.dims
+    has_sector_dim_scen = 'sector' in scen_da.dims
+    ceds_sectors = set(ceds_da.sector.values) if has_sector_dim_ceds else {ceds_da.sector.values.item()}
+    scen_sectors = set(scen_da.sector.values) if has_sector_dim_scen else {scen_da.sector.values.item()}
+    
+    # Plots
+    nrows = len(sectors)
+    ncols = 4
+    
+    fig, axes = plt.subplots(
+        nrows=nrows,
+        ncols=ncols,
+        figsize=(figsize_per_panel[0] * ncols, figsize_per_panel[1] * nrows),
+        subplot_kw={"projection": proj}
+    )
+    
+    if nrows == 1:
+        axes = axes.reshape(1, -1)
+    
+    # Column titles
+    col_titles = [f'{anthro_bb_air} Data', 
+                  f'{gas} CMIP7 Scenario', 
+                  f'Difference ({anthro_bb_air} - Scenario)',
+                  'Percentage Difference (%)']
+    
+    # Determine variable name once
+    if anthro_bb_air == "CEDS_anthro":
+        var_name = f'{gas}_em_anthro'
+    elif anthro_bb_air == "BB4CMIP7":
+        print("Biomass burning vetting plots have not yet been implemented.")
+        for col in range(ncols):
+            axes[row, col].set_visible(False) if nrows > 1 else axes[:, col].set_visible(False)
+        return
+    else:
+        var_name = None
+    
+    for row, sector in enumerate(sectors):
+        
+        if gas != "CO2" and sector not in SECTOR_DICT_ANTHRO_DEFAULT:
+            continue
+            
+        sector_in_ceds = sector in ceds_sectors
+        sector_in_scen = sector in scen_sectors
+        
+        if empty_treatment=="skip":
+            if not sector_in_ceds or not sector_in_scen:
+                print(f"Skipping sector '{sector}:{SECTOR_DICT_ANTHRO_CO2_SCENARIO[sector]}' - missing in {f'{anthro_bb_air}' if not sector_in_ceds else 'scenario'} data")
+                for col in range(ncols):
+                    axes[row, col].set_visible(False)
+                continue
+            
+            # Fast path: sector exists in both, just select
+            if has_sector_dim_ceds:
+                ceds_values_base = ceds_slice.sel(sector=sector)
+            else:
+                ceds_values_base = ceds_slice
+                
+            if has_sector_dim_scen:
+                scen_values_base = scen_slice.sel(sector=sector)
+            else:
+                scen_values_base = scen_slice
+            
+        elif empty_treatment=="fill_zeroes":
+            # Select sector data, or create a zero-filled placeholder if missing
+            if sector_in_ceds:
+                if has_sector_dim_ceds:
+                    ceds_values_base = ceds_slice.sel(sector=sector)
+                else:
+                    ceds_values_base = ceds_slice
+            else:
+                print(f"Warning: Sector '{sector}:{SECTOR_DICT_ANTHRO_CO2_SCENARIO[sector]}' not found in {anthro_bb_air} data, using zeros")
+                # Create zero template from first sector
+                if has_sector_dim_ceds:
+                    template_sector = ceds_slice.isel(sector=0)
+                else:
+                    template_sector = ceds_slice
+                ceds_values_base = xr.zeros_like(template_sector)
+                
+            if sector_in_scen:
+                if has_sector_dim_scen:
+                    scen_values_base = scen_slice.sel(sector=sector)
+                else:
+                    scen_values_base = scen_slice
+            else:
+                print(f"Warning: Sector '{sector}:{SECTOR_DICT_ANTHRO_CO2_SCENARIO[sector]}' not found in scenario data, using zeros")
+                if has_sector_dim_scen:
+                    template_sector = scen_slice.isel(sector=0)
+                else:
+                    template_sector = scen_slice
+                scen_values_base = xr.zeros_like(template_sector)
+
+        # Helper to safely extract the data variable (works for DataArray or Dataset)
+        def get_data_var(ds, var_name):
+            if isinstance(ds, xr.DataArray):
+                return ds 
+            if var_name and var_name in ds:
+                return ds[var_name]
+            # Fallback for DataSets where the desired var_name might not exist (e.g., zero-filled placeholder)
+            elif len(ds.data_vars) > 0:
+                return ds[list(ds.data_vars)[0]] 
+            else:
+                # Should not happen if a zero-like structure was created correctly
+                raise ValueError(f"No data variable found for sector {sector}:{SECTOR_DICT_ANTHRO_CO2_SCENARIO[sector]}.")
+
+        try:
+            ceds_values = get_data_var(ceds_values_base, var_name)
+            scen_values = get_data_var(scen_values_base, var_name)
+        except ValueError as e:
+             print(f"Skipping sector '{sector}:{SECTOR_DICT_ANTHRO_CO2_SCENARIO[sector]}' due to variable selection error: {e}")
+             for col in range(ncols):
+                axes[row, col].set_visible(False)
+             continue
+            
+        # Ensure consistent dimension order
+        if scen_values.dims == ('lon', 'lat'):
+             scen_values = scen_values.transpose('lat', 'lon')
+        if ceds_values.dims == ('lon', 'lat'):
+             ceds_values = ceds_values.transpose('lat', 'lon')
+            
+        # Pre-compute all derived arrays
+        diff_values = ceds_values - scen_values
+        
+        # Calculate percentage difference, handling division by zero (vectorized)
+        pct_diff = xr.where(ceds_values != 0, (diff_values / ceds_values) * 100, 0)
+        
+        # Pre-compute statistics for normalization (faster than doing it per-column)
+        valid_ceds = ceds_values.values[~np.isnan(ceds_values.values)]
+        if len(valid_ceds) > 0:
+            vmin_ceds = float(np.percentile(valid_ceds, 2))
+            vmax_ceds = float(np.percentile(valid_ceds, colour_scale_max_percentile))
+            vmax_diff = float(np.percentile(valid_ceds, 98))
+        else:
+            vmin_ceds = vmax_ceds = 0.0
+            vmax_diff = 1.0
+        
+        # Plot data in 4 columns
+        datasets = [ceds_values, scen_values, diff_values, pct_diff]
+        cmaps = ['Reds', 'Blues', 'RdBu_r', 'coolwarm']
+        
+        for col, (data, cmap) in enumerate(zip(datasets, cmaps)):
+            ax = axes[row, col] if nrows > 1 else axes[col]
+            
+            # Set colormap normalization
+            if col in [0, 1]:
+                if vmax_ceds == vmin_ceds: 
+                    norm = colors.Normalize(vmin=0, vmax=1)
+                else:
+                    norm = colors.Normalize(vmin=vmin_ceds, vmax=vmax_ceds)
+            
+            elif col == 2: # Difference
+                if vmax_diff == 0:
+                    norm = colors.TwoSlopeNorm(vmin=-1, vcenter=0, vmax=1)
+                else:
+                    norm = colors.TwoSlopeNorm(vmin=-vmax_diff, vcenter=0, vmax=vmax_diff)
+            
+            elif col == 3:  # Percentage difference - center at 0
+                abs_max = 100 
+                cmap, norm = shifted_white_colormap("coolwarm", vmin=-abs_max, vmax=abs_max)
+            else:
+                norm = None
+            
+            # Create the plot
+            im = data.plot.pcolormesh(
+                ax=ax,
+                transform=ccrs.PlateCarree(),
+                cmap=cmap,
+                norm=norm,
+                add_colorbar=False,
+                add_labels=False
+            )
+            
+            # Add coastlines and formatting
+            ax.coastlines(linewidth=0.5)
+            ax.add_feature(cfeature.BORDERS, linewidth=0.3, alpha=0.5)
+            
+            # Set titles and labels
+            if row == 0:
+                ax.set_title(col_titles[col], fontsize=10, fontweight='bold')
+            
+            if col == 0:
+                ax.text(-0.15, 0.5, SECTOR_DICT_ANTHRO_CO2_SCENARIO[sector], transform=ax.transAxes, 
+                        rotation=90, va='center', ha='center', fontsize=10, fontweight='bold')
+            
+            # Add colorbar
+            cbar = plt.colorbar(im, ax=ax, orientation='horizontal', 
+                                 shrink=0.8, pad=0.05, aspect=20)
+            cbar.ax.tick_params(labelsize=8)
+            
+            if col == 3:
+                cbar.set_label('Percentage Difference (%)', fontsize=8)
+            else:
+                cbar.set_label(f'{gas} emissions (kg/m²/s)', fontsize=8)
+    
+    # Overall title - handle both dimension and non-dimension time cases
+    time_val = ceds_slice.time.values if 'time' in ceds_slice.dims else ceds_slice.time.values
+    fig.suptitle(f'{gas}, time: {time_val}', 
+                  fontsize=14, fontweight='bold', y=0.98)
+    
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.93, left=0.08)
+    return fig
+
+# %%
+# NOTE: takes about ~mins per figure
+
+folder_plots = settings.out_path / GRIDDING_VERSION / "plots"
+folder_plots.mkdir(parents=True, exist_ok=True)
+anthro_bb_air="CEDS_anthro" # CEDS_anthro, BB4CMIP7, CEDS_AIR
+
+TIMES = [
+    cftime.DatetimeNoLeap(2023, 6, 16),
+    cftime.DatetimeNoLeap(2023, 12, 16)
+]
+
+
+
+for file in tqdm((settings.out_path / GRIDDING_VERSION).glob("*.nc"), "Plot maps: diffs with CEDS in 2023"): # loop over all produced files    
+    gas_name, var, type_name = return_emission_names(file)
+
+    for t in TIMES:
+        if gas_name in PLOT_GASES:
+            if type_name == "anthro":
+
+                scen_ds = xr.open_dataset(file).sel(time='2023').pipe(reorder_dimensions)
+                scen_da = scen_ds[f"{gas_name}_em_anthro"]
+
+                match = next(ceds_data_location.glob(f"{gas_name}-*.nc"), None)
+
+                ceds_ds = xr.open_dataset(match).sel(time='2023').pipe(reorder_dimensions) # TODO: for CO2, add zeroes for CDR sectors in ceds history for plotting
+                ceds_da = ceds_ds[f"{gas_name}_em_anthro"]
+
+                # print(N2O)
+
+                AVAILABLE_SECTORS = [k for k in scen_ds.sector.values if SECTOR_DICT_ANTHRO_CO2_SCENARIO[k] in PLOT_SECTORS]
+
+                fig = plot_ceds_vs_scenario_comparison(
+                    ceds_da=ceds_da,
+                    scen_da=scen_da,
+                    gas=gas_name,
+                    sectors=AVAILABLE_SECTORS,
+                    # We pass the desired time slice (a single cftime object)
+                    time_slice=t,
+                    anthro_bb_air=anthro_bb_air,
+                    colour_scale_max_percentile=98,
+                    empty_treatment="fill_zeroes"
+                )
+
+                # --- SAVE AND SHOW PLOT ---
+                if fig is not None:
+                    filename_base = f"ceds_vs_scenario_comparison_{gas_name}_{t.strftime('%Y%m%d')}"
+
+                    # Save the plot
+                    fig.savefig(folder_plots / f"{filename_base}.png", dpi=200, bbox_inches='tight')
+                    # fig.savefig(folder_plots / f"{filename_base}.pdf", bbox_inches='tight')
+
+                    plt.show()
+                    plt.close(fig) # Close the figure to free memory
+
+
 
 
 
@@ -1945,34 +2276,29 @@ if save_total_emissions_as_csv:
 # %% [markdown]
 # ## 4.1. alignment with historical; from 'notebooks\cmip7\check_gridded-scenarios-compare-to-ceds-esgf.py'
 
-# %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
-plot_timeseries: bool = True
-PLOT_GASES: list[str] | None = None # e.g. ["CO2", "SO2", "VOC01_alcohols", "VOC02_ethane", "NMVOC-C2H2", "NMVOC-C10H16"]; default is run all
-PLOT_GASES: list[str] | None = ['CO2'] # e.g. ["CO2", "SO2", "VOC01_alcohols", "VOC02_ethane", "NMVOC-C2H2", "NMVOC-C10H16"]; default is run all
-
-PLOT_SECTORS: list[str] | None = None # e.g. ['Energy', 'Residential, Commercial, Other'] default is run all
-# PLOT_SECTORS: list[str] | None = ['Agriculture'] # default is run all
-
-
 # %%
 
 if PLOT_SECTORS is None:
     PLOT_SECTORS = np.unique(SECTOR_ORDERING_DEFAULT["CO2_em_anthro"] + SECTOR_ORDERING_DEFAULT["em_anthro"] + SECTOR_ORDERING_DEFAULT["em_openburning"])
 
+if PLOT_GASES is None:
+    PLOT_GASES = np.unique(GASES_ESGF_CEDS + GASES_ESGF_BB4CMIP)
+
+
 # used in 'timeseries'
 # Define locations dictionary with coordinates
 LOCATIONS = {
-    'Beijing': (39.9042, 116.4074),
-    # "Laxenburg": (48.0689, 16.3555),
-    "Nuuk": (64.1743, -51.7373),
+    # 'Beijing': (39.9042, 116.4074),
+    "Laxenburg": (48.0689, 16.3555),
+    # "Nuuk": (64.1743, -51.7373),
     # 'Geneva': (46.2044, 6.1432),
     # 'Delhi': (28.6139, 77.2090),
     # 'Spain': (40.4637, 3.7492), # central spain, close to Madrid
     # 'New_York': (40.7128, -74.0060),
-    # 'London': (51.5074, -0.1278),
+    'London': (51.5074, -0.1278),
     # 'Tokyo': (35.6762, 139.6503),
     # 'São_Paulo': (-23.5505, -46.6333),
-    # 'Lagos': (6.5244, 3.3792),
+    'Lagos': (6.5244, 3.3792),
     # 'Mumbai': (19.0760, 72.8777),
     # 'Rural_Amazon': (-3.4653, -62.2159),  # Remote area in Amazon
     # 'North_Atlantic': (45.0, -30.0),     # Shipping route
