@@ -2008,7 +2008,7 @@ if run_anthro_supplemental_voc:
     if DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES is None:
         DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES = GASES_ESGF_CEDS_VOC
 
-    # sector index → short name (must follow voc_anthro.sector ordering)
+    # sector index to short name (must follow voc_anthro.sector ordering)
     sector_mapping = {
         0: "AGR",
         1: "ENE",
@@ -2020,9 +2020,11 @@ if run_anthro_supplemental_voc:
         7: "SHP",
     }
 
+    numeric_sectors = voc_anthro.sector.values  # save numeric sectors
+
     # prepare bulk VOC
     voc_bulk = voc_anthro["NMVOC_em_anthro"]
-
+    
     # add year/month coordinates for vectorised alignment
     voc_bulk = voc_bulk.assign_coords(
         year=("time", voc_bulk.time.dt.year.data),
@@ -2055,7 +2057,7 @@ if run_anthro_supplemental_voc:
             month=voc_bulk.month,
         )
 
-        # align sectors and spatial dims safely
+        # align sectors and spatial dims
         voc_bulk_aligned, share_aligned = xr.align(
             voc_bulk,
             share_time,
@@ -2064,6 +2066,8 @@ if run_anthro_supplemental_voc:
 
         # vectorised multiplication (lazy, fast)
         voc_spec_data = voc_bulk_aligned * share_aligned
+
+        voc_spec_data = voc_spec_data.assign_coords(sector=numeric_sectors)
 
         # drop extra coordinates that were made in the process
         voc_spec_data = voc_spec_data.drop_vars(
@@ -2075,7 +2079,7 @@ if run_anthro_supplemental_voc:
         voc_spec = voc_spec_data.to_dataset(name=gas_variable_name)
 
         # TODO:
-        # - [ ] update long_name of data (follow CEDS long_name)
+        # - [ ] update long_name of data (follow CEDS long_name) EDIT: i think this was done, right?
         # Add the bounds
         # voc_spec['lon_bnds'] = voc_anthro['lon_bnds']
         # voc_spec['time_bnds'] = voc_anthro['time_bnds']
@@ -2095,9 +2099,6 @@ if run_anthro_supplemental_voc:
 
         with ProgressBar():
             voc_spec.to_netcdf(outfile, mode="w", encoding=encoding, compute=True,)
-
-# %%
-xr.open_dataset("/Users/hoegner/GitHub/concordia/results/v3-1-testing_VL/VOC01-alcohols-em-speciated-VOC-anthro_input4MIPs_emissions_CMIP7_IIASA-IAMC-esm-scen7-vl-v3-1-testing_gn_202201-210012.nc")
 
 # %% [markdown]
 # # END OF SUPPLEMENTAL DATA CODE
@@ -2938,16 +2939,6 @@ if save_total_emissions_as_csv: # TODO: @Jarmo, you may want to introduce a diff
     combined_df.to_csv(folder_totals / f"{new_stem}_combined-annual-totals.csv")
 
 # %%
-test_nmvoc = xr.open_dataset(settings.out_path / GRIDDING_VERSION / "NMVOC-HOCH2CHO-em-speciated-VOC-openburning_input4MIPs_emissions_CMIP7_IIASA-IAMC-esm-scen7-vl-v3-1-testing_gn_202201-210012.nc")
-
-# %%
-test_voc_anthro = xr.open_dataset(settings.out_path / GRIDDING_VERSION / "NMVOC-em-anthro_input4MIPs_emissions_CMIP7_IIASA-IAMC-esm-scen7-vl-v3-1-testing_gn_202201-210012.nc")
-test_nmvoc_openburning = xr.open_dataset(settings.out_path / GRIDDING_VERSION / "NMVOCbulk-em-openburning_input4MIPs_emissions_CMIP7_IIASA-IAMC-esm-scen7-vl-v3-1-testing_gn_202201-210012.nc")
-
-# %%
-esgf_ceds_voc = xr.open_dataset("/Users/hoegner/Projects/CMIP7/input/gridding/esgf/ceds/CMIP7_anthro_VOC/VOC01-alcohols-em-speciated-VOC-anthro_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18-supplemental_gn_200001-202312.nc")
-
-# %%
 # test that the speciated NMVOC species add up to the bulk NMVOC
 
 # drop the bulk from the df
@@ -3022,6 +3013,164 @@ plt.show()
 
 # %% [markdown]
 # ## 4.4. make sure anthro VOC adds up to NMVOC-em-anthro, compare to downscaled
+
+# %%
+if save_total_emissions_as_csv: # TODO: @Jarmo, you may want to introduce a different hook for this in the driver script?
+    
+    GASES_VOC = [item.removesuffix("_em_speciated_VOC_anthro") for item in GASES_ESGF_CEDS_VOC]
+    GASES_VOC = [item.replace("_", "-") for item in GASES_VOC]
+
+    folder_totals = settings.out_path / GRIDDING_VERSION / "check_VOC_sums"
+    folder_totals.mkdir(parents=True, exist_ok=True)
+
+    areacella = xr.open_dataset(
+        Path(settings.gridding_path, "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc")
+    )
+    cell_area = areacella["areacella"]
+
+    all_gases_df_list = []
+
+    for file in tqdm((settings.out_path / GRIDDING_VERSION).glob("*.nc"),
+                     desc="Calculating total annual emissions from the gridded files"):
+
+        gas_name, var, type_name = return_emission_names(file)
+
+        if gas_name not in GASES_VOC:
+            continue
+        
+        print(gas_name)
+        
+        scen = xr.open_dataset(file)
+
+        da = ds_to_annual_emissions_total(
+            gridded_data=scen,
+            var_name=var,
+            cell_area=cell_area,
+            keep_sectors=True
+        )
+
+        if isinstance(da, xr.DataArray):
+            df = da.to_dataframe(name="emissions").reset_index()
+        elif isinstance(da, pd.Series):
+            df = da.reset_index(name="emissions")
+        else:
+            raise TypeError(f"Unexpected type: {type(da)}")
+
+        df["gas"] = gas_name
+        df["sector"] = df["sector"].map(SECTOR_DICT_ANTHRO_DEFAULT)
+
+        # Pivot to wide format: years as columns
+        df_wide = df.pivot(index=["gas", "sector"], columns="year", values="emissions")
+        all_gases_df_list.append(df_wide)
+
+    
+    # Combine all files into one MultiIndex DataFrame
+    combined_df = pd.concat(all_gases_df_list).sort_index()
+
+    parts = file.stem.split("_")
+    new_stem = "_".join(parts[1:])
+    
+    combined_df.to_csv(folder_totals / f"{new_stem}_combined-annual-totals.csv")
+
+# %%
+for file in tqdm((settings.out_path / GRIDDING_VERSION).glob("NMVOC-em-anthro*"),
+                     desc="Calculating total annual emissions from the gridded files"):
+    
+    scen = xr.open_dataset(file)
+
+    da = ds_to_annual_emissions_total(
+        gridded_data=scen,
+        var_name=var,
+        cell_area=cell_area,
+        keep_sectors=True
+    )
+
+    if isinstance(da, xr.DataArray):
+        df = da.to_dataframe(name="emissions").reset_index()
+    elif isinstance(da, pd.Series):
+        df = da.reset_index(name="emissions")
+    else:
+        raise TypeError(f"Unexpected type: {type(da)}")
+
+    df["gas"] = gas_name
+    df["sector"] = df["sector"].map(SECTOR_DICT_ANTHRO_DEFAULT)
+
+    # Pivot to wide format: years as columns
+    df_wide = df.pivot(index=["gas", "sector"], columns="year", values="emissions")
+
+# %%
+# test that the speciated NMVOC species add up to the bulk NMVOC
+
+speciated_totals = combined_df.groupby(level=["sector"]).sum()
+
+# isolate the bulk and process similarly to get df in same format
+bulk_totals = df_wide.groupby(level=["sector"]).sum()
+
+# test that they are equal
+pd.testing.assert_frame_equal(speciated_totals, bulk_totals)
+
+# %%
+# select NMVOCbulk from downscaled data
+downscaled_bulk = downscaled.loc[downscaled.index.get_level_values("gas") == "NMVOC"]
+downscaled_bulk_totals = downscaled_bulk.groupby(level=["sector"]).sum()
+
+SECTOR_RENAME_DOWNSCALED = {
+    "Energy Sector": "Energy",
+    "Industrial Sector": "Industrial",
+    "Residential Commercial Other": "Residential, Commercial, Other",
+    "Transportation Sector": "Transportation",
+}
+
+downscaled_bulk_totals = downscaled_bulk_totals.rename(index=SECTOR_RENAME_DOWNSCALED, level='sector')
+
+# reformat for plotting
+downscaled_long = (
+    downscaled_bulk_totals
+    .reset_index()
+    .melt(
+        id_vars=["sector"],
+        var_name="year",
+        value_name="emissions"
+    )
+)
+
+bulk_long = (
+    speciated_totals
+    .reset_index()
+    .melt(
+        id_vars=["sector"],
+        var_name="year",
+        value_name="emissions"
+    )
+)
+
+# make sure year is numeric
+downscaled_long["year"] = downscaled_long["year"].astype(int)
+bulk_long["year"] = bulk_long["year"].astype(int)
+
+downscaled_long["variant"] = "downscaled"
+bulk_long["variant"] = "gridded"
+
+plot_df = pd.concat([bulk_long, downscaled_long], ignore_index=True)
+
+# %%
+gas = "NMVOC"
+
+sns.relplot(
+    data=plot_df,
+    x="year",
+    y="emissions",
+    hue="variant",
+    col="sector",
+    col_wrap=3,
+    kind="line",
+    height=4,
+    aspect=1.6,
+    facet_kws={"sharey": False}
+)
+
+g.savefig(folder_totals / f"{gas}_{new_stem}_reaggregated-comparison.png")
+plt.show()
 
 # %% [markdown]
 # # END OF POSTPROCESSING
