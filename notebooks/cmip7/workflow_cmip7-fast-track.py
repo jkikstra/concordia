@@ -54,7 +54,6 @@ run_anthro_supplemental_voc: bool = False
 run_openburning_supplemental_voc: bool = False
 
 # run_anthro_supplemental_solidbiofuel: bool = False # not yet implemented, for the future
-run_spatial_harmonisation: bool = True # provides spatial harmonization with CEDS anthro in 2023 (requires having raw CEDS files locally)
 
 # main: files to produce (species, sector)
 DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["CO2", "SO2"]
@@ -2400,7 +2399,6 @@ save_total_emissions_as_csv = True
 CALCULATE_TOTALS_GASES: list[str] | None = None # e.g. ["CO2", "SO2", "VOC01_alcohols", "VOC02_ethane", "NMVOC-C2H2", "NMVOC-C10H16"]; default is run all
 
 if save_total_emissions_as_csv:
-    from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total
     folder_totals = settings.out_path / GRIDDING_VERSION / "check_annual_totals"
     folder_totals.mkdir(parents=True, exist_ok=True)
 
@@ -2636,8 +2634,8 @@ if True:
 combined_df
 
 # %%
-downscaled_reference = downscaled.groupby(level=["gas","sector"]).sum()
-downscaled_reference = iam_df.groupby(level=["gas","sector"]).sum()
+# downscaled_reference = downscaled.groupby(level=["gas","sector"]).sum()
+iam_reference = iam_df.groupby(level=["gas","sector"]).sum()
 
 # %%
 # List of CDR sectors to combine
@@ -2659,52 +2657,49 @@ def map_sector(s):
 
 # %%
 # Only apply to gas = "CO2"
-idx = downscaled_reference.index.to_frame()
+idx = iam_reference.index.to_frame()
 mask = idx["gas"] == "CO2"
 
 # Map the sectors
 idx.loc[mask, "sector"] = idx.loc[mask, "sector"].map(map_sector)
 
 # Set the MultiIndex back
-downscaled_reference.index = pd.MultiIndex.from_frame(idx)
+iam_reference.index = pd.MultiIndex.from_frame(idx)
 
-downscaled_ref = downscaled_reference.groupby(level=["gas", "sector"]).sum()
+iam_ref = iam_reference.groupby(level=["gas", "sector"]).sum()
 
-downscaled_ref
-
-# %%
-downscaled.index.get_level_values("sector").unique()
+iam_ref
 
 # %%
 # ok we have to make them comparable; retain only years that exist in gridded
 combined_df.columns = combined_df.columns.astype(int)
-downscaled_ref.columns = downscaled_ref.columns.astype(int)
+iam_ref.columns = iam_ref.columns.astype(int)
 
 # find common years
-common_years = combined_df.columns.intersection(downscaled_ref.columns)
+common_years = combined_df.columns.intersection(iam_ref.columns)
 
 # subset both to those years
 combined_df = combined_df[common_years]
-downscaled_ref = downscaled_ref[common_years]
+iam_ref = iam_ref[common_years]
 
 # %%
-# rename the downscaled sectors
+# rename the iam sectors
 SECTOR_RENAME_DOWNSCALED = {
     "Energy Sector": "Energy",
     "Industrial Sector": "Industrial",
     "Residential Commercial Other": "Residential, Commercial, Other",
     "Transportation Sector": "Transportation",
 }
-downscaled_ref = downscaled_ref.rename(
+iam_ref = iam_ref.rename(
     index=SECTOR_RENAME_DOWNSCALED,
     level="sector"
 )
-mask = downscaled_ref.index.get_level_values("gas") == "N2O"
-downscaled_ref.loc[mask] = downscaled_ref.loc[mask] / 1000
+mask = iam_ref.index.get_level_values("gas") == "N2O"
+iam_ref.loc[mask] = iam_ref.loc[mask] / 1000
 
 # %%
-difference = combined_df - downscaled_ref
-difference.to_csv(folder_totals / f"{new_stem}_reaggregated-gridded-minus-downscaled.csv")
+difference = combined_df - iam_ref
+difference.to_csv(folder_totals / f"{new_stem}_reaggregated-gridded-minus-iam.csv")
 
 # %%
 relative = difference/combined_df*100
@@ -2735,7 +2730,7 @@ df_long["year"] = df_long["year"].astype(int)
 
 # %%
 ref_long = (
-    downscaled_ref
+    iam_ref
     .reset_index()
     .melt(
         id_vars=["gas", "sector"],
@@ -2747,8 +2742,6 @@ ref_long = (
 # make sure year is numeric
 ref_long["year"] = ref_long["year"].astype(int)
 
-# %%
-import seaborn as sns
 
 # %%
 df_long["variant"] = "gridded"
