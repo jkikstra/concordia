@@ -100,6 +100,19 @@ SECTOR_DICT_ANTHRO_CO2_SCENARIO = {
     9: "Other Capture and Removal"
 }
 
+SECTOR_DICT_OPENBURNING_DEFAULT = {
+    0: 'Agricultural Waste Burning',
+    1: 'Forest Burning',
+    2: 'Grassland Burning',
+    3: 'Peat Burning'
+    }
+
+SECTOR_DICT_OPENBURNING_DEFAULT_FLIPPED = {
+    'Agricultural Waste Burning': 0,
+    'Forest Burning': 1,
+    'Grassland Burning': 2,
+    'Peat Burning': 3
+}
 
 
 SECTOR_ORDERING_GAS = {
