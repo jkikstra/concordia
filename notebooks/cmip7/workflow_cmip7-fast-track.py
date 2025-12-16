@@ -2218,6 +2218,8 @@ downscaled_ref = downscaled_ref.rename(
     index=SECTOR_RENAME_DOWNSCALED,
     level="sector"
 )
+mask = downscaled_ref.index.get_level_values("gas") == "N2O"
+downscaled_ref.loc[mask] = downscaled_ref.loc[mask] / 1000
 
 # %%
 difference = combined_df - downscaled_ref
