@@ -1657,7 +1657,7 @@ if run_openburning_supplemental_voc:
                     voc_slice = voc_bulk.isel(time=time_idx)
                     
                     # Multiply and assign to result
-                    voc_spec_data[:, :, time_idx, sector_idx] = (voc_slice * share_slice).values # sensitive to coordinate order
+                    voc_spec_data[time_idx, :, :, sector_idx] = (voc_slice * share_slice).values # sensitive to coordinate order
 
         # Add the computed data to the result dataset
         gas_variable_name = f"NMVOC_{voc_share.gas.values[0]}_em_speciated_VOC_openburning"
