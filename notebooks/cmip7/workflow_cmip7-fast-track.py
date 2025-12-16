@@ -1464,8 +1464,8 @@ if run_openburning_timeseries_correction:
         scen_ds_corrected.close()
         
         print(f"\nSaved corrected {gas_name} openburning emissions to {outfile}")
-        
-        
+
+
 # %% [markdown]
 # # END OF MAIN CODE
 
@@ -1874,134 +1874,10 @@ if run_openburning_supplemental_voc:
 
 # %% [markdown]
 # ## VOC speciation (CEDS, anthro)
-# **NOTE: runtime ~20mins per VOC species ~= 8hrs for all 23 VOC species**
+# **NOTE: runtime down to 12 minutes for all 23 VOC species**
 
 
 # %%
-# TODO:
-# - [ ] speed up this loop
-if run_anthro_supplemental_voc:
-    voc_anthro = load_voc_bulk(type="anthro")
-    
-    if DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES is None:
-        DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES = GASES_ESGF_CEDS_VOC # by default, run all
-    for v in DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES: # all take about ~6hours for 1 scenario; could consider making this part of the driver parameters
-        print(f'Reading in shares of {v}')
-        # import file 
-        voc_share = xr.open_dataset(
-            # using VOC shares as produced in `notebooks\cmip7\prep_proxyfuture-anthro-from-ceds-cmip7-esgf-VOCspeciation.py`
-            voc_spec_ratios_location_anthro / f"{v}_{PROXY_TIME_RANGE_VOC_CEDS}.nc",
-            engine="netcdf4",
-            chunks={},
-            lock=lock
-        )
-
-        # create VOC_em speciated
-        # approach using xarray's alignment capabilities
-        
-        # Create a mapping from voc_anthro sectors to voc_share sectors
-        sector_mapping = {
-            # NOTE: must follow order of SECTOR_ORDERING_DEFAULT['em_anthro']
-            # 'Agriculture': 'AGR',
-            # 'Energy': 'ENE',
-            # 'Industrial': 'IND',
-            # 'Transportation': 'TRA',
-            # 'Residential, Commercial, Other': 'RCO',
-            # 'Solvents production and application': 'SLV',
-            # 'Waste': 'WST',
-            # 'International Shipping': 'SHP'
-            0: 'AGR',
-            1: 'ENE',
-            2: 'IND',
-            3: 'TRA',
-            4: 'RCO',
-            5: 'SLV',
-            6: 'WST',
-            7: 'SHP'
-        }
-        
-        # Rename sectors in voc_anthro to match voc_share sector names where possible
-        anthro_to_share_sectors = {v: k for k, v in sector_mapping.items() if v in voc_share.sector.values and k in voc_anthro.sector.values}
-        
-        # Initialize result with same structure as voc_anthro
-        voc_spec = xr.Dataset(
-            coords=voc_anthro.coords,
-            attrs=voc_anthro.attrs.copy()
-        )
-        
-        # Initialize the data variable with zeros
-        voc_spec_data = xr.zeros_like(voc_anthro["NMVOC_em_anthro"])
-        
-        # Perform multiplication for matching sectors
-        # print(f'Calculations of emissions of {v}')
-        for share_sector, anthro_sector in anthro_to_share_sectors.items():
-            # Select data from both datasets for matching sectors
-            voc_bulk = voc_anthro["NMVOC_em_anthro"].sel(sector=anthro_sector)
-            
-            # Get emissions share for this sector and gas
-            share_data = voc_share["emissions_share"].sel(
-                sector=share_sector,
-                gas=voc_share.gas[0]  # Take first gas
-            )
-            
-            # Convert time coordinates to year/month for alignment
-            years = voc_bulk.time.dt.year
-            months = voc_bulk.time.dt.month
-            
-            # Find the index of the sector in the coordinate array
-            sector_idx = list(voc_anthro.sector.values).index(anthro_sector)
-            
-            # Perform multiplication for each time step
-            for time_idx, time_val in enumerate(voc_bulk.time.values):
-                year = years[time_idx].values
-                month = months[time_idx].values
-                
-                # Check if this year/month exists in voc_share
-                if year in share_data.year.values and month in share_data.month.values:
-                    # Get the share data for this specific year/month
-                    share_slice = share_data.sel(year=year, month=month)
-                    
-                    # Get the bulk VOC data for this time step
-                    voc_slice = voc_bulk.isel(time=time_idx)
-                    
-                    # Multiply and assign to result
-                    voc_spec_data[:, :, time_idx, sector_idx] = (voc_slice * share_slice).values # sensitive to coordinate order
-        
-        # Add the computed data to the result dataset
-        gas_variable_name = voc_share.gas.values[0]
-
-        voc_spec[f"{gas_variable_name}"] = voc_spec_data
-        # TODO:
-        # - [ ] update long_name of data (follow CEDS long_name)
-        # - [ ] remove/replace the now unnecessary bounds updates?
-        # Add the bounds
-        # voc_spec['lon_bnds'] = voc_anthro['lon_bnds']
-        # voc_spec['time_bnds'] = voc_anthro['time_bnds']
-        # voc_spec['lat_bnds'] = voc_anthro['lat_bnds']
-        
-        # Update attributes
-        voc_spec.attrs['variable_id'] = gas_variable_name
-        voc_spec.attrs['title'] = f"Speciated {gas_variable_name} emissions"
-
-        # save out
-        print(f'Writing out emissions of {v}')
-        name = gas_variable_name.replace("_", "-")
-        outfile = settings.out_path / GRIDDING_VERSION / f"{name}_{FILE_NAME_ENDING}"
-
-        encoding = {
-            gas_variable_name: {
-                "zlib": True,
-                "complevel": 2
-            }
-        }
-        
-        with ProgressBar():
-            voc_spec.to_netcdf(outfile, mode="w", encoding=encoding, compute=True)
-
-
-# %%
-# faster version, still needs testing
-
 if run_anthro_supplemental_voc:
     voc_anthro = load_voc_bulk(type="anthro")
 
