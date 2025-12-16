@@ -2,6 +2,9 @@ name: concordia
 channels:
 - conda-forge
 dependencies:
+- python>=3.10,<3.13
+- numpy<2.0
+- input4mips-validation
 - typing-extensions
 - attrs
 - cattrs
@@ -28,6 +31,7 @@ dependencies:
 - colorlog
 - ipykernel
 - papermill
+- nc-time-axis
 
 # ptolemy dependencies
 - netcdf4
@@ -36,7 +40,7 @@ dependencies:
 - xarray
 - pooch
 - zarr
-- flox
+- flox<0.9
 - pyogrio
 - geopandas
 - bottleneck
