@@ -100,6 +100,21 @@ SECTOR_DICT_ANTHRO_CO2_SCENARIO = {
     9: "Other Capture and Removal"
 }
 
+SECTOR_DICT_ANTHRO_CO2_SCENARIO_FLIPPED = {
+    # as in future CO2 (with CDR)
+    "Agriculture": 0,
+    "Energy": 1,
+    "Industrial": 2,
+    "Transportation": 3,
+    "Residential, Commercial, Other": 4,
+    "Solvents Production and Application": 5,
+    "Waste": 6,
+    "International Shipping": 7,
+    # additional CDR-related sectors; to report in the final files
+    "BECCS": 8,
+    "Other Capture and Removal": 9
+}
+
 SECTOR_DICT_OPENBURNING_DEFAULT = {
     0: 'Agricultural Waste Burning',
     1: 'Forest Burning',
