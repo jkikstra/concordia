@@ -31,10 +31,10 @@ HISTORY_FILE: str = "country-history_202511261223_202511040855_202512032146_2025
 # Settings
 # SETTINGS_FILE: str = "config_cmip7_esgf_v0_alpha.yaml" # was used for preparing for first upload to ESGF
 SETTINGS_FILE: str = "config_cmip7_v0-4-0.yaml" # for second ESGF version
-VERSION_ESGF: str = "v3-5-testing" # for second ESGF version
+VERSION_ESGF: str = "v3-6-alpha" # for second ESGF version
 
 # Which scenario to run from the markers
-marker_to_run: str = "VL" # options: H, HL, M, ML, L, LN, VL
+marker_to_run: str = "H" # options: H, HL, M, ML, L, LN, VL
 
 # What folder to save this run in
 GRIDDING_VERSION: str | None = None
@@ -50,10 +50,10 @@ run_anthro_timeseries_correction: bool = True
 run_AIR_anthro_timeseries_correction: bool = True
 run_openburning_timeseries_correction: bool = True
 
-run_openburning_h2: bool = False # produced based on openburning_co
+run_openburning_h2: bool = True # produced based on openburning_co
 
-run_anthro_supplemental_voc: bool = False
-run_openburning_supplemental_voc: bool = False
+run_anthro_supplemental_voc: bool = True
+run_openburning_supplemental_voc: bool = True
 
 # run_anthro_supplemental_solidbiofuel: bool = False # not yet implemented, for the future
 
@@ -3131,7 +3131,7 @@ if save_total_emissions_as_csv: # TODO: @Jarmo, you may want to introduce a diff
             raise TypeError(f"Unexpected type: {type(da)}")
 
         df["gas"] = gas_name
-        df["sector"] = df["sector"].map(SECTOR_DICT_BURNING)
+        df["sector"] = df["sector"].map(SECTOR_DICT_OPENBURNING_DEFAULT)
 
         # Pivot to wide format: years as columns
         df_wide = df.pivot(index=["gas", "sector"], columns="year", values="emissions")
