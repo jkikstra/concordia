@@ -29,6 +29,7 @@ def patched_reindex_(array, from_, to, fill_value=None, axis=-1, promote=False, 
     """Wrapper that provides a default fill_value of 0 if None is passed."""
     if fill_value is None:
         fill_value = 0
+    # Pass through all other kwargs (including array_type)
     return _original_reindex(array, from_=from_, to=to, fill_value=fill_value, axis=axis, promote=promote, **kwargs)
 
 # Replace the function in the flox.core module

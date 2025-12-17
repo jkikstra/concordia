@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 import dask
 import pandas as pd
+import numpy as np
 import ptolemy as pt
 #' pt.IndexRaster is important. 
 #' pt.IndexRaster has:
@@ -601,17 +602,26 @@ class WorkflowDriver:
                         f"Skipping {fname} because the file already exists",
                     )
                 return to_skip
+            
+            # Helper to fill NaNs before writing
+            def to_netcdf_filled(gr: Gridded):
+                ds = gr.prepare_dataset(callback) # load the Dataset with this helper from aneris Gridded class
+                
+                # Fill all NaNs in numeric variables
+                numeric_vars = [v for v, da in ds.data_vars.items() if np.issubdtype(da.dtype, np.number)]
+                ds[numeric_vars] = ds[numeric_vars].fillna(0)
+                
+                encoding = ds[gr.proxy.name].encoding | {"zlib": True, "complevel": 2} | (encoding_kwargs or {})
+                return ds.to_netcdf(
+                    gr.fname(template_fn, directory),
+                    encoding={gr.proxy.name: encoding},
+                    compute=False,
+                )
 
             return dask.compute(
                 (
-                    gridded.to_netcdf(
-                        template_fn,
-                        callback,
-                        directory=directory,
-                        encoding_kwargs=encoding_kwargs,
-                        compute=False,
-                    ),
-                    gridded.verify(compute=False) if verify else None,
+                    to_netcdf_filled(gridded),                          # write filled NetCDF
+                    gridded.verify(compute=False) if verify else None,  # run verify on original Gridded
                 )
                 for gridded in pathways
                 if not skip(gridded, template_fn, directory)
