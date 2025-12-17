@@ -625,7 +625,7 @@ def ds_attrs(name, marker_scenario_name, version, date):
         creation_date=date,
         title=title,
         reporting_unit=f"Mass flux of {gas}",
-        long_name=f"{name} anthropogenic emissions"
+        long_name=f"{name} {handle} emissions"
     )
     attrs = DS_ATTRS | extra_attrs
     return attrs

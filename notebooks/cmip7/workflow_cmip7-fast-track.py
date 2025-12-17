@@ -1905,28 +1905,25 @@ if run_openburning_h2:
                 co_slice = co_sector.isel(time=time_idx)
 
                 # Multiply and assign to result
-                h2_openburning_data[time_idx, :, :, sector_idx] = (co_slice * translation_slice).values # sensitive to coordinate order
+                h2_openburning_data[:, :, time_idx, sector_idx] = (co_slice * translation_slice).values # sensitive to coordinate order
                 
                 # Assert that the sectors all align, ignoring dtype
-                assert h2_openburning_data[time_idx, :, :, sector_idx].sector.values == co_slice.sector.values
-                assert h2_openburning_data[time_idx, :, :, sector_idx].sector.values == translation_slice.sector.values
+                assert h2_openburning_data[:, :, time_idx, sector_idx].sector.values == co_slice.sector.values
+                assert h2_openburning_data[:, :, time_idx, sector_idx].sector.values == translation_slice.sector.values
 
 
     # Add the computed data to the result dataset
     gas_variable_name = "H2_em_openburning"
     h2_openburning[gas_variable_name] = h2_openburning_data
 
-    # TODO:
-    # - [ ] update long_name of data (follow CEDS long_name)
-    # - [ ] remove/replace the now unnecessary bounds updates?
-    # # Add the bounds
-    # h2_openburning['lon_bnds'] = co_openburning['lon_bnds']
-    # h2_openburning['time_bnds'] = co_openburning['time_bnds']
-    # h2_openburning['lat_bnds'] = co_openburning['lat_bnds']
-
     # Update attributes
+    handle = 'openburning'
     h2_openburning.attrs['variable_id'] = gas_variable_name
-    h2_openburning.attrs['title'] = f"Speciated {gas_variable_name} emissions"
+    h2_openburning.attrs['title'] = f"Future {handle} emissions of H2 in {experiment_name}"
+    h2_openburning.attrs['reporting_unit'] = f"Mass flux of {gas_variable_name}"
+    h2_openburning.attrs['long_name'] = f"{gas_variable_name} {handle} emissions"
+    # Add global sums as metadata
+    h2_openburning = h2_openburning.pipe(add_file_global_sum_totals_attrs, name=f"{gas_variable_name}") # add totals after 2022 is added
 
     # save out
     print('Writing out H2 openburning emissions')
@@ -2144,10 +2141,15 @@ if run_openburning_supplemental_voc:
 
         # copy & update attributes
         voc_spec.attrs.update(voc_openburning.attrs)
-        voc_spec.attrs["variable_id"] = gas_variable_name
-        voc_spec.attrs["title"] = (
-            f"Future openburning emissions of speciated {gas_variable_name}"
-        )
+        # Update attributes
+        handle = 'openburning'
+        voc_spec.attrs['variable_id'] = gas_variable_name
+        voc_spec.attrs['title'] = f"Future {handle} emissions of speciated {gas_variable_name} in {experiment_name}"
+        voc_spec.attrs['reporting_unit'] = f"Mass flux of {gas_variable_name}"
+        voc_spec.attrs['long_name'] = f"{gas_variable_name} {handle} emissions"
+        # Add global sums as metadata
+        voc_spec = voc_spec.pipe(add_file_global_sum_totals_attrs, name=f"{gas_variable_name}") # add totals after 2022 is added
+
 
         # write output
         print(f"Writing out emissions of {v}")
@@ -2283,17 +2285,16 @@ if run_anthro_supplemental_voc:
         # build output dataset
         voc_spec = voc_spec_data.to_dataset(name=gas_variable_name)
 
-        # TODO:
-        # - [ ] update long_name of data (follow CEDS long_name) EDIT: i think this was done, right?
-        # Add the bounds
-        # voc_spec['lon_bnds'] = voc_anthro['lon_bnds']
-        # voc_spec['time_bnds'] = voc_anthro['time_bnds']
-        # voc_spec['lat_bnds'] = voc_anthro['lat_bnds']
-        
-        # update attributes
+        # copy & update attributes
         voc_spec.attrs.update(voc_anthro.attrs)
-        voc_spec.attrs["variable_id"] = gas_variable_name
-        voc_spec.attrs["title"] = f"Speciated {gas_variable_name} emissions"
+        # Update attributes
+        handle = 'anthropogenic'
+        voc_spec.attrs['variable_id'] = gas_variable_name
+        voc_spec.attrs['title'] = f"Future {handle} emissions of speciated {gas_variable_name} in {experiment_name}"
+        voc_spec.attrs['reporting_unit'] = f"Mass flux of {gas_variable_name}"
+        voc_spec.attrs['long_name'] = f"{gas_variable_name} {handle} emissions"
+        # Add global sums as metadata
+        voc_spec = voc_spec.pipe(add_file_global_sum_totals_attrs, name=f"{gas_variable_name}") # add totals after 2022 is added
 
         # write output
         print(f"Writing out emissions of {v}")
