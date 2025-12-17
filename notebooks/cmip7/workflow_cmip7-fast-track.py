@@ -31,7 +31,7 @@ HISTORY_FILE: str = "country-history_202511261223_202511040855_202512032146_2025
 # Settings
 # SETTINGS_FILE: str = "config_cmip7_esgf_v0_alpha.yaml" # was used for preparing for first upload to ESGF
 SETTINGS_FILE: str = "config_cmip7_v0-4-0.yaml" # for second ESGF version
-VERSION_ESGF: str = "v3-6-alpha" # for second ESGF version
+VERSION_ESGF: str = "1-0-0" # for second ESGF version
 
 # Which scenario to run from the markers
 marker_to_run: str = "H" # options: H, HL, M, ML, L, LN, VL
