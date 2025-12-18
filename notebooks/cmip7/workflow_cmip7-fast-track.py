@@ -994,7 +994,9 @@ for v in [
 ]:
     cmip7_areacella.attrs[v] = cmip7_utils.DS_ATTRS[v]
 
-cmip7_areacella.to_netcdf(settings.out_path / GRIDDING_VERSION / f'areacella_input4MIPs_emissions_{cmip7_utils.DS_ATTRS['target_mip']}_{cmip7_utils.DS_ATTRS['institution_id']}-{VERSION_ESGF}_gn.nc', encoding=encoding)
+folder_areacella = settings.out_path / GRIDDING_VERSION / 'areacella'
+folder_areacella.mkdir(parents=True, exist_ok=True)
+cmip7_areacella.to_netcdf(folder_areacella / f'areacella_input4MIPs_emissions_{cmip7_utils.DS_ATTRS['target_mip']}_{cmip7_utils.DS_ATTRS['institution_id']}-{VERSION_ESGF}_gn.nc', encoding=encoding)
 
 
 # %% [markdown]
