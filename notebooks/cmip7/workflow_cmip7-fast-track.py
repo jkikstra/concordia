@@ -1968,6 +1968,8 @@ if run_openburning_h2:
     gas_variable_name = "H2_em_openburning"
     h2_openburning[gas_variable_name] = h2_openburning_data
 
+    # copy & update attributes
+    h2_openburning.attrs.update(voc_openburning.attrs)
     # Update attributes
     handle = 'openburning'
     h2_openburning.attrs['variable_id'] = gas_variable_name
