@@ -3421,7 +3421,7 @@ plot_df = pd.concat([bulk_long, downscaled_long], ignore_index=True)
 # %%
 gas = "NMVOC"
 
-sns.relplot(
+g = sns.relplot(
     data=plot_df,
     x="year",
     y="emissions",
