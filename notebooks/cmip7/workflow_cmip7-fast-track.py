@@ -966,6 +966,28 @@ if run_main_gridding: # full run for all 10 species takes about ~1hour for 1 sce
     )
 
 
+# %% [markdown]
+# Clarify which gridcell area we use
+
+# # %%
+# areas of gridcells for calculatings totals
+areacella = xr.open_dataset(Path(settings.gridding_path, "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc"))
+cell_area = areacella["areacella"]
+
+encoding = {"areacella": {"zlib": True, "complevel": 2}}
+areacella.close()
+
+# update metadata
+cmip7_areacella = areacella
+cmip7_areacella.attrs['comment'] = "Research data produced using the Community Emissions Data System (CEDS), at Pacific Northwest National Laboratory - Joint Global Change Research Institute, College Park, MD 20740, USA. Reused for future emissions data."
+cmip7_areacella.attrs['contact'] = areacella.attrs['contact'] + '; ' + cmip7_utils.DS_ATTRS['contact']
+for v in [
+    'institution_id', 'doi', 'target_mip', 'source', 'source_id', 'license'
+]:
+    cmip7_areacella.attrs[v] = cmip7_utils.DS_ATTRS[v]
+
+cmip7_areacella.to_netcdf(settings.out_path / GRIDDING_VERSION / f'areacella_input4MIPs_emissions_{cmip7_utils.DS_ATTRS['target_mip']}_{cmip7_utils.DS_ATTRS['institution_id']}-{VERSION_ESGF}_gn.nc', encoding=encoding)
+
 
 # %% [markdown]
 # # START OF POSTPROCESSING
@@ -1059,11 +1081,6 @@ if run_spatial_harmonisation:
 
     # files that are produced above, that may need correction
     files_main, files_voc = return_nc_output_files_main_voc(gridded_data_location=settings.out_path / GRIDDING_VERSION)
-
-
-    # areas of gridcells for calculatings totals
-    areacella = xr.open_dataset(Path(settings.gridding_path, "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc"))
-    cell_area = areacella["areacella"]
 
     # for file in tqdm(files_main + files_voc, desc="Processing files"): # all
     for file in tqdm(files_main, desc="Processing files"): # only main
