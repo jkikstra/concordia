@@ -969,7 +969,7 @@ if run_main_gridding: # full run for all 10 species takes about ~1hour for 1 sce
 # %% [markdown]
 # Clarify which gridcell area we use
 
-# # %%
+# %%
 # areas of gridcells for calculatings totals
 areacella = xr.open_dataset(Path(settings.gridding_path, "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc"))
 cell_area = areacella["areacella"]
