@@ -34,11 +34,11 @@ SETTINGS_FILE: str = "config_cmip7_v0-4-0.yaml" # for second ESGF version
 VERSION_ESGF: str = "1-0-0" # for second ESGF version
 
 # Which scenario to run from the markers
-marker_to_run: str = "H" # options: H, HL, M, ML, L, LN, VL
+marker_to_run: str = "vl" # options: h, hl, m, ml, l, ln, vl
 
 # What folder to save this run in
 GRIDDING_VERSION: str | None = None
-GRIDDING_VERSION: str | None = f"{VERSION_ESGF}_{marker_to_run}"
+GRIDDING_VERSION: str | None = f"{marker_to_run}_{VERSION_ESGF}"
 
 
 # Which parts to run
@@ -65,6 +65,9 @@ DO_GRIDDING_ONLY_FOR_THESE_SECTORS: list[str] | None = None # all: ['anthro', 'o
 DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["VOC01_alcohols_em_speciated_VOC_anthro"]
 # - openburning
 DO_VOC_SPECIATION_OPENBURNING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["C10H16"]
+# %%
+DO_GRIDDING_ONLY_FOR_THESE_SPECIES = ["CO2"]
+
 # %%
 # validate that we're receiving what we're expecting
 print(f"\n\nGRIDDING_VERSION received: {GRIDDING_VERSION}\n\n")
@@ -1309,7 +1312,7 @@ if run_spatial_harmonisation:
         emissions_harmonised.to_netcdf(outfile, encoding=encoding)
         emissions_harmonised.close() # close the connection to the file
 
-# %% 
+# %%
 # load files for timeseries corrections
 
 # all years, but not 2022 (before 2023); which should come directly from CEDS anthro (and CEDS AIR)
@@ -1793,8 +1796,8 @@ if run_openburning_timeseries_correction:
         scen_ds_corrected.close()
         
         print(f"\nSaved corrected {gas_name} openburning emissions timeseries to {outfile}")
-        
-        
+
+
 # %% [markdown]
 # # END OF MAIN CODE
 
@@ -2353,6 +2356,16 @@ PLOT_GASES: list[str] | None = DO_GRIDDING_ONLY_FOR_THESE_SPECIES # e.g. ["CO2",
 PLOT_SECTORS: list[str] | None = None # e.g. ['Energy', 'Residential, Commercial, Other'] default is run all
 PLOT_SECTORS: list[str] | None = SECTOR_ORDERING_DEFAULT['CO2_em_anthro'] # default is run all
 PLOT_SECTORS: list[str] | None = SECTOR_ORDERING_DEFAULT['em_anthro'] # default is run all
+
+
+
+# %%
+
+if PLOT_SECTORS is None:
+    PLOT_SECTORS = np.unique(SECTOR_ORDERING_DEFAULT["CO2_em_anthro"] + SECTOR_ORDERING_DEFAULT["em_anthro"] + SECTOR_ORDERING_DEFAULT["em_openburning"])
+
+if PLOT_GASES is None:
+    PLOT_GASES = np.unique(GASES_ESGF_CEDS + GASES_ESGF_BB4CMIP)
 
 
 
@@ -3286,7 +3299,7 @@ for file in tqdm((settings.out_path / GRIDDING_VERSION).glob("NMVOC-em-anthro*")
                      desc="Calculating total annual emissions from the gridded files"):
     
     scen = xr.open_dataset(file)
-
+    var = "NMVOC_em_anthro"
     da = ds_to_annual_emissions_total(
         gridded_data=scen,
         var_name=var,

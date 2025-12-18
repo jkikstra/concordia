@@ -197,7 +197,7 @@ DS_ATTRS = dict(
     Conventions="CF-1.8",
     activity_id="input4MIPs",
     comment="Gridded emissions produced after harmonization and downscaling as part of the ScenarioMIP-CMIP7. See https://github.com/iiasa/emissions_harmonization_historical, https://github.com/IAMconsortium/concordia, and https://github.com/iiasa/aneris for documentation on the processes.",
-    contact="kikstra@iiasa.ac.at",
+    contact="kikstra@iiasa.ac.at, hoegner@iiasa.ac.at, zecchetto@iiasa.ac.at",
     data_structure="grid",
     dataset_category="emissions",
     external_variables="gridcell_area",
@@ -214,7 +214,7 @@ DS_ATTRS = dict(
     references="See: https://github.com/IAMconsortium/concordia and https://github.com/iiasa/emissions_harmonization_historical for references",
     source="Scenarios generated as part of the ScenarioMIP-CMIP7 project, see https://wcrp-cmip.org/mips/scenariomip/",
     table_id="input4MIPs",
-    target_mip="CMIP7", # Should this be ScenarioMIP? what is target_mip?
+    target_mip="ScenarioMIP", # Should this be ScenarioMIP? what is target_mip?
     product="primary-emissions-data",
     start_date="202201",
     end_date="210012",
@@ -1346,7 +1346,7 @@ def read_r_to_da(file, template, flipud=True, dtype="float32"):
     return da
 
 def scenario_name_prefix(m):
-    return f"esm-scen7-{m.lower()}"
+    return f"{m.lower()}"
 
 def filename_for_esgf(marker: str, version: str):
     return f"{DS_ATTRS["activity_id"]}_emissions_{DS_ATTRS["target_mip"]}_{DS_ATTRS["institution_id"]}-{scenario_name_prefix(marker)}-{version}_{DS_ATTRS["grid_label"]}_{DS_ATTRS["start_date"]}-{DS_ATTRS["end_date"]}.nc"
