@@ -66,8 +66,6 @@ DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. 
 # - openburning
 DO_VOC_SPECIATION_OPENBURNING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["C10H16"]
 # %%
-
-# %%
 # validate that we're receiving what we're expecting
 print(f"\n\nGRIDDING_VERSION received: {GRIDDING_VERSION}\n\n")
 print(f"\n\nDO_GRIDDING_ONLY_FOR_THESE_SPECIES received: {DO_GRIDDING_ONLY_FOR_THESE_SPECIES}\n\n")
@@ -2375,12 +2373,8 @@ if run_anthro_supplemental_voc:
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
 plot_timeseries: bool = True
 PLOT_GASES: list[str] | None = None # e.g. ["CO2", "SO2", "VOC01_alcohols", "VOC02_ethane", "NMVOC-C2H2", "NMVOC-C10H16"]; default is run all
-PLOT_GASES: list[str] | None = DO_GRIDDING_ONLY_FOR_THESE_SPECIES # e.g. ["CO2", "SO2", "VOC01_alcohols", "VOC02_ethane", "NMVOC-C2H2", "NMVOC-C10H16"]; default is run all
 
 PLOT_SECTORS: list[str] | None = None # e.g. ['Energy', 'Residential, Commercial, Other'] default is run all
-PLOT_SECTORS: list[str] | None = SECTOR_ORDERING_DEFAULT['CO2_em_anthro'] # default is run all
-PLOT_SECTORS: list[str] | None = SECTOR_ORDERING_DEFAULT['em_anthro'] # default is run all
-
 
 
 # %%
