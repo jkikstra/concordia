@@ -568,11 +568,11 @@ def reorder_dimensions(ds, bound_var_name="bound"):
 
     # Reorder dimensions based on variable type (only for dimensions that exist)
     if ds.attrs.get("variable_id").split("_", 1)[1] == 'em_anthro':
-        dim_order = ("time", "lon", "lat", "sector", bound_var_name)
+        dim_order = ("lon", "lat", "time", "sector", bound_var_name)
     elif ds.attrs.get("variable_id").split("_", 1)[1] == 'em_openburning':
-        dim_order = ("time", "lon", "lat", "sector", bound_var_name)
+        dim_order = ("lon", "lat", "time", "sector", bound_var_name)
     elif ds.attrs.get("variable_id").split("_", 1)[1] == 'em_AIR_anthro':
-        dim_order = ("time", "lon", "lat", "level", bound_var_name)
+        dim_order = ("lon", "lat", "time", "level", bound_var_name)
     else:
         dim_order = None
 
@@ -688,8 +688,12 @@ def add_file_global_sum_totals_attrs(ds, name, first_year=str(PROXY_YEARS[0]), l
 
     gas, rest = name.split("_", 1)
     
-    ds.attrs[f'global_total_emissions_{first_year}'] = f'{sumfirstyear} Tg {gas}/year'
-    ds.attrs[f'global_total_emissions_{last_year}'] = f'{sumlastyear} Tg {gas}/year'
+    if gas == "NOx":
+        ds.attrs[f'global_total_emissions_{first_year}'] = f'{sumfirstyear} Tg NO2/year'
+        ds.attrs[f'global_total_emissions_{last_year}'] = f'{sumlastyear} Tg NO2/year'
+    else:
+        ds.attrs[f'global_total_emissions_{first_year}'] = f'{sumfirstyear} Tg {gas}/year'
+        ds.attrs[f'global_total_emissions_{last_year}'] = f'{sumlastyear} Tg {gas}/year'
     
     return ds
 
