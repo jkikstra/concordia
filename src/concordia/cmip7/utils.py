@@ -16,11 +16,16 @@ import pyreadr
 from attrs import define
 from cattrs import structure, transform_error
 from cftime import DatetimeNoLeap
+
 from pandas_indexing import concat, isin, semijoin
 from tqdm.auto import tqdm
 
 from ..settings import FtpSettings
 
+from input4mips_validation.io import (
+    generate_creation_timestamp,
+    generate_tracking_id
+)
 
 from concordia.cmip7.CONSTANTS import PROXY_YEARS
 from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total
@@ -188,16 +193,11 @@ DATA_HANDLES = {
     "em_removal": "cdr",
 }
 
-from input4mips_validation.io import (
-    generate_creation_timestamp,
-    generate_tracking_id,
-)
-
 DS_ATTRS = dict(
     Conventions="CF-1.8",
     activity_id="input4MIPs",
     comment="Gridded emissions produced after harmonization and downscaling as part of the ScenarioMIP-CMIP7. See https://github.com/iiasa/emissions_harmonization_historical, https://github.com/IAMconsortium/concordia, and https://github.com/iiasa/aneris for documentation on the processes.",
-    contact="kikstra@iiasa.ac.at",
+    contact="kikstra@iiasa.ac.at, hoegner@iiasa.ac.at, zecchetto@iiasa.ac.at",
     data_structure="grid",
     dataset_category="emissions",
     external_variables="gridcell_area",
@@ -214,13 +214,12 @@ DS_ATTRS = dict(
     references="See: https://github.com/IAMconsortium/concordia and https://github.com/iiasa/emissions_harmonization_historical for references",
     source="Scenarios generated as part of the ScenarioMIP-CMIP7 project, see https://wcrp-cmip.org/mips/scenariomip/",
     table_id="input4MIPs",
-    target_mip="CMIP7", # Should this be ScenarioMIP? what is target_mip?
-    product="primary-emissions-data",
+    target_mip="ScenarioMIP", # Should this be ScenarioMIP? what is target_mip?
+    product="derived",
     start_date="202201",
     end_date="210012",
     creation_date=generate_creation_timestamp(),
-    tracking_id=generate_tracking_id(),
-    units="kg m-2 s-1"
+    tracking_id=generate_tracking_id()
 )
 
 
@@ -619,13 +618,12 @@ def ds_attrs(name, marker_scenario_name, version, date):
     )
 
     extra_attrs = dict(
-        source_version=version,
-        source_id=f"{DS_ATTRS['institution_id']}-{version}",
+        source_version=version.split("_", 1)[1].replace("-", "."),
+        source_id=f"{DS_ATTRS['institution_id']}-{version.replace("_", "-")}",
         variable_id=name,
         creation_date=date,
         title=title,
-        reporting_unit=f"Mass flux of {gas}",
-        long_name=f"{name} {handle} emissions"
+        reporting_unit=f"Mass flux of {gas}"
     )
     attrs = DS_ATTRS | extra_attrs
     return attrs
@@ -688,8 +686,14 @@ def add_file_global_sum_totals_attrs(ds, name, first_year=str(PROXY_YEARS[0]), l
             keep_sectors=False
         ).sel(year=int(last_year))),2)
 
-    ds.attrs[f'global_total_emissions_{first_year}'] = f'{sumfirstyear} Tg/year'
-    ds.attrs[f'global_total_emissions_{last_year}'] = f'{sumlastyear} Tg/year'
+    gas, rest = name.split("_", 1)
+    
+    if gas == "NOx":
+        ds.attrs[f'global_total_emissions_{first_year}'] = f'{sumfirstyear} Tg NO2/year'
+        ds.attrs[f'global_total_emissions_{last_year}'] = f'{sumlastyear} Tg NO2/year'
+    else:
+        ds.attrs[f'global_total_emissions_{first_year}'] = f'{sumfirstyear} Tg {gas}/year'
+        ds.attrs[f'global_total_emissions_{last_year}'] = f'{sumlastyear} Tg {gas}/year'
     
     return ds
 
@@ -1346,7 +1350,7 @@ def read_r_to_da(file, template, flipud=True, dtype="float32"):
     return da
 
 def scenario_name_prefix(m):
-    return f"esm-scen7-{m.lower()}"
+    return f"{m.lower()}"
 
 def filename_for_esgf(marker: str, version: str):
     return f"{DS_ATTRS["activity_id"]}_emissions_{DS_ATTRS["target_mip"]}_{DS_ATTRS["institution_id"]}-{scenario_name_prefix(marker)}-{version}_{DS_ATTRS["grid_label"]}_{DS_ATTRS["start_date"]}-{DS_ATTRS["end_date"]}.nc"

@@ -34,11 +34,11 @@ SETTINGS_FILE: str = "config_cmip7_v0-4-0.yaml" # for second ESGF version
 VERSION_ESGF: str = "1-0-0" # for second ESGF version
 
 # Which scenario to run from the markers
-marker_to_run: str = "H" # options: H, HL, M, ML, L, LN, VL
+marker_to_run: str = "vl" # options: h, hl, m, ml, l, ln, vl
 
 # What folder to save this run in
 GRIDDING_VERSION: str | None = None
-GRIDDING_VERSION: str | None = f"{VERSION_ESGF}_{marker_to_run}"
+GRIDDING_VERSION: str | None = f"{marker_to_run}_{VERSION_ESGF}"
 
 
 # Which parts to run
@@ -1007,7 +1007,7 @@ def copy_attributes(
 # helper functions for spatial harmonization
 def copy_bounds_data_variables(
     source: xr.Dataset, target: xr.Dataset,
-    bounds_vars = ['lat_bnds', 'lon_bnds', 'time_bnds', 'sector_bnds']
+    bounds_vars = ['lat_bnds', 'lon_bnds', 'time_bnds', 'sector_bnds', 'level_bnds']
 ) -> xr.Dataset:
     """
     Copy bounds data variables from source to target
@@ -1043,6 +1043,12 @@ def _what_emissions_variable_type(file, files_main=[], files_voc=[]):
     elif file in files_voc:
         type = "em_speciated_VOC_anthro"
     return type
+
+def remove_fillvalue_from_bounds(ds):
+    for coord in ["lon_bnds", "lat_bnds", "level_bnds"]:
+        if coord in ds:
+            ds[coord].encoding["_FillValue"] = None
+    return ds
 
 # %%
 years = [year for year in PROXY_YEARS if year >= settings.base_year] # all years, but not 2022 (before 2023); which should come directly from CEDS anthro (and CEDS AIR)
@@ -1304,12 +1310,17 @@ if run_spatial_harmonisation:
 
         xr.testing.assert_allclose(ceds_2022[f"{gas}_{type}"], emissions_harmonised.sel(time='2022')[f"{gas}_{type}"], rtol=0, atol=0)
         #assert np.allclose(test_difference, 0)
+
+        # remove _FillValue from bounds
+        emissions_harmonised = (
+            emissions_harmonised.pipe(remove_fillvalue_from_bounds)
+        )
         
         # Save out the updated file
         emissions_harmonised.to_netcdf(outfile, encoding=encoding)
         emissions_harmonised.close() # close the connection to the file
 
-# %% 
+# %%
 # load files for timeseries corrections
 
 # all years, but not 2022 (before 2023); which should come directly from CEDS anthro (and CEDS AIR)
@@ -1460,13 +1471,17 @@ if run_AIR_anthro_timeseries_correction:
         
         # Remove old file before writing
         outfile.unlink(missing_ok=True)
+
+        # remove _FillValue from bounds
+        scen_ds_corrected = (
+            scen_ds_corrected.pipe(remove_fillvalue_from_bounds)
+        )
         
         # Save corrected dataset
         scen_ds_corrected.to_netcdf(outfile, encoding=encoding)
         scen_ds_corrected.close()
         
         print(f"\nSaved corrected {gas_name} AIR emissions timeseries to {outfile}")
-
 
 
     
@@ -1638,6 +1653,11 @@ if run_anthro_timeseries_correction:
         # Remove old file before writing
         outfile.unlink(missing_ok=True)
         
+        # remove _FillValue from bounds
+        scen_ds_corrected = (
+            scen_ds_corrected.pipe(remove_fillvalue_from_bounds)
+        )
+        
         # Save corrected dataset
         scen_ds_corrected.to_netcdf(outfile, encoding=encoding)
         scen_ds_corrected.close()
@@ -1788,13 +1808,18 @@ if run_openburning_timeseries_correction:
         # Remove old file before writing
         outfile.unlink(missing_ok=True)
         
+        # remove _FillValue from bounds
+        scen_ds_corrected = (
+            scen_ds_corrected.pipe(remove_fillvalue_from_bounds)
+        )
+        
         # Save corrected dataset
         scen_ds_corrected.to_netcdf(outfile, encoding=encoding)
         scen_ds_corrected.close()
         
         print(f"\nSaved corrected {gas_name} openburning emissions timeseries to {outfile}")
-        
-        
+
+
 # %% [markdown]
 # # END OF MAIN CODE
 
@@ -2348,11 +2373,17 @@ if run_anthro_supplemental_voc:
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
 plot_timeseries: bool = True
 PLOT_GASES: list[str] | None = None # e.g. ["CO2", "SO2", "VOC01_alcohols", "VOC02_ethane", "NMVOC-C2H2", "NMVOC-C10H16"]; default is run all
-PLOT_GASES: list[str] | None = DO_GRIDDING_ONLY_FOR_THESE_SPECIES # e.g. ["CO2", "SO2", "VOC01_alcohols", "VOC02_ethane", "NMVOC-C2H2", "NMVOC-C10H16"]; default is run all
 
 PLOT_SECTORS: list[str] | None = None # e.g. ['Energy', 'Residential, Commercial, Other'] default is run all
-PLOT_SECTORS: list[str] | None = SECTOR_ORDERING_DEFAULT['CO2_em_anthro'] # default is run all
-PLOT_SECTORS: list[str] | None = SECTOR_ORDERING_DEFAULT['em_anthro'] # default is run all
+
+
+# %%
+
+if PLOT_SECTORS is None:
+    PLOT_SECTORS = np.unique(SECTOR_ORDERING_DEFAULT["CO2_em_anthro"] + SECTOR_ORDERING_DEFAULT["em_anthro"] + SECTOR_ORDERING_DEFAULT["em_openburning"])
+
+if PLOT_GASES is None:
+    PLOT_GASES = np.unique(GASES_ESGF_CEDS + GASES_ESGF_BB4CMIP)
 
 
 
@@ -3286,7 +3317,7 @@ for file in tqdm((settings.out_path / GRIDDING_VERSION).glob("NMVOC-em-anthro*")
                      desc="Calculating total annual emissions from the gridded files"):
     
     scen = xr.open_dataset(file)
-
+    var = "NMVOC_em_anthro"
     da = ds_to_annual_emissions_total(
         gridded_data=scen,
         var_name=var,

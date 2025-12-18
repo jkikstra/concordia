@@ -93,25 +93,25 @@ def return_marker_information(m, v="cmip7_esgf_v0_alpha", fixed_metadata=False, 
     else:
         # from 0-4-0 onwards
         # exact naming discussion is here: https://github.com/CMIP-Data-Request/Harmonised-Public-Consultation/issues/108
-        if m == "H":
+        if m == "h":
             MODEL_SELECTION = "GCAM 8s"
             SCENARIO_SELECTION = "SSP3 - High Emissions"
-        if m == "HL":
+        if m == "hl":
             MODEL_SELECTION = "WITCH 6.0"
             SCENARIO_SELECTION = "SSP5 - Medium-Low Emissions_a"
-        if m == "M":
+        if m == "m":
             MODEL_SELECTION = "IMAGE 3.4"
             SCENARIO_SELECTION = "SSP2 - Medium Emissions"
-        if m == "ML":
+        if m == "ml":
             MODEL_SELECTION = "COFFEE 1.6"
             SCENARIO_SELECTION = "SSP2 - Medium-Low Emissions"
-        if m == "L":
+        if m == "l":
             MODEL_SELECTION = "MESSAGEix-GLOBIOM-GAINS 2.1-M-R12"
             SCENARIO_SELECTION = "SSP2 - Low Emissions_f"
-        if m == "LN":
+        if m == "ln":
             MODEL_SELECTION = "AIM 3.0"
             SCENARIO_SELECTION = "SSP2 - Low Overshoot_a" # (email from Shinichiro, weekend of 25.10.2025)
-        if m == "VL":
+        if m == "vl":
             MODEL_SELECTION = "REMIND-MAgPIE 3.5-4.11"
             SCENARIO_SELECTION = "SSP1 - Very Low Emissions"
 
