@@ -223,7 +223,6 @@ DS_ATTRS = dict(
     tracking_id=generate_tracking_id()
 )
 
-
 # DS_ATTRS_adhocfix = dict(
 #     Conventions="CF-1.12", # follow the latest and greatest; https://cfconventions.org/Data/cf-conventions/cf-conventions-1.12/cf-conventions.html
 #     activity_id="input4MIPs",
@@ -569,11 +568,11 @@ def reorder_dimensions(ds, bound_var_name="bound"):
 
     # Reorder dimensions based on variable type (only for dimensions that exist)
     if ds.attrs.get("variable_id").split("_", 1)[1] == 'em_anthro':
-        dim_order = ("lon", "lat", "time", "sector", bound_var_name)
+        dim_order = ("time", "sector", "lat", "lon", bound_var_name)
     elif ds.attrs.get("variable_id").split("_", 1)[1] == 'em_openburning':
-        dim_order = ("lon", "lat", "time", "sector", bound_var_name)
+        dim_order = ("time", "sector", "lat", "lon", bound_var_name)
     elif ds.attrs.get("variable_id").split("_", 1)[1] == 'em_AIR_anthro':
-        dim_order = ("lon", "lat", "time", "level", bound_var_name)
+        dim_order = ("time", "level", "lat", "lon", bound_var_name)
     else:
         dim_order = None
 
@@ -588,7 +587,7 @@ def reorder_dimensions(ds, bound_var_name="bound"):
 
     # Reorder data variables
     var_id = ds.attrs.get("variable_id")
-    bounds_vars = [v for v in ['lat_bnds', 'lon_bnds', 'time_bnds', 'sector_bnds'] if v in ds.data_vars]
+    bounds_vars = [v for v in ['time_bnds', 'sector_bnds', 'level_bnds', 'lat_bnds', 'lon_bnds'] if v in ds.data_vars]
 
     # Only include var_id if it exists in data_vars
     data_var_order = ([var_id] if var_id in ds.data_vars else []) + bounds_vars

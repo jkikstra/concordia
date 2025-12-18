@@ -1007,7 +1007,7 @@ def copy_attributes(
 # helper functions for spatial harmonization
 def copy_bounds_data_variables(
     source: xr.Dataset, target: xr.Dataset,
-    bounds_vars = ['lat_bnds', 'lon_bnds', 'time_bnds', 'sector_bnds', 'level_bnds']
+    bounds_vars = ['time_bnds', 'sector_bnds', 'level_bnds', 'lat_bnds', 'lon_bnds']
 ) -> xr.Dataset:
     """
     Copy bounds data variables from source to target
@@ -1030,7 +1030,7 @@ def copy_bounds_data_variables(
         (returning `target` is done for convenience)
     """
     
-    # Copy the data variables ['lat_bnds', 'lon_bnds', 'time_bnds', 'sector_bnds']
+    # Copy the data variables
     for var in bounds_vars:
         if var in source.data_vars: # as long as it is in the source dataset
             target[var] = source[var].load()
@@ -1930,11 +1930,11 @@ if run_openburning_h2:
                 co_slice = co_sector.isel(time=time_idx)
 
                 # Multiply and assign to result
-                h2_openburning_data[:, :, time_idx, sector_idx] = (co_slice * translation_slice).values # sensitive to coordinate order
+                h2_openburning_data.isel(time=time_idx, sector=sector_idx).values[...] = (co_slice * translation_slice).values
                 
                 # Assert that the sectors all align, ignoring dtype
-                assert h2_openburning_data[:, :, time_idx, sector_idx].sector.values == co_slice.sector.values
-                assert h2_openburning_data[:, :, time_idx, sector_idx].sector.values == translation_slice.sector.values
+                assert h2_openburning_data.isel(time=time_idx, sector=sector_idx).sector.values == co_slice.sector.values
+                assert h2_openburning_data.isel(time=time_idx, sector=sector_idx).sector.values == translation_slice.sector.values
 
 
     # Add the computed data to the result dataset
