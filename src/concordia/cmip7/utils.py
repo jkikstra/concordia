@@ -215,7 +215,7 @@ DS_ATTRS = dict(
     source="Scenarios generated as part of the ScenarioMIP-CMIP7 project, see https://wcrp-cmip.org/mips/scenariomip/",
     table_id="input4MIPs",
     target_mip="ScenarioMIP", # Should this be ScenarioMIP? what is target_mip?
-    product="primary-emissions-data",
+    product="derived",
     start_date="202201",
     end_date="210012",
     creation_date=generate_creation_timestamp(),
@@ -618,8 +618,8 @@ def ds_attrs(name, marker_scenario_name, version, date):
     )
 
     extra_attrs = dict(
-        source_version=version,
-        source_id=f"{DS_ATTRS['institution_id']}-{version}",
+        source_version=version.split("_", 1)[1].replace("-", "."),
+        source_id=f"{DS_ATTRS['institution_id']}-{version.replace("_", "-")}",
         variable_id=name,
         creation_date=date,
         title=title,
@@ -686,8 +686,10 @@ def add_file_global_sum_totals_attrs(ds, name, first_year=str(PROXY_YEARS[0]), l
             keep_sectors=False
         ).sel(year=int(last_year))),2)
 
-    ds.attrs[f'global_total_emissions_{first_year}'] = f'{sumfirstyear} Tg/year'
-    ds.attrs[f'global_total_emissions_{last_year}'] = f'{sumlastyear} Tg/year'
+    gas, rest = name.split("_", 1)
+    
+    ds.attrs[f'global_total_emissions_{first_year}'] = f'{sumfirstyear} Tg {gas}/year'
+    ds.attrs[f'global_total_emissions_{last_year}'] = f'{sumlastyear} Tg {gas}/year'
     
     return ds
 

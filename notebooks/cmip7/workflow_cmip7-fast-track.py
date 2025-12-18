@@ -66,7 +66,7 @@ DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. 
 # - openburning
 DO_VOC_SPECIATION_OPENBURNING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["C10H16"]
 # %%
-DO_GRIDDING_ONLY_FOR_THESE_SPECIES = ["CO2"]
+DO_GRIDDING_ONLY_FOR_THESE_SPECIES = ["SO2"]
 
 # %%
 # validate that we're receiving what we're expecting
@@ -1010,7 +1010,7 @@ def copy_attributes(
 # helper functions for spatial harmonization
 def copy_bounds_data_variables(
     source: xr.Dataset, target: xr.Dataset,
-    bounds_vars = ['lat_bnds', 'lon_bnds', 'time_bnds', 'sector_bnds']
+    bounds_vars = ['lat_bnds', 'lon_bnds', 'time_bnds', 'sector_bnds', 'level_bnds']
 ) -> xr.Dataset:
     """
     Copy bounds data variables from source to target
@@ -1046,6 +1046,12 @@ def _what_emissions_variable_type(file, files_main=[], files_voc=[]):
     elif file in files_voc:
         type = "em_speciated_VOC_anthro"
     return type
+
+def remove_fillvalue_from_bounds(ds):
+    for coord in ["lon_bnds", "lat_bnds", "level_bnds"]:
+        if coord in ds:
+            ds[coord].encoding["_FillValue"] = None
+    return ds
 
 # %%
 years = [year for year in PROXY_YEARS if year >= settings.base_year] # all years, but not 2022 (before 2023); which should come directly from CEDS anthro (and CEDS AIR)
@@ -1307,6 +1313,11 @@ if run_spatial_harmonisation:
 
         xr.testing.assert_allclose(ceds_2022[f"{gas}_{type}"], emissions_harmonised.sel(time='2022')[f"{gas}_{type}"], rtol=0, atol=0)
         #assert np.allclose(test_difference, 0)
+
+        # remove _FillValue from bounds
+        emissions_harmonised = (
+            emissions_harmonised.pipe(remove_fillvalue_from_bounds)
+        )
         
         # Save out the updated file
         emissions_harmonised.to_netcdf(outfile, encoding=encoding)
@@ -1463,13 +1474,17 @@ if run_AIR_anthro_timeseries_correction:
         
         # Remove old file before writing
         outfile.unlink(missing_ok=True)
+
+        # remove _FillValue from bounds
+        scen_ds_corrected = (
+            scen_ds_corrected.pipe(remove_fillvalue_from_bounds)
+        )
         
         # Save corrected dataset
         scen_ds_corrected.to_netcdf(outfile, encoding=encoding)
         scen_ds_corrected.close()
         
         print(f"\nSaved corrected {gas_name} AIR emissions timeseries to {outfile}")
-
 
 
     
@@ -1641,6 +1656,11 @@ if run_anthro_timeseries_correction:
         # Remove old file before writing
         outfile.unlink(missing_ok=True)
         
+        # remove _FillValue from bounds
+        scen_ds_corrected = (
+            scen_ds_corrected.pipe(remove_fillvalue_from_bounds)
+        )
+        
         # Save corrected dataset
         scen_ds_corrected.to_netcdf(outfile, encoding=encoding)
         scen_ds_corrected.close()
@@ -1790,6 +1810,11 @@ if run_openburning_timeseries_correction:
         
         # Remove old file before writing
         outfile.unlink(missing_ok=True)
+        
+        # remove _FillValue from bounds
+        scen_ds_corrected = (
+            scen_ds_corrected.pipe(remove_fillvalue_from_bounds)
+        )
         
         # Save corrected dataset
         scen_ds_corrected.to_netcdf(outfile, encoding=encoding)
