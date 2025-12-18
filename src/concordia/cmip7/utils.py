@@ -16,6 +16,8 @@ import pyreadr
 from attrs import define
 from cattrs import structure, transform_error
 from cftime import DatetimeNoLeap
+import datetime as dt
+import uuid
 from pandas_indexing import concat, isin, semijoin
 from tqdm.auto import tqdm
 
@@ -188,10 +190,58 @@ DATA_HANDLES = {
     "em_removal": "cdr",
 }
 
-from input4mips_validation.io import (
-    generate_creation_timestamp,
-    generate_tracking_id,
-)
+def generate_tracking_id() -> str:
+    # taken from climate resource input4mips_validation
+    """
+    Generate tracking ID
+
+    Returns
+    -------
+    :
+        Tracking ID
+    """
+    # TODO: ask Paul what this hdl business is about
+    return "hdl:21.14100/" + str(uuid.uuid4())
+
+
+
+CREATION_DATE_FORMAT: str = "%Y-%m-%dT%H:%M:%SZ"
+"""
+Format to use for creation dates
+
+According to the specifications,
+the creation date must be provided as an ISO8601
+formatted string in the UTC timezone.
+In otherwords, it must take the form given above,
+which can also be written as "YYYY-MM-DDThh:mm:ssZ"
+(where the trailing "Z" indicates that the timezone is UTC).
+
+For futher details, see:
+
+- https://stackoverflow.com/a/29282022
+- https://en.wikipedia.org/wiki/ISO_8601#Combined_date_and_time_representations
+
+This constant is exposed for clarity.
+If you change it, we do not guarantee correct performance of the codebase.
+"""
+
+
+def generate_creation_timestamp() -> str:
+    # taken from climate resource input4mips_validation
+
+    """
+    Generate creation timestamp, formatted as needed for input4MIPs files
+
+    Returns
+    -------
+    :
+        Creation timestamp
+    """
+    ts = dt.datetime.now(dt.timezone.utc).replace(
+        microsecond=0  # remove microseconds from creation_timestamp
+    )
+
+    return ts.strftime(CREATION_DATE_FORMAT)
 
 DS_ATTRS = dict(
     Conventions="CF-1.8",
