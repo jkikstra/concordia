@@ -219,8 +219,7 @@ DS_ATTRS = dict(
     start_date="202201",
     end_date="210012",
     creation_date=generate_creation_timestamp(),
-    tracking_id=generate_tracking_id(),
-    units="kg m-2 s-1"
+    tracking_id=generate_tracking_id()
 )
 
 
@@ -569,11 +568,11 @@ def reorder_dimensions(ds, bound_var_name="bound"):
 
     # Reorder dimensions based on variable type (only for dimensions that exist)
     if ds.attrs.get("variable_id").split("_", 1)[1] == 'em_anthro':
-        dim_order = ("lon", "lat", "time", "sector", bound_var_name)
+        dim_order = ("time", "lon", "lat", "sector", bound_var_name)
     elif ds.attrs.get("variable_id").split("_", 1)[1] == 'em_openburning':
-        dim_order = ("lon", "lat", "time", "sector", bound_var_name)
+        dim_order = ("time", "lon", "lat", "sector", bound_var_name)
     elif ds.attrs.get("variable_id").split("_", 1)[1] == 'em_AIR_anthro':
-        dim_order = ("lon", "lat", "time", "level", bound_var_name)
+        dim_order = ("time", "lon", "lat", "level", bound_var_name)
     else:
         dim_order = None
 
@@ -624,8 +623,7 @@ def ds_attrs(name, marker_scenario_name, version, date):
         variable_id=name,
         creation_date=date,
         title=title,
-        reporting_unit=f"Mass flux of {gas}",
-        long_name=f"{name} {handle} emissions"
+        reporting_unit=f"Mass flux of {gas}"
     )
     attrs = DS_ATTRS | extra_attrs
     return attrs
