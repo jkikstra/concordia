@@ -948,6 +948,9 @@ if run_main:
 cmip7_utils.DS_ATTRS
 
 # %%
+SKIP_EXISTING_MAIN_WORKFLOW_FILES = True
+
+# %%
 if run_main_gridding: # full run for all 10 species takes about ~1hour for 1 scenario
 
     experiment_name = cmip7_utils.scenario_name_prefix(m=marker_to_run)
@@ -3396,7 +3399,7 @@ plot_df = pd.concat([bulk_long, downscaled_long], ignore_index=True)
 # %%
 gas = "NMVOC"
 
-sns.relplot(
+g = sns.relplot(
     data=plot_df,
     x="year",
     y="emissions",
