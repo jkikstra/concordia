@@ -32,9 +32,11 @@ from .utils import (
     add_zeros_like,
     aggregate_subsectors,
     skipnone,
-    indexraster_info_to_txt,
-)
+    indexraster_info_to_txt)
 
+from input4mips_validation.io import (
+    generate_creation_timestamp
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
@@ -606,7 +608,10 @@ class WorkflowDriver:
             # Helper to fill NaNs before writing
             def to_netcdf_filled(gr: Gridded):
                 ds = gr.prepare_dataset(callback) # load the Dataset with this helper from aneris Gridded class
-                
+
+                # enforce CMIP-compliant creation_date
+                ds.attrs["creation_date"] = generate_creation_timestamp()
+
                 # Fill all NaNs in numeric variables
                 numeric_vars = [v for v, da in ds.data_vars.items() if np.issubdtype(da.dtype, np.number)]
                 ds[numeric_vars] = ds[numeric_vars].fillna(0)

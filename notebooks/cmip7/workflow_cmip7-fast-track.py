@@ -31,14 +31,14 @@ HISTORY_FILE: str = "country-history_202511261223_202511040855_202512032146_2025
 # Settings
 # SETTINGS_FILE: str = "config_cmip7_esgf_v0_alpha.yaml" # was used for preparing for first upload to ESGF
 SETTINGS_FILE: str = "config_cmip7_v0-4-0.yaml" # for second ESGF version
-VERSION_ESGF: str = "v3-5-testing" # for second ESGF version
+VERSION_ESGF: str = "1-0-0" # for second ESGF version
 
 # Which scenario to run from the markers
-marker_to_run: str = "VL" # options: H, HL, M, ML, L, LN, VL
+marker_to_run: str = "vl" # options: h, hl, m, ml, l, ln, vl
 
 # What folder to save this run in
 GRIDDING_VERSION: str | None = None
-GRIDDING_VERSION: str | None = f"{VERSION_ESGF}_{marker_to_run}"
+GRIDDING_VERSION: str | None = f"{marker_to_run}_{VERSION_ESGF}"
 
 
 # Which parts to run
@@ -50,10 +50,10 @@ run_anthro_timeseries_correction: bool = True
 run_AIR_anthro_timeseries_correction: bool = True
 run_openburning_timeseries_correction: bool = True
 
-run_openburning_h2: bool = False # produced based on openburning_co
+run_openburning_h2: bool = True # produced based on openburning_co
 
-run_anthro_supplemental_voc: bool = False
-run_openburning_supplemental_voc: bool = False
+run_anthro_supplemental_voc: bool = True
+run_openburning_supplemental_voc: bool = True
 
 # run_anthro_supplemental_solidbiofuel: bool = False # not yet implemented, for the future
 
@@ -1007,7 +1007,7 @@ def copy_attributes(
 # helper functions for spatial harmonization
 def copy_bounds_data_variables(
     source: xr.Dataset, target: xr.Dataset,
-    bounds_vars = ['lat_bnds', 'lon_bnds', 'time_bnds', 'sector_bnds']
+    bounds_vars = ['lat_bnds', 'lon_bnds', 'time_bnds', 'sector_bnds', 'level_bnds']
 ) -> xr.Dataset:
     """
     Copy bounds data variables from source to target
@@ -1043,6 +1043,12 @@ def _what_emissions_variable_type(file, files_main=[], files_voc=[]):
     elif file in files_voc:
         type = "em_speciated_VOC_anthro"
     return type
+
+def remove_fillvalue_from_bounds(ds):
+    for coord in ["lon_bnds", "lat_bnds", "level_bnds"]:
+        if coord in ds:
+            ds[coord].encoding["_FillValue"] = None
+    return ds
 
 # %%
 years = [year for year in PROXY_YEARS if year >= settings.base_year] # all years, but not 2022 (before 2023); which should come directly from CEDS anthro (and CEDS AIR)
@@ -1304,12 +1310,17 @@ if run_spatial_harmonisation:
 
         xr.testing.assert_allclose(ceds_2022[f"{gas}_{type}"], emissions_harmonised.sel(time='2022')[f"{gas}_{type}"], rtol=0, atol=0)
         #assert np.allclose(test_difference, 0)
+
+        # remove _FillValue from bounds
+        emissions_harmonised = (
+            emissions_harmonised.pipe(remove_fillvalue_from_bounds)
+        )
         
         # Save out the updated file
         emissions_harmonised.to_netcdf(outfile, encoding=encoding)
         emissions_harmonised.close() # close the connection to the file
 
-# %% 
+# %%
 # load files for timeseries corrections
 
 # all years, but not 2022 (before 2023); which should come directly from CEDS anthro (and CEDS AIR)
@@ -1460,13 +1471,17 @@ if run_AIR_anthro_timeseries_correction:
         
         # Remove old file before writing
         outfile.unlink(missing_ok=True)
+
+        # remove _FillValue from bounds
+        scen_ds_corrected = (
+            scen_ds_corrected.pipe(remove_fillvalue_from_bounds)
+        )
         
         # Save corrected dataset
         scen_ds_corrected.to_netcdf(outfile, encoding=encoding)
         scen_ds_corrected.close()
         
         print(f"\nSaved corrected {gas_name} AIR emissions timeseries to {outfile}")
-
 
 
     
@@ -1638,6 +1653,11 @@ if run_anthro_timeseries_correction:
         # Remove old file before writing
         outfile.unlink(missing_ok=True)
         
+        # remove _FillValue from bounds
+        scen_ds_corrected = (
+            scen_ds_corrected.pipe(remove_fillvalue_from_bounds)
+        )
+        
         # Save corrected dataset
         scen_ds_corrected.to_netcdf(outfile, encoding=encoding)
         scen_ds_corrected.close()
@@ -1788,13 +1808,18 @@ if run_openburning_timeseries_correction:
         # Remove old file before writing
         outfile.unlink(missing_ok=True)
         
+        # remove _FillValue from bounds
+        scen_ds_corrected = (
+            scen_ds_corrected.pipe(remove_fillvalue_from_bounds)
+        )
+        
         # Save corrected dataset
         scen_ds_corrected.to_netcdf(outfile, encoding=encoding)
         scen_ds_corrected.close()
         
         print(f"\nSaved corrected {gas_name} openburning emissions timeseries to {outfile}")
-        
-        
+
+
 # %% [markdown]
 # # END OF MAIN CODE
 
@@ -1905,28 +1930,25 @@ if run_openburning_h2:
                 co_slice = co_sector.isel(time=time_idx)
 
                 # Multiply and assign to result
-                h2_openburning_data[time_idx, :, :, sector_idx] = (co_slice * translation_slice).values # sensitive to coordinate order
+                h2_openburning_data[:, :, time_idx, sector_idx] = (co_slice * translation_slice).values # sensitive to coordinate order
                 
                 # Assert that the sectors all align, ignoring dtype
-                assert h2_openburning_data[time_idx, :, :, sector_idx].sector.values == co_slice.sector.values
-                assert h2_openburning_data[time_idx, :, :, sector_idx].sector.values == translation_slice.sector.values
+                assert h2_openburning_data[:, :, time_idx, sector_idx].sector.values == co_slice.sector.values
+                assert h2_openburning_data[:, :, time_idx, sector_idx].sector.values == translation_slice.sector.values
 
 
     # Add the computed data to the result dataset
     gas_variable_name = "H2_em_openburning"
     h2_openburning[gas_variable_name] = h2_openburning_data
 
-    # TODO:
-    # - [ ] update long_name of data (follow CEDS long_name)
-    # - [ ] remove/replace the now unnecessary bounds updates?
-    # # Add the bounds
-    # h2_openburning['lon_bnds'] = co_openburning['lon_bnds']
-    # h2_openburning['time_bnds'] = co_openburning['time_bnds']
-    # h2_openburning['lat_bnds'] = co_openburning['lat_bnds']
-
     # Update attributes
+    handle = 'openburning'
     h2_openburning.attrs['variable_id'] = gas_variable_name
-    h2_openburning.attrs['title'] = f"Speciated {gas_variable_name} emissions"
+    h2_openburning.attrs['title'] = f"Future {handle} emissions of H2 in {experiment_name}"
+    h2_openburning.attrs['reporting_unit'] = f"Mass flux of {gas_variable_name}"
+    h2_openburning.attrs['long_name'] = f"{gas_variable_name} {handle} emissions"
+    # Add global sums as metadata
+    h2_openburning = h2_openburning.pipe(add_file_global_sum_totals_attrs, name=f"{gas_variable_name}") # add totals after 2022 is added
 
     # save out
     print('Writing out H2 openburning emissions')
@@ -2068,116 +2090,112 @@ voc_spec_ratios_location_openburning = settings.proxy_path / "NMVOC_speciation"
 # 5. Update/set other attributes
 
 # %%
-# TODO:
-# - [ ] speed up this loop
-
-# DO_VOC_SPECIATION_OPENBURNING_ONLY_FOR_THESE_SPECIES = GASES_ESGF_BB4CMIP_VOC[:2]
-
 if run_openburning_supplemental_voc:
     voc_openburning = load_voc_bulk(type="openburning")
 
     if DO_VOC_SPECIATION_OPENBURNING_ONLY_FOR_THESE_SPECIES is None:
-        DO_VOC_SPECIATION_OPENBURNING_ONLY_FOR_THESE_SPECIES = GASES_ESGF_BB4CMIP_VOC # by default, run all
+        DO_VOC_SPECIATION_OPENBURNING_ONLY_FOR_THESE_SPECIES = GASES_ESGF_BB4CMIP_VOC
+
+    # sector index to short name (must follow SECTOR_ORDERING_DEFAULT['em_openburning'])
+    sector_mapping = {
+        0: "AWB",
+        1: "FRTB",
+        2: "GRSB",
+        3: "PEAT",
+    }
+
+    numeric_sectors = voc_openburning.sector.values  # save numeric sectors
+
+    # prepare bulk VOC once
+    voc_bulk = voc_openburning["NMVOCbulk_em_openburning"]
+
+    # add year/month coordinates for vectorised alignment
+    voc_bulk = voc_bulk.assign_coords(
+        year=("time", voc_bulk.time.dt.year.data),
+        month=("time", voc_bulk.time.dt.month.data),
+    )
+
+    # temporarily rename sector coordinate to match VOC share naming
+    voc_bulk = voc_bulk.assign_coords(
+        sector=[sector_mapping[s] for s in voc_bulk.sector.values]
+    )
+
     for v in DO_VOC_SPECIATION_OPENBURNING_ONLY_FOR_THESE_SPECIES:
-        print(f'Reading in shares of {v}')
-        # import file
+        print(f"Reading in shares of {v}")
+
         voc_share = xr.open_dataset(
-            # using VOC shares as produced in `notebooks\cmip7\prep_proxyfuture-openburning-from-dres-cmip7-esgf-VOCspeciation.py`
-            voc_spec_ratios_location_openburning / f"{v}_other_voc_em_speciated_NMVOC_openburning_{PROXY_TIME_RANGE_VOC_BB4CMIP}.nc",
+            voc_spec_ratios_location_openburning
+            / f"{v}_other_voc_em_speciated_NMVOC_openburning_{PROXY_TIME_RANGE_VOC_BB4CMIP}.nc",
             engine="netcdf4",
-            chunks={},
-            lock=lock
+            chunks={"time": 12},
+            lock=lock,
         )
 
-        # create VOC_em speciated
-        # approach using xarray's alignment capabilities
-        
-        # Create a mapping from voc_anthro sectors to voc_share sectors
-        sector_mapping = {
-            # NOTE: must follow order of SECTOR_ORDERING_DEFAULT['em_openburning']
-            0: 'AWB',
-            1: 'FRTB',
-            2: 'GRSB',
-            3: 'PEAT'
-        }
-
-        # Rename sectors in voc_anthro to match voc_share sector names where possible
-        openburning_to_share_sectors = {v: k for k, v in sector_mapping.items() if v in voc_share.sector.values and k in voc_openburning.sector.values}
-
-        # Initialize result with same structure as voc_openburning
-        voc_spec = xr.Dataset(
-            coords=voc_openburning.coords,
-            attrs=voc_openburning.attrs.copy()
+        # select proxy data
+        share = voc_share["emissions_share"].sel(
+            gas=voc_share.gas.values[0]
         )
-        
-        # Initialize the data variable with zeros
-        voc_spec_data = xr.zeros_like(voc_openburning["NMVOCbulk_em_openburning"])
 
-        # Perform multiplication for matching sectors
-        # print(f'Calculations of emissions of {v}')
-        for share_sector, openburning_sector in openburning_to_share_sectors.items():
-            # Select data from both datasets for matching sectors
-            voc_bulk = voc_openburning["NMVOCbulk_em_openburning"].sel(sector=openburning_sector)
-            
-            # Get emissions share for this sector and gas
-            share_data = voc_share["emissions_share"].sel(
-                sector=share_sector,
-                gas=voc_share.gas[0]  # Take first (and only) gas
-            )
-            
-            # Convert time coordinates to year/month for alignment
-            years = voc_bulk.time.dt.year
-            months = voc_bulk.time.dt.month
-            
-            # Find the index of the sector in the coordinate array
-            sector_idx = list(voc_openburning.sector.values).index(openburning_sector)
-            
-            # Perform multiplication for each time step
-            for time_idx, time_val in enumerate(voc_bulk.time.values):
-                year = years[time_idx].values
-                month = months[time_idx].values
-                
-                # Check if this year/month exists in voc_share
-                if year in share_data.year.values and month in share_data.month.values:
-                    # Get the share data for this specific year/month
-                    share_slice = share_data.sel(year=year, month=month)
-                    
-                    # Get the bulk VOC data for this time step
-                    voc_slice = voc_bulk.isel(time=time_idx)
-                    
-                    # Multiply and assign to result
-                    voc_spec_data[time_idx, :, :, sector_idx] = (voc_slice * share_slice).values # sensitive to coordinate order
+        # align share data to bulk time
+        share_time = share.sel(
+            year=voc_bulk.year,
+            month=voc_bulk.month,
+        )
 
-        # Add the computed data to the result dataset
-        gas_variable_name = f"NMVOC_{voc_share.gas.values[0]}_em_speciated_VOC_openburning"
+        # align dimensions
+        voc_bulk_aligned, share_aligned = xr.align(
+            voc_bulk,
+            share_time,
+            join="inner",
+        )
 
-        voc_spec[f"{gas_variable_name}"] = voc_spec_data
-        # TODO:
-        # - [ ] update long_name of data (follow CEDS long_name)
-        # - [ ] remove/replace the now unnecessary bounds updates?
-        # # Add the bounds
-        # voc_spec['lon_bnds'] = voc_openburning['lon_bnds']
-        # voc_spec['time_bnds'] = voc_openburning['time_bnds']
-        # voc_spec['lat_bnds'] = voc_openburning['lat_bnds']
-        
+        # scale with proxy
+        voc_spec_data = voc_bulk_aligned * share_aligned
+
+        voc_spec_data = voc_spec_data.assign_coords(sector=numeric_sectors)
+        voc_spec_data = voc_spec_data.drop_vars(["year", "month", "gas"], errors="ignore")
+        voc_spec_data = voc_spec_data.fillna(0)
+
+        # construct output variable name
+        gas_variable_name = (
+            f"NMVOC_{voc_share.gas.values[0]}_em_speciated_VOC_openburning"
+        )
+
+        # build output dataset
+        voc_spec = voc_spec_data.to_dataset(name=gas_variable_name)
+
+        # copy & update attributes
+        voc_spec.attrs.update(voc_openburning.attrs)
         # Update attributes
+        handle = 'openburning'
         voc_spec.attrs['variable_id'] = gas_variable_name
-        voc_spec.attrs['title'] = f"Future openburning emissions of speciated {gas_variable_name}"
+        voc_spec.attrs['title'] = f"Future {handle} emissions of speciated {gas_variable_name} in {experiment_name}"
+        voc_spec.attrs['reporting_unit'] = f"Mass flux of {gas_variable_name}"
+        voc_spec.attrs['long_name'] = f"{gas_variable_name} {handle} emissions"
+        # Add global sums as metadata
+        voc_spec = voc_spec.pipe(add_file_global_sum_totals_attrs, name=f"{gas_variable_name}") # add totals after 2022 is added
 
-        # save out
-        print(f'Writing out emissions of {v}')
+
+        # write output
+        print(f"Writing out emissions of {v}")
         name = gas_variable_name.replace("_", "-")
         outfile = settings.out_path / GRIDDING_VERSION / f"{name}_{FILE_NAME_ENDING}"
 
         encoding = {
             gas_variable_name: {
                 "zlib": True,
-                "complevel": 2
+                "complevel": 2,
             }
         }
-        
+
         with ProgressBar():
-            voc_spec.to_netcdf(outfile, mode="w", encoding=encoding, compute=True)
+            voc_spec.to_netcdf(
+                outfile,
+                mode="w",
+                encoding=encoding,
+                compute=True,
+            )
+
 
 # %%
 # -----------------------------
@@ -2212,130 +2230,106 @@ if run_openburning_supplemental_voc:
 
 # %% [markdown]
 # ## VOC speciation (CEDS, anthro)
-# **NOTE: runtime ~20mins per VOC species ~= 8hrs for all 23 VOC species**
+# **NOTE: runtime down to 12 minutes for all 23 VOC species**
 
 
 # %%
-# TODO:
-# - [ ] speed up this loop
 if run_anthro_supplemental_voc:
     voc_anthro = load_voc_bulk(type="anthro")
-    
+
     if DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES is None:
-        DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES = GASES_ESGF_CEDS_VOC # by default, run all
-    for v in DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES: # all take about ~6hours for 1 scenario; could consider making this part of the driver parameters
-        print(f'Reading in shares of {v}')
-        # import file 
+        DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES = GASES_ESGF_CEDS_VOC
+
+    # sector index to short name (must follow voc_anthro.sector ordering)
+    sector_mapping = {
+        0: "AGR",
+        1: "ENE",
+        2: "IND",
+        3: "TRA",
+        4: "RCO",
+        5: "SLV",
+        6: "WST",
+        7: "SHP",
+    }
+
+    numeric_sectors = voc_anthro.sector.values  # save numeric sectors
+
+    # prepare bulk VOC
+    voc_bulk = voc_anthro["NMVOC_em_anthro"]
+    
+    # add year/month coordinates for vectorised alignment
+    voc_bulk = voc_bulk.assign_coords(
+        year=("time", voc_bulk.time.dt.year.data),
+        month=("time", voc_bulk.time.dt.month.data),
+    )
+
+    # rename sector coordinate to match VOC share naming
+    voc_bulk = voc_bulk.assign_coords(
+        sector=[sector_mapping[s] for s in voc_bulk.sector.values]
+    )
+
+    for v in DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES:
+        print(f"Reading in shares of {v}")
+
         voc_share = xr.open_dataset(
-            # using VOC shares as produced in `notebooks\cmip7\prep_proxyfuture-anthro-from-ceds-cmip7-esgf-VOCspeciation.py`
             voc_spec_ratios_location_anthro / f"{v}_{PROXY_TIME_RANGE_VOC_CEDS}.nc",
             engine="netcdf4",
-            chunks={},
-            lock=lock
+            chunks={"time": 12},
+            lock=lock,
         )
 
-        # create VOC_em speciated
-        # approach using xarray's alignment capabilities
-        
-        # Create a mapping from voc_anthro sectors to voc_share sectors
-        sector_mapping = {
-            # NOTE: must follow order of SECTOR_ORDERING_DEFAULT['em_anthro']
-            # 'Agriculture': 'AGR',
-            # 'Energy': 'ENE',
-            # 'Industrial': 'IND',
-            # 'Transportation': 'TRA',
-            # 'Residential, Commercial, Other': 'RCO',
-            # 'Solvents production and application': 'SLV',
-            # 'Waste': 'WST',
-            # 'International Shipping': 'SHP'
-            0: 'AGR',
-            1: 'ENE',
-            2: 'IND',
-            3: 'TRA',
-            4: 'RCO',
-            5: 'SLV',
-            6: 'WST',
-            7: 'SHP'
-        }
-        
-        # Rename sectors in voc_anthro to match voc_share sector names where possible
-        anthro_to_share_sectors = {v: k for k, v in sector_mapping.items() if v in voc_share.sector.values and k in voc_anthro.sector.values}
-        
-        # Initialize result with same structure as voc_anthro
-        voc_spec = xr.Dataset(
-            coords=voc_anthro.coords,
-            attrs=voc_anthro.attrs.copy()
-        )
-        
-        # Initialize the data variable with zeros
-        voc_spec_data = xr.zeros_like(voc_anthro["NMVOC_em_anthro"])
-        
-        # Perform multiplication for matching sectors
-        # print(f'Calculations of emissions of {v}')
-        for share_sector, anthro_sector in anthro_to_share_sectors.items():
-            # Select data from both datasets for matching sectors
-            voc_bulk = voc_anthro["NMVOC_em_anthro"].sel(sector=anthro_sector)
-            
-            # Get emissions share for this sector and gas
-            share_data = voc_share["emissions_share"].sel(
-                sector=share_sector,
-                gas=voc_share.gas[0]  # Take first gas
-            )
-            
-            # Convert time coordinates to year/month for alignment
-            years = voc_bulk.time.dt.year
-            months = voc_bulk.time.dt.month
-            
-            # Find the index of the sector in the coordinate array
-            sector_idx = list(voc_anthro.sector.values).index(anthro_sector)
-            
-            # Perform multiplication for each time step
-            for time_idx, time_val in enumerate(voc_bulk.time.values):
-                year = years[time_idx].values
-                month = months[time_idx].values
-                
-                # Check if this year/month exists in voc_share
-                if year in share_data.year.values and month in share_data.month.values:
-                    # Get the share data for this specific year/month
-                    share_slice = share_data.sel(year=year, month=month)
-                    
-                    # Get the bulk VOC data for this time step
-                    voc_slice = voc_bulk.isel(time=time_idx)
-                    
-                    # Multiply and assign to result
-                    voc_spec_data[:, :, time_idx, sector_idx] = (voc_slice * share_slice).values # sensitive to coordinate order
-        
-        # Add the computed data to the result dataset
         gas_variable_name = voc_share.gas.values[0]
 
-        voc_spec[f"{gas_variable_name}"] = voc_spec_data
-        # TODO:
-        # - [ ] update long_name of data (follow CEDS long_name)
-        # - [ ] remove/replace the now unnecessary bounds updates?
-        # Add the bounds
-        # voc_spec['lon_bnds'] = voc_anthro['lon_bnds']
-        # voc_spec['time_bnds'] = voc_anthro['time_bnds']
-        # voc_spec['lat_bnds'] = voc_anthro['lat_bnds']
-        
-        # Update attributes
-        voc_spec.attrs['variable_id'] = gas_variable_name
-        voc_spec.attrs['title'] = f"Speciated {gas_variable_name} emissions"
+        # select gas and prepare share data
+        share = voc_share["emissions_share"].sel(gas=gas_variable_name)
 
-        # save out
-        print(f'Writing out emissions of {v}')
+        # align share data to voc_bulk time using year/month (vectorised)
+        share_time = share.sel(
+            year=voc_bulk.year,
+            month=voc_bulk.month,
+        )
+
+        # align sectors and spatial dims
+        voc_bulk_aligned, share_aligned = xr.align(
+            voc_bulk,
+            share_time,
+            join="inner",
+        )
+
+        # vectorised multiplication (lazy, fast)
+        voc_spec_data = voc_bulk_aligned * share_aligned
+
+        voc_spec_data = voc_spec_data.assign_coords(sector=numeric_sectors)
+
+        # drop extra coordinates that were made in the process
+        voc_spec_data = voc_spec_data.drop_vars(
+            ["year", "month", "year_range", "gas"],
+            errors="ignore"
+        )
+
+        # build output dataset
+        voc_spec = voc_spec_data.to_dataset(name=gas_variable_name)
+
+        # copy & update attributes
+        voc_spec.attrs.update(voc_anthro.attrs)
+        # Update attributes
+        handle = 'anthropogenic'
+        voc_spec.attrs['variable_id'] = gas_variable_name
+        voc_spec.attrs['title'] = f"Future {handle} emissions of speciated {gas_variable_name} in {experiment_name}"
+        voc_spec.attrs['reporting_unit'] = f"Mass flux of {gas_variable_name}"
+        voc_spec.attrs['long_name'] = f"{gas_variable_name} {handle} emissions"
+        # Add global sums as metadata
+        voc_spec = voc_spec.pipe(add_file_global_sum_totals_attrs, name=f"{gas_variable_name}") # add totals after 2022 is added
+
+        # write output
+        print(f"Writing out emissions of {v}")
         name = gas_variable_name.replace("_", "-")
         outfile = settings.out_path / GRIDDING_VERSION / f"{name}_{FILE_NAME_ENDING}"
 
-        encoding = {
-            gas_variable_name: {
-                "zlib": True,
-                "complevel": 2
-            }
-        }
-        
-        with ProgressBar():
-            voc_spec.to_netcdf(outfile, mode="w", encoding=encoding, compute=True)
+        encoding = {gas_variable_name: {"zlib": True, "complevel": 2,}}
 
+        with ProgressBar():
+            voc_spec.to_netcdf(outfile, mode="w", encoding=encoding, compute=True,)
 
 # %% [markdown]
 # # END OF SUPPLEMENTAL DATA CODE
@@ -2379,11 +2373,17 @@ if run_anthro_supplemental_voc:
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
 plot_timeseries: bool = True
 PLOT_GASES: list[str] | None = None # e.g. ["CO2", "SO2", "VOC01_alcohols", "VOC02_ethane", "NMVOC-C2H2", "NMVOC-C10H16"]; default is run all
-PLOT_GASES: list[str] | None = DO_GRIDDING_ONLY_FOR_THESE_SPECIES # e.g. ["CO2", "SO2", "VOC01_alcohols", "VOC02_ethane", "NMVOC-C2H2", "NMVOC-C10H16"]; default is run all
 
 PLOT_SECTORS: list[str] | None = None # e.g. ['Energy', 'Residential, Commercial, Other'] default is run all
-PLOT_SECTORS: list[str] | None = SECTOR_ORDERING_DEFAULT['CO2_em_anthro'] # default is run all
-PLOT_SECTORS: list[str] | None = SECTOR_ORDERING_DEFAULT['em_anthro'] # default is run all
+
+
+# %%
+
+if PLOT_SECTORS is None:
+    PLOT_SECTORS = np.unique(SECTOR_ORDERING_DEFAULT["CO2_em_anthro"] + SECTOR_ORDERING_DEFAULT["em_anthro"] + SECTOR_ORDERING_DEFAULT["em_openburning"])
+
+if PLOT_GASES is None:
+    PLOT_GASES = np.unique(GASES_ESGF_CEDS + GASES_ESGF_BB4CMIP)
 
 
 
@@ -2867,8 +2867,10 @@ else:
 
 
 # %%
-if True:
-
+if save_total_emissions_as_csv:
+    from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total
+    import seaborn as sns
+    
     folder_totals = settings.out_path / GRIDDING_VERSION / "check_annual_totals_ext"
     folder_totals.mkdir(parents=True, exist_ok=True)
 
@@ -3042,7 +3044,6 @@ relative.to_csv(folder_totals / f"{new_stem}_relative-difference.csv")
 #combined_totals = combined_df.groupby(level=["gas"]).sum()
 
 difference_totals = difference.groupby(level=["gas"]).sum()
-# (difference_totals/combined_totals)*100
 
 # %%
 sectors = difference.index.get_level_values("sector").unique()
@@ -3058,10 +3059,6 @@ df_long = (
     )
 )
 
-# make sure year is numeric
-df_long["year"] = df_long["year"].astype(int)
-
-# %%
 ref_long = (
     iam_ref
     .reset_index()
@@ -3073,16 +3070,13 @@ ref_long = (
 )
 
 # make sure year is numeric
+df_long["year"] = df_long["year"].astype(int)
 ref_long["year"] = ref_long["year"].astype(int)
 
-
-# %%
 df_long["variant"] = "gridded"
 ref_long["variant"] = "iam (input)"
 
-# %%
 plot_df = pd.concat([df_long, ref_long], ignore_index=True)
-plot_df
 
 # %%
 for gas in CALCULATE_TOTALS_GASES:
@@ -3112,9 +3106,311 @@ for gas in CALCULATE_TOTALS_GASES:
     
     # Add legend inside each facet (or outside if desired)
     g.add_legend(title="Variant")
+    g.fig.suptitle(f"{gas}", y=1.02)
     
     g.savefig(folder_totals / f"{gas}_{new_stem}_reaggregated-comparison.png")
     plt.show()
+
+# %% [markdown]
+# ## 4.3. make sure NMVOC adds up to NMVOCbulk openburning, compare to downscaled
+
+# %%
+save_total_emissions_as_csv = True
+
+# %%
+if save_total_emissions_as_csv: # TODO: @Jarmo, you may want to introduce a different hook for this in the driver script?
+    from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total
+    import seaborn as sns
+    from concordia.cmip7.CONSTANTS import GASES_ESGF_BB4CMIP_VOC
+
+    SPECIATED_BB4CMIP_VOC = ["NMVOC-" + s for s in GASES_ESGF_BB4CMIP_VOC]
+    SPECIATED_BB4CMIP_VOC.append("NMVOCbulk")
+
+    folder_totals = settings.out_path / GRIDDING_VERSION / "check_NMVOC_sums"
+    folder_totals.mkdir(parents=True, exist_ok=True)
+
+    areacella = xr.open_dataset(
+        Path(settings.gridding_path, "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc")
+    )
+    cell_area = areacella["areacella"]
+
+    all_gases_df_list = []
+
+    for file in tqdm((settings.out_path / GRIDDING_VERSION).glob("*.nc"),
+                     desc="Calculating total annual emissions from the gridded files"):
+
+        gas_name, var, type_name = return_emission_names(file)
+
+        if gas_name not in SPECIATED_BB4CMIP_VOC:
+            continue
+        
+        print(gas_name)
+        
+        scen = xr.open_dataset(file)
+
+        da = ds_to_annual_emissions_total(
+            gridded_data=scen,
+            var_name=var,
+            cell_area=cell_area,
+            keep_sectors=True
+        )
+
+        if isinstance(da, xr.DataArray):
+            df = da.to_dataframe(name="emissions").reset_index()
+        elif isinstance(da, pd.Series):
+            df = da.reset_index(name="emissions")
+        else:
+            raise TypeError(f"Unexpected type: {type(da)}")
+
+        df["gas"] = gas_name
+        df["sector"] = df["sector"].map(SECTOR_DICT_OPENBURNING_DEFAULT)
+
+        # Pivot to wide format: years as columns
+        df_wide = df.pivot(index=["gas", "sector"], columns="year", values="emissions")
+        all_gases_df_list.append(df_wide)
+
+    
+    # Combine all files into one MultiIndex DataFrame
+    combined_df = pd.concat(all_gases_df_list).sort_index()
+
+    parts = file.stem.split("_")
+    new_stem = "_".join(parts[1:])
+    
+    combined_df.to_csv(folder_totals / f"{new_stem}_combined-annual-totals.csv")
+
+# %%
+# test that the speciated NMVOC species add up to the bulk NMVOC
+
+# drop the bulk from the df
+combined_df_filtered = combined_df.loc[combined_df.index.get_level_values("gas") != "NMVOCbulk"]
+# add the speciated up by sector
+speciated_totals = combined_df_filtered.groupby(level=["sector"]).sum()
+# isolate the bulk and process similarly to get df in same format
+bulk_totals = combined_df.loc[combined_df.index.get_level_values("gas") == "NMVOCbulk"].groupby(level=["sector"]).sum()
+
+# test that they are equal
+pd.testing.assert_frame_equal(speciated_totals, bulk_totals)
+
+# %%
+# select NMVOCbulk from downscaled data
+downscaled_bulk = downscaled.loc[downscaled.index.get_level_values("gas") == "NMVOCbulk"]
+downscaled_bulk_totals = downscaled_bulk.groupby(level=["sector"]).sum()
+
+# reformat for plotting
+downscaled_long = (
+    downscaled_bulk_totals
+    .reset_index()
+    .melt(
+        id_vars=["sector"],
+        var_name="year",
+        value_name="emissions"
+    )
+)
+
+bulk_long = (
+    bulk_totals
+    .reset_index()
+    .melt(
+        id_vars=["sector"],
+        var_name="year",
+        value_name="emissions"
+    )
+)
+
+# make sure year is numeric
+downscaled_long["year"] = downscaled_long["year"].astype(int)
+bulk_long["year"] = bulk_long["year"].astype(int)
+
+downscaled_long["variant"] = "downscaled"
+bulk_long["variant"] = "gridded"
+
+plot_df = pd.concat([bulk_long, downscaled_long], ignore_index=True)
+
+# %%
+gas = "NMVOCbulk"
+
+g = sns.FacetGrid(
+    plot_df,
+    col="sector",
+    col_wrap=2,
+    height=4,
+    aspect=1.6,
+    sharey=False
+)
+    
+g.map_dataframe(
+    sns.lineplot,
+    x="year",
+    y="emissions",
+    hue="variant"
+)
+
+g.add_legend(title="Variant")
+g.fig.suptitle("Openburning NMVOC", y=1.02)
+
+g.savefig(folder_totals / f"{gas}_{new_stem}_reaggregated-comparison.png")
+plt.show()
+
+# %% [markdown]
+# ## 4.4. make sure anthro VOC adds up to NMVOC-em-anthro, compare to downscaled
+
+# %%
+if save_total_emissions_as_csv: # TODO: @Jarmo, you may want to introduce a different hook for this in the driver script?
+    
+    GASES_VOC = [item.removesuffix("_em_speciated_VOC_anthro") for item in GASES_ESGF_CEDS_VOC]
+    GASES_VOC = [item.replace("_", "-") for item in GASES_VOC]
+
+    folder_totals = settings.out_path / GRIDDING_VERSION / "check_VOC_sums"
+    folder_totals.mkdir(parents=True, exist_ok=True)
+
+    areacella = xr.open_dataset(
+        Path(settings.gridding_path, "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc")
+    )
+    cell_area = areacella["areacella"]
+
+    all_gases_df_list = []
+
+    for file in tqdm((settings.out_path / GRIDDING_VERSION).glob("*.nc"),
+                     desc="Calculating total annual emissions from the gridded files"):
+
+        gas_name, var, type_name = return_emission_names(file)
+
+        if gas_name not in GASES_VOC:
+            continue
+        
+        print(gas_name)
+        
+        scen = xr.open_dataset(file)
+
+        da = ds_to_annual_emissions_total(
+            gridded_data=scen,
+            var_name=var,
+            cell_area=cell_area,
+            keep_sectors=True
+        )
+
+        if isinstance(da, xr.DataArray):
+            df = da.to_dataframe(name="emissions").reset_index()
+        elif isinstance(da, pd.Series):
+            df = da.reset_index(name="emissions")
+        else:
+            raise TypeError(f"Unexpected type: {type(da)}")
+
+        df["gas"] = gas_name
+        df["sector"] = df["sector"].map(SECTOR_DICT_ANTHRO_DEFAULT)
+
+        # Pivot to wide format: years as columns
+        df_wide = df.pivot(index=["gas", "sector"], columns="year", values="emissions")
+        all_gases_df_list.append(df_wide)
+
+    
+    # Combine all files into one MultiIndex DataFrame
+    combined_df = pd.concat(all_gases_df_list).sort_index()
+
+    parts = file.stem.split("_")
+    new_stem = "_".join(parts[1:])
+    
+    combined_df.to_csv(folder_totals / f"{new_stem}_combined-annual-totals.csv")
+
+# %%
+for file in tqdm((settings.out_path / GRIDDING_VERSION).glob("NMVOC-em-anthro*"),
+                     desc="Calculating total annual emissions from the gridded files"):
+    
+    scen = xr.open_dataset(file)
+    var = "NMVOC_em_anthro"
+    da = ds_to_annual_emissions_total(
+        gridded_data=scen,
+        var_name=var,
+        cell_area=cell_area,
+        keep_sectors=True
+    )
+
+    if isinstance(da, xr.DataArray):
+        df = da.to_dataframe(name="emissions").reset_index()
+    elif isinstance(da, pd.Series):
+        df = da.reset_index(name="emissions")
+    else:
+        raise TypeError(f"Unexpected type: {type(da)}")
+
+    df["gas"] = gas_name
+    df["sector"] = df["sector"].map(SECTOR_DICT_ANTHRO_DEFAULT)
+
+    # Pivot to wide format: years as columns
+    df_wide = df.pivot(index=["gas", "sector"], columns="year", values="emissions")
+
+# %%
+# test that the speciated NMVOC species add up to the bulk NMVOC
+
+speciated_totals = combined_df.groupby(level=["sector"]).sum()
+
+# isolate the bulk and process similarly to get df in same format
+bulk_totals = df_wide.groupby(level=["sector"]).sum()
+
+# test that they are equal
+pd.testing.assert_frame_equal(speciated_totals, bulk_totals)
+
+# %%
+# select NMVOCbulk from downscaled data
+downscaled_bulk = downscaled.loc[downscaled.index.get_level_values("gas") == "NMVOC"]
+downscaled_bulk_totals = downscaled_bulk.groupby(level=["sector"]).sum()
+
+SECTOR_RENAME_DOWNSCALED = {
+    "Energy Sector": "Energy",
+    "Industrial Sector": "Industrial",
+    "Residential Commercial Other": "Residential, Commercial, Other",
+    "Transportation Sector": "Transportation",
+}
+
+downscaled_bulk_totals = downscaled_bulk_totals.rename(index=SECTOR_RENAME_DOWNSCALED, level='sector')
+
+# reformat for plotting
+downscaled_long = (
+    downscaled_bulk_totals
+    .reset_index()
+    .melt(
+        id_vars=["sector"],
+        var_name="year",
+        value_name="emissions"
+    )
+)
+
+bulk_long = (
+    speciated_totals
+    .reset_index()
+    .melt(
+        id_vars=["sector"],
+        var_name="year",
+        value_name="emissions"
+    )
+)
+
+# make sure year is numeric
+downscaled_long["year"] = downscaled_long["year"].astype(int)
+bulk_long["year"] = bulk_long["year"].astype(int)
+
+downscaled_long["variant"] = "downscaled"
+bulk_long["variant"] = "gridded"
+
+plot_df = pd.concat([bulk_long, downscaled_long], ignore_index=True)
+
+# %%
+gas = "NMVOC"
+
+sns.relplot(
+    data=plot_df,
+    x="year",
+    y="emissions",
+    hue="variant",
+    col="sector",
+    col_wrap=3,
+    kind="line",
+    height=4,
+    aspect=1.6,
+    facet_kws={"sharey": False}
+)
+
+g.savefig(folder_totals / f"{gas}_{new_stem}_reaggregated-comparison.png")
+plt.show()
 
 # %% [markdown]
 # # END OF POSTPROCESSING
