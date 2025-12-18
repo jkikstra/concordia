@@ -66,7 +66,6 @@ DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. 
 # - openburning
 DO_VOC_SPECIATION_OPENBURNING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["C10H16"]
 # %%
-DO_GRIDDING_ONLY_FOR_THESE_SPECIES = ["SO2"]
 
 # %%
 # validate that we're receiving what we're expecting
