@@ -977,12 +977,20 @@ cell_area = areacella["areacella"]
 encoding = {"areacella": {"zlib": True, "complevel": 2}}
 areacella.close()
 
+from input4mips_validation.io import (
+    generate_creation_timestamp,
+    generate_tracking_id
+)
+
 # update metadata
 cmip7_areacella = areacella
 cmip7_areacella.attrs['comment'] = "Research data produced using the Community Emissions Data System (CEDS), at Pacific Northwest National Laboratory - Joint Global Change Research Institute, College Park, MD 20740, USA. Reused for future emissions data."
 cmip7_areacella.attrs['contact'] = areacella.attrs['contact'] + '; ' + cmip7_utils.DS_ATTRS['contact']
+cmip7_areacella.attrs['source_id'] = cmip7_utils.DS_ATTRS['institution_id'] + '-' + VERSION_ESGF
+cmip7_areacella.attrs['creation_date'] = generate_creation_timestamp()
+cmip7_areacella.attrs['tracking_id'] = generate_tracking_id()
 for v in [
-    'institution_id', 'doi', 'target_mip', 'source', 'source_id', 'license'
+    'institution', 'institution_id', 'doi', 'target_mip', 'source', 'license'
 ]:
     cmip7_areacella.attrs[v] = cmip7_utils.DS_ATTRS[v]
 
