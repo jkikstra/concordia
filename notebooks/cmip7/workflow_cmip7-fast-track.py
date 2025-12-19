@@ -1080,7 +1080,7 @@ def _what_emissions_variable_type(file, files_main=[], files_voc=[]):
     return type
 
 def remove_fillvalue_from_bounds(ds):
-    for coord in ["lon_bnds", "lat_bnds", "level_bnds"]:
+    for coord in ["lon_bnds", "lat_bnds", "level_bnds", "sector_bnds"]:
         if coord in ds:
             ds[coord].encoding["_FillValue"] = None
     return ds
@@ -1316,8 +1316,6 @@ if run_spatial_harmonisation:
 
         # remove old file (from previous loop in processing)
         outfile.unlink(missing_ok=True)
-        # save weighted dataset (no dask)
-        encoding = {var: {"zlib": True, "complevel": 2}}
 
         # reorder dimensions when no computations are required anymore; except replacing 2022
         emissions_harmonised = emissions_harmonised.pipe(reorder_dimensions)
@@ -1341,11 +1339,24 @@ if run_spatial_harmonisation:
         xr.testing.assert_allclose(ceds_2022[f"{gas}_{type}"], emissions_harmonised.sel(time='2022')[f"{gas}_{type}"], rtol=0, atol=0)
         #assert np.allclose(test_difference, 0)
 
+        # ensure the new file has the same variable attributes as the original gridded file
+        emissions_harmonised[var].attrs = gridded[var].attrs.copy()
+        
         # remove _FillValue from bounds
         emissions_harmonised = (
             emissions_harmonised.pipe(remove_fillvalue_from_bounds)
         )
-        
+
+        for v in ["sector", "time_bnds"]:
+            if v in emissions_harmonised:
+            emissions_harmonised[v] = emissions_harmonised[v].astype("float64")
+
+        encoding = {
+            v: {"zlib": True, "complevel": 2}
+            for v in emissions_harmonised.variables
+            if emissions_harmonised[v].dtype.kind == "f"
+        }
+
         # Save out the updated file
         emissions_harmonised.to_netcdf(outfile, encoding=encoding)
         emissions_harmonised.close() # close the connection to the file
@@ -1512,7 +1523,7 @@ if run_AIR_anthro_timeseries_correction:
         scen_ds_corrected.close()
         
         print(f"\nSaved corrected {gas_name} AIR emissions timeseries to {outfile}")
-    
+
 
 # %%
 # run the em_anthro timeseries correction (only em_anthro)
