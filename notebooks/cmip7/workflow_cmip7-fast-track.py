@@ -70,6 +70,9 @@ DO_VOC_SPECIATION_OPENBURNING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # 
 print(f"\n\nGRIDDING_VERSION received: {GRIDDING_VERSION}\n\n")
 print(f"\n\nDO_GRIDDING_ONLY_FOR_THESE_SPECIES received: {DO_GRIDDING_ONLY_FOR_THESE_SPECIES}\n\n")
 
+# %%
+DO_GRIDDING_ONLY_FOR_THESE_SPECIES = ["CO"]
+
 # %% [markdown]
 # ## Importing packages
 
@@ -1080,7 +1083,7 @@ def _what_emissions_variable_type(file, files_main=[], files_voc=[]):
     return type
 
 def remove_fillvalue_from_bounds(ds):
-    for coord in ["lon_bnds", "lat_bnds", "level_bnds", "sector_bnds"]:
+    for coord in ["time_bnds", "lon_bnds", "lat_bnds", "level_bnds", "sector_bnds"]:
         if coord in ds:
             ds[coord].encoding["_FillValue"] = None
     return ds
@@ -1957,6 +1960,27 @@ def update_var_attrs(ds, var, **attrs):
 
 
 # %%
+def add_sector_bounds(ds, source_ds=None):
+
+    if source_ds is None:
+        return ds
+
+    if "sector_bnds" not in source_ds:
+        return ds
+
+    # Copy the bounds variable
+    ds = ds.assign({
+        "sector_bnds": source_ds["sector_bnds"]
+    })
+
+    # CF convention: link bounds to coordinate
+    if "sector" in ds.coords:
+        ds["sector"].attrs["bounds"] = "sector_bnds"
+
+    return ds
+
+
+# %%
 # STEPS:
 # 1. load CO file
 # 2. load translation file
@@ -1975,14 +1999,17 @@ if run_openburning_h2:
     h2_translation = xr.open_dataset(h2_translation_file)
     h2_translation = _to_sector_integers_and_reorder(h2_translation)
 
-    # Initialize result with same structure as co_openburning
     h2_openburning = xr.Dataset(
-        coords=co_openburning.coords,
+        coords={**co_openburning.coords},
         attrs=co_openburning.attrs.copy()
     )
+        
+    # Initialise variable
+    h2_openburning["H2_em_openburning"] = xr.zeros_like(
+        co_openburning["CO_em_openburning"]
+    )
 
-    # Initialize the data variable with zeros
-    h2_openburning_data = xr.zeros_like(co_openburning["CO_em_openburning"])
+    h2_openburning = add_sector_bounds(h2_openburning, co_openburning)
 
     # Perform multiplication for burning sectors
     for openburning_sector in np.unique(co_openburning.sector):
