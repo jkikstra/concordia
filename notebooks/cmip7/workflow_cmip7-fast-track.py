@@ -103,7 +103,7 @@ from concordia.utils import MultiLineFormatter
 from concordia.workflow import WorkflowDriver
 from concordia.cmip7.CONSTANTS import return_marker_information, PROXY_YEARS, find_voc_data_variable_string, GASES_ESGF_CEDS, GASES_ESGF_BB4CMIP, GASES_ESGF_CEDS_VOC, GASES_ESGF_BB4CMIP_VOC
 from concordia.cmip7.dask_setup_alternative import setup_dask_client # to enable running with dask also from VSCode Interactive Window
-from concordia.cmip7.utils import calculate_ratio, return_nc_output_files_main_voc, SECTOR_ORDERING_GAS, SECTOR_ORDERING_DEFAULT, SECTOR_DICT_ANTHRO_DEFAULT, SECTOR_DICT_ANTHRO_CO2_SCENARIO, reorder_dimensions, add_file_global_sum_totals_attrs, SECTOR_DICT_OPENBURNING_DEFAULT, SECTOR_DICT_OPENBURNING_DEFAULT_FLIPPED, SECTOR_DICT_ANTHRO_CO2_SCENARIO_FLIPPED, add_lon_lat_bounds, add_time_bounds
+from concordia.cmip7.utils import calculate_ratio, return_nc_output_files_main_voc, SECTOR_ORDERING_GAS, SECTOR_ORDERING_DEFAULT, SECTOR_DICT_ANTHRO_DEFAULT, SECTOR_DICT_ANTHRO_CO2_SCENARIO, reorder_dimensions, add_file_global_sum_totals_attrs, SECTOR_DICT_OPENBURNING_DEFAULT, SECTOR_DICT_OPENBURNING_DEFAULT_FLIPPED, SECTOR_DICT_ANTHRO_CO2_SCENARIO_FLIPPED, add_lon_lat_bounds, add_time_bounds, clean_var, DATA_HANDLES
 from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total, plot_place_timeseries, plot_place_area_average_timeseries
 
 from tqdm import tqdm
@@ -1098,6 +1098,24 @@ def ensure_float_not_int(ds, vars = ["time_bnds", "sector"]):
 
     return ds
 
+# helper function for bringing back in attributes for the main data variable (like 'BC_em_anthro')
+def ensure_data_var_attrs(ds):
+    # N.B. currently cannot be applied to VOC speciation data (as the DATA_HANDLES dictionary does not have that yet)
+
+    # info
+    vars = list(ds.data_vars)
+    name = vars[0] # assumes the main data var is always the first one
+    gas, rest = name.split("_", 1)
+    handle = DATA_HANDLES[rest]
+
+    # DO:
+    # units: kg s-1 m-2
+    # cell_methods: "time: mean"
+    # long_name: ...
+    ds = clean_var(ds, name, gas, handle)
+
+    return ds
+
 # %%
 years = [year for year in PROXY_YEARS if year >= settings.base_year] # all years, but not 2022 (before 2023); which should come directly from CEDS anthro (and CEDS AIR)
 
@@ -1355,14 +1373,12 @@ if run_spatial_harmonisation:
         # ensure the new file has the same variable attributes as the original gridded file
         emissions_harmonised[var].attrs = gridded[var].attrs.copy()
         
-        # remove _FillValue from bounds
+        # Last metadata corrections
         emissions_harmonised = (
-            emissions_harmonised.pipe(remove_fillvalue_from_bounds)
-        )
-
-        # helper function for int -> float encoding
-        emissions_harmonised = (
-            emissions_harmonised.pipe(ensure_float_not_int)
+            emissions_harmonised
+            .pipe(remove_fillvalue_from_bounds) # remove _FillValue from bounds
+            .pipe(ensure_float_not_int) # helper function for int -> float encoding
+            .pipe(ensure_data_var_attrs) # bringing back in attributes for the main data variable (like 'BC_em_anthro')
         )
 
         encoding = {
@@ -1527,14 +1543,12 @@ if run_AIR_anthro_timeseries_correction:
         # Remove old file before writing
         outfile.unlink(missing_ok=True)
 
-        # remove _FillValue from bounds
+        # Last metadata corrections
         scen_ds_corrected = (
-            scen_ds_corrected.pipe(remove_fillvalue_from_bounds)
-        )
-        
-        # helper function for int -> float encoding
-        emissions_harmonised = (
-            emissions_harmonised.pipe(ensure_float_not_int)
+            scen_ds_corrected
+            .pipe(remove_fillvalue_from_bounds) # remove _FillValue from bounds
+            .pipe(ensure_float_not_int) # helper function for int -> float encoding
+            .pipe(ensure_data_var_attrs) # bringing back in attributes for the main data variable (like 'BC_em_anthro')
         )
         
         # Save corrected dataset
@@ -1711,14 +1725,12 @@ if run_anthro_timeseries_correction:
         # Remove old file before writing
         outfile.unlink(missing_ok=True)
         
-        # remove _FillValue from bounds
+        # Last metadata corrections
         scen_ds_corrected = (
-            scen_ds_corrected.pipe(remove_fillvalue_from_bounds)
-        )
-
-        # helper function for int -> float encoding
-        emissions_harmonised = (
-            emissions_harmonised.pipe(ensure_float_not_int)
+            scen_ds_corrected
+            .pipe(remove_fillvalue_from_bounds) # remove _FillValue from bounds
+            .pipe(ensure_float_not_int) # helper function for int -> float encoding
+            .pipe(ensure_data_var_attrs) # bringing back in attributes for the main data variable (like 'BC_em_anthro')
         )
         
         # Save corrected dataset
@@ -1871,14 +1883,12 @@ if run_openburning_timeseries_correction:
         # Remove old file before writing
         outfile.unlink(missing_ok=True)
         
-        # remove _FillValue from bounds
+        # Last metadata corrections
         scen_ds_corrected = (
-            scen_ds_corrected.pipe(remove_fillvalue_from_bounds)
-        )
-
-        # helper function for int -> float encoding
-        emissions_harmonised = (
-            emissions_harmonised.pipe(ensure_float_not_int)
+            scen_ds_corrected
+            .pipe(remove_fillvalue_from_bounds) # remove _FillValue from bounds
+            .pipe(ensure_float_not_int) # helper function for int -> float encoding
+            .pipe(ensure_data_var_attrs) # bringing back in attributes for the main data variable (like 'BC_em_anthro')
         )
         
         # Save corrected dataset
