@@ -1986,6 +1986,7 @@ if run_openburning_h2:
         h2_openburning
         .pipe(add_lon_lat_bounds) # add lat/lon bnds
         .pipe(add_time_bounds)
+        .pipe(remove_fillvalue_from_bounds)
     )
     
 
@@ -2216,6 +2217,7 @@ if run_openburning_supplemental_voc:
             voc_spec
             .pipe(add_lon_lat_bounds) # add lat/lon bnds
             .pipe(add_time_bounds)
+            .pipe(remove_fillvalue_from_bounds)
         )
 
         # write output
@@ -2366,6 +2368,7 @@ if run_anthro_supplemental_voc:
             voc_spec
             .pipe(add_lon_lat_bounds) # add lat/lon bnds
             .pipe(add_time_bounds)
+            .pipe(remove_fillvalue_from_bounds)
         )
 
         # write output
