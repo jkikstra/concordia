@@ -2300,6 +2300,8 @@ if run_openburning_supplemental_voc:
         voc_spec.attrs['reporting_unit'] = f"Mass flux of {gas_variable_name}"
         # Add global sums as metadata
         voc_spec = voc_spec.pipe(add_file_global_sum_totals_attrs, name=f"{gas_variable_name}") # add totals after 2022 is added
+        # add sector bounds
+        voc_spec = add_sector_bounds(voc_spec, voc_openburning)
         # Add bounds
         voc_spec = (
             voc_spec
@@ -2462,6 +2464,8 @@ if run_anthro_supplemental_voc:
         voc_spec.attrs['reporting_unit'] = f"Mass flux of {gas_variable_name}"
         # Add global sums as metadata
         voc_spec = voc_spec.pipe(add_file_global_sum_totals_attrs, name=f"{gas_variable_name}") # add totals after 2022 is added
+        # add sector bounds
+        voc_spec = add_sector_bounds(voc_spec, voc_anthro)
         # Add bounds
         voc_spec = (
             voc_spec
