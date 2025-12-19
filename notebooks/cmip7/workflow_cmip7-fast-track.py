@@ -1347,9 +1347,15 @@ if run_spatial_harmonisation:
             emissions_harmonised.pipe(remove_fillvalue_from_bounds)
         )
 
-        for v in ["sector", "time_bnds"]:
+        # Set encoding for variables to be saved as float64 in netCDF
+        # (values remain as-is, but encoding specifies how to store in file)
+        for v in ["time_bnds"]:
             if v in emissions_harmonised:
-            emissions_harmonised[v] = emissions_harmonised[v].astype("float64")
+                emissions_harmonised[v].encoding['dtype'] = 'float64'
+        for v in ["sector"]:
+            if v in emissions_harmonised:
+                emissions_harmonised[v] = emissions_harmonised[v].astype("float64")
+
 
         encoding = {
             v: {"zlib": True, "complevel": 2}
