@@ -2005,7 +2005,8 @@ if run_openburning_h2:
     )
         
     # Initialise variable
-    h2_openburning["H2_em_openburning"] = xr.zeros_like(
+    gas_variable_name = "H2_em_openburning"
+    h2_openburning[gas_variable_name] = xr.zeros_like(
         co_openburning["CO_em_openburning"]
     )
 
@@ -2042,16 +2043,12 @@ if run_openburning_h2:
                 co_slice = co_sector.isel(time=time_idx)
 
                 # Multiply and assign to result
-                h2_openburning_data.isel(time=time_idx, sector=sector_idx).values[...] = (co_slice * translation_slice).values
+                h2_openburning.isel(time=time_idx, sector=sector_idx)[gas_variable_name].values = (co_slice * translation_slice).values
                 
                 # Assert that the sectors all align, ignoring dtype
-                assert h2_openburning_data.isel(time=time_idx, sector=sector_idx).sector.values == co_slice.sector.values
-                assert h2_openburning_data.isel(time=time_idx, sector=sector_idx).sector.values == translation_slice.sector.values
+                assert h2_openburning.isel(time=time_idx, sector=sector_idx).sector.values == co_slice.sector.values
+                assert h2_openburning.isel(time=time_idx, sector=sector_idx).sector.values == translation_slice.sector.values
 
-
-    # Add the computed data to the result dataset
-    gas_variable_name = "H2_em_openburning"
-    h2_openburning[gas_variable_name] = h2_openburning_data
 
     # copy & update attributes
     h2_openburning.attrs.update(co_openburning.attrs)
