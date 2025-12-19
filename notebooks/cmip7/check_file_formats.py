@@ -34,7 +34,9 @@ SETTINGS_FILE: str = "config_cmip7_v0-4-0.yaml" # for second ESGF version
 VERSION_ESGF: str = "1-0-0" # for second ESGF version
 
 # Which scenario to run from the markers
-marker_to_run: str = "h" # options: h, hl, m, ml, l, ln, vl
+marker_to_run: str = "vl" # options: h, hl, m, ml, l, ln, vl
+which_gas_to_inspect: str = "CO"
+
 
 # What folder to save this run in
 GRIDDING_VERSION: str | None = None
@@ -272,12 +274,12 @@ variabledefs = VariableDefinitions.from_csv(settings.variabledefs_path)
 # %% 
 # load in example files
 
-bc_anthro = load_result('BC-em-anthro')
-bc_open = load_result('BC-em-openburning')
-bc_air = load_result('BC-em-AIR-anthro')
+main_anthro = load_result(f'{which_gas_to_inspect}-em-anthro')
+main_open = load_result(f'{which_gas_to_inspect}-em-openburning')
+main_air = load_result(f'{which_gas_to_inspect}-em-AIR-anthro')
 
 voc_sp_anthro = load_result('VOC01-alcohols-em-speciated-VOC-anthro')
-voc_sp_open = load_result('NMVOC-C2H2-em-speciated-VOC-openburning')
+voc_sp_open = load_result('NMVOC-C10H16-em-speciated-VOC-openburning')
 h2_open = load_result('H2-em-openburning')
 
 # %%
@@ -314,12 +316,119 @@ def print_dataset_info(ds, name):
                 for key, value in ds[coord_name].attrs.items():
                     print(f"  {key}: {value}")
 
-print_dataset_info(bc_anthro, "BC-em-anthro")
-print_dataset_info(bc_open, "BC-em-openburning")
-print_dataset_info(bc_air, "BC-em-AIR-anthro")
+# %%
+# main
+print_dataset_info(main_anthro, f"{which_gas_to_inspect}-em-anthro")
+print_dataset_info(main_open, f"{which_gas_to_inspect}-em-openburning")
+print_dataset_info(main_air, f"{which_gas_to_inspect}-em-AIR-anthro")
+
+# %%
+# other
 print_dataset_info(voc_sp_anthro, "VOC01-alcohols-em-speciated-VOC-anthro")
-print_dataset_info(voc_sp_open, "NMVOC-C2H2-em-speciated-VOC-openburning")
+print_dataset_info(voc_sp_open, "NMVOC-C10H16-em-speciated-VOC-openburning")
 print_dataset_info(h2_open, "H2-em-openburning")
 
+
+# %%
+# ceds for comparison
+ceds_main_anthro = xr.open_dataset(settings.gridding_path / 'esgf' / 'ceds' / 'CMIP7_anthro' / 'CO2-em-anthro_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn_200001-202312.nc')
+ceds_main_anthro.close()
+ceds_main_anthro
+
+# %%
+print(ceds_main_anthro.sector_bnds)
+print(main_anthro.sector_bnds)
+print(main_air.level_bnds) # no sector, but level
+print(voc_sp_anthro.sector_bnds)
+print(voc_sp_open.sector_bnds)
+print(h2_open.sector_bnds)
+
+# %%
+print(ceds_main_anthro.time_bnds.encoding)
+print(main_anthro.time_bnds.encoding)
+print(main_air.time_bnds.encoding)
+print(voc_sp_anthro.time_bnds.encoding)
+print(voc_sp_open.time_bnds.encoding)
+print(h2_open.time_bnds.encoding)
+# %%
+print(ceds_main_anthro.sector_bnds.encoding)
+print(main_anthro.sector_bnds.encoding)
+# print(main_air.sector_bnds.encoding)
+# print(voc_sp_anthro.sector_bnds.encoding)
+print(voc_sp_open.sector_bnds.encoding)
+print(h2_open.sector_bnds.encoding)
+
+# %%
+# TIMEBOUNDS and SECTOR BOUNDS
+for attr in ['sector_bnds', 'time_bnds']:
+    print('\n\n\n')
+    print('============================')
+    print(attr)
+    print('============================')
+    # Show sector_bnds/time_bnds variable info similar to ncdump
+    if attr in main_anthro.variables:
+        var = main_anthro[attr]
+        print(f"{attr}:")
+        print(f"  type: {var.dtype}")
+        print(f"  dimensions: {dict(zip(var.dims, var.shape))}")
+        print(f"  shape: {var.shape}")
+        print(f"  encoding: {var.encoding}")
+        print(f"  attributes: {var.attrs}")
+        print(f"\nData (first few rows):\n{var.values[:5]}")
+    else:
+        print(f"{attr} not found in dataset")
+    # compare: CEDS
+    print('-------------')
+    print('-------------')
+    if attr in ceds_main_anthro.variables:
+        var = ceds_main_anthro[attr]
+        print(f"{attr}:")
+        print(f"  type: {var.dtype}")
+        print(f"  dimensions: {dict(zip(var.dims, var.shape))}")
+        print(f"  shape: {var.shape}")
+        print(f"  encoding: {var.encoding}")
+        print(f"  attributes: {var.attrs}")
+        print(f"\nData (first few rows):\n{var.values[:5]}")
+    else:
+        print(f"{attr} not found in dataset")
+
+# %%
+# Use netCDF4 library to inspect the files directly (lower-level netCDF inspection)
+import netCDF4
+
+print("\n\n" + "="*80)
+print("DETAILED INSPECTION USING netCDF4 LIBRARY")
+print("="*80)
+
+# Get the file path for main_anthro
+main_anthro_file = settings.out_path / GRIDDING_VERSION / f'{which_gas_to_inspect}-em-anthro_{FILE_NAME_ENDING}'
+ceds_file = settings.gridding_path / 'esgf' / 'ceds' / 'CMIP7_anthro' / 'CO2-em-anthro_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn_200001-202312.nc'
+
+for file_path, file_label in [(main_anthro_file, "Main Anthro"), (ceds_file, "CEDS")]:
+    print(f"\n\n{file_label}: {file_path}")
+    print("-" * 80)
+    
+    try:
+        with netCDF4.Dataset(file_path, 'r') as nc:
+            for attr in ['sector_bnds', 'time_bnds']:
+                if attr in nc.variables:
+                    var = nc.variables[attr]
+                    print(f"\n{attr}:")
+                    print(f"  dtype: {var.dtype}")
+                    print(f"  dimensions: {var.dimensions}")
+                    print(f"  shape: {var.shape}")
+                    
+                    # Show all attributes (including _FillValue)
+                    print(f"  attributes:")
+                    for attr_name in var.ncattrs():
+                        attr_value = var.getncattr(attr_name)
+                        print(f"    {attr_name}: {attr_value}")
+                    
+                    # Show data
+                    print(f"  data (first few rows):\n{var[:5]}")
+                else:
+                    print(f"\n{attr}: NOT FOUND")
+    except Exception as e:
+        print(f"Error reading file: {e}")
 
 # %%
