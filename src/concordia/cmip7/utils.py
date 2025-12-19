@@ -202,17 +202,18 @@ DS_ATTRS = dict(
     dataset_category="emissions",
     external_variables="gridcell_area",
     frequency="mon",
-    further_info_url="https://wcrp-cmip.org/mips/scenariomip/",
     grid="0.5x0.5 degree latitude x longitude",
     grid_label="gn",
     license="Creative Commons Attribution-ShareAlike 4.0 International License (https://creativecommons.org/licenses). Further information about this data, including some limitations, can be found via the further_info_url (recorded as a global attribute in this file). The data producers and data providers make no warranty, either express or implied, including, but not limited to, warranties of merchantability and fitness for a particular purpose. All liabilities arising from the supply of the information (including any liability arising in negligence) are excluded to the fullest extent permitted by law.",
-    institution="International Institue for Applied Systems Analysis - Integrated Assessment Modeling Consortium",
+    institution="International Institute for Applied Systems Analysis - Integrated Assessment Modeling Consortium",
     institution_id="IIASA-IAMC",
     mip_era="CMIP7",
     nominal_resolution="50 km",
     realm="atmos",
     references="See: https://github.com/IAMconsortium/concordia and https://github.com/iiasa/emissions_harmonization_historical for references",
     source="Scenarios generated as part of the ScenarioMIP-CMIP7 project, see https://wcrp-cmip.org/mips/scenariomip/",
+    further_info_url="https://doi.org/10.5281/zenodo.17981825",
+    doi="10.5281/zenodo.17981825",
     table_id="input4MIPs",
     target_mip="ScenarioMIP", # Should this be ScenarioMIP? what is target_mip?
     product="derived",
@@ -222,33 +223,6 @@ DS_ATTRS = dict(
     tracking_id=generate_tracking_id()
 )
 
-
-# DS_ATTRS_adhocfix = dict(
-#     Conventions="CF-1.12", # follow the latest and greatest; https://cfconventions.org/Data/cf-conventions/cf-conventions-1.12/cf-conventions.html
-#     activity_id="input4MIPs",
-#     comment="Gridded emissions produced after harmonization and downscaling as part of the ScenarioMIP-CMIP7. See https://github.com/iiasa/emissions_harmonization_historical, https://github.com/IAMconsortium/concordia, and https://github.com/iiasa/aneris for documentation on the processes.",
-#     contact="Jarmo S. Kikstra (kikstra@iiasa.ac.at), Annika Högner, Marco Zecchetto, and Zebedee Nicholls",
-#     data_structure="grid",
-#     dataset_category="emissions",
-#     external_variables="gridcell_area",
-#     frequency="mon",
-#     further_info_url="https://wcrp-cmip.org/mips/scenariomip/",
-#     grid="0.5x0.5 degree latitude x longitude",
-#     grid_label="gn",
-#     license="Creative Commons Attribution-ShareAlike 4.0 International License (https://creativecommons.org/licenses). Further information about this data, including some limitations, can be found via the further_info_url (recorded as a global attribute in this file). The data producers and data providers make no warranty, either express or implied, including, but not limited to, warranties of merchantability and fitness for a particular purpose. All liabilities arising from the supply of the information (including any liability arising in negligence) are excluded to the fullest extent permitted by law.",
-#     institution="International Institue for Applied Systems Analysis - Integrated Assessment Modeling Consortium",
-#     institution_id="IIASA-IAMC",
-#     mip_era="CMIP6plus", # for v0-3-0 this was CMIP6Plus; switch to CMIP7 if the data looks all fine
-#     nominal_resolution="50 km",
-#     realm="atmos",
-#     references="See: https://github.com/IAMconsortium/concordia and https://github.com/iiasa/emissions_harmonization_historical for references",
-#     source="Scenarios generated as part of the ScenarioMIP-CMIP7 project, see https://wcrp-cmip.org/mips/scenariomip/",
-#     table_id="input4MIPs",
-#     target_mip="CMIP6plus", # later: ScenarioMIP
-#     product="primary-emissions-data",
-#     start_date="202201",
-#     end_date="210012",
-# )
 
 ALKALINITY_ADDITION_LONGNAME = "Alkalinity Addition as part of OAE"
 
@@ -568,11 +542,11 @@ def reorder_dimensions(ds, bound_var_name="bound"):
 
     # Reorder dimensions based on variable type (only for dimensions that exist)
     if ds.attrs.get("variable_id").split("_", 1)[1] == 'em_anthro':
-        dim_order = ("lon", "lat", "time", "sector", bound_var_name)
+        dim_order = ("time", "sector", "lat", "lon", bound_var_name)
     elif ds.attrs.get("variable_id").split("_", 1)[1] == 'em_openburning':
-        dim_order = ("lon", "lat", "time", "sector", bound_var_name)
+        dim_order = ("time", "sector", "lat", "lon", bound_var_name)
     elif ds.attrs.get("variable_id").split("_", 1)[1] == 'em_AIR_anthro':
-        dim_order = ("lon", "lat", "time", "level", bound_var_name)
+        dim_order = ("time", "level", "lat", "lon", bound_var_name)
     else:
         dim_order = None
 
@@ -587,7 +561,7 @@ def reorder_dimensions(ds, bound_var_name="bound"):
 
     # Reorder data variables
     var_id = ds.attrs.get("variable_id")
-    bounds_vars = [v for v in ['lat_bnds', 'lon_bnds', 'time_bnds', 'sector_bnds'] if v in ds.data_vars]
+    bounds_vars = [v for v in ['time_bnds', 'sector_bnds', 'level_bnds', 'lat_bnds', 'lon_bnds'] if v in ds.data_vars]
 
     # Only include var_id if it exists in data_vars
     data_var_order = ([var_id] if var_id in ds.data_vars else []) + bounds_vars

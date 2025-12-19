@@ -103,7 +103,7 @@ from concordia.utils import MultiLineFormatter
 from concordia.workflow import WorkflowDriver
 from concordia.cmip7.CONSTANTS import return_marker_information, PROXY_YEARS, find_voc_data_variable_string, GASES_ESGF_CEDS, GASES_ESGF_BB4CMIP, GASES_ESGF_CEDS_VOC, GASES_ESGF_BB4CMIP_VOC
 from concordia.cmip7.dask_setup_alternative import setup_dask_client # to enable running with dask also from VSCode Interactive Window
-from concordia.cmip7.utils import calculate_ratio, return_nc_output_files_main_voc, SECTOR_ORDERING_GAS, SECTOR_ORDERING_DEFAULT, SECTOR_DICT_ANTHRO_DEFAULT, SECTOR_DICT_ANTHRO_CO2_SCENARIO, reorder_dimensions, add_file_global_sum_totals_attrs, SECTOR_DICT_OPENBURNING_DEFAULT, SECTOR_DICT_OPENBURNING_DEFAULT_FLIPPED, SECTOR_DICT_ANTHRO_CO2_SCENARIO_FLIPPED
+from concordia.cmip7.utils import calculate_ratio, return_nc_output_files_main_voc, SECTOR_ORDERING_GAS, SECTOR_ORDERING_DEFAULT, SECTOR_DICT_ANTHRO_DEFAULT, SECTOR_DICT_ANTHRO_CO2_SCENARIO, reorder_dimensions, add_file_global_sum_totals_attrs, SECTOR_DICT_OPENBURNING_DEFAULT, SECTOR_DICT_OPENBURNING_DEFAULT_FLIPPED, SECTOR_DICT_ANTHRO_CO2_SCENARIO_FLIPPED, add_lon_lat_bounds, add_time_bounds
 from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total, plot_place_timeseries, plot_place_area_average_timeseries
 
 from tqdm import tqdm
@@ -969,6 +969,38 @@ if run_main_gridding: # full run for all 10 species takes about ~1hour for 1 sce
     )
 
 
+# %% [markdown]
+# Clarify which gridcell area we use
+
+# %%
+# areas of gridcells for calculatings totals
+areacella = xr.open_dataset(Path(settings.gridding_path, "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc"))
+cell_area = areacella["areacella"]
+
+encoding = {"areacella": {"zlib": True, "complevel": 2}}
+areacella.close()
+
+from input4mips_validation.io import (
+    generate_creation_timestamp,
+    generate_tracking_id
+)
+
+# update metadata
+cmip7_areacella = areacella
+cmip7_areacella.attrs['comment'] = "Research data produced using the Community Emissions Data System (CEDS), at Pacific Northwest National Laboratory - Joint Global Change Research Institute, College Park, MD 20740, USA. Reused for future emissions data."
+cmip7_areacella.attrs['contact'] = areacella.attrs['contact'] + '; ' + cmip7_utils.DS_ATTRS['contact']
+cmip7_areacella.attrs['source_id'] = cmip7_utils.DS_ATTRS['institution_id'] + '-' + VERSION_ESGF
+cmip7_areacella.attrs['creation_date'] = generate_creation_timestamp()
+cmip7_areacella.attrs['tracking_id'] = generate_tracking_id()
+for v in [
+    'institution', 'institution_id', 'doi', 'target_mip', 'source', 'license'
+]:
+    cmip7_areacella.attrs[v] = cmip7_utils.DS_ATTRS[v]
+
+folder_areacella = settings.out_path / GRIDDING_VERSION / 'areacella'
+folder_areacella.mkdir(parents=True, exist_ok=True)
+cmip7_areacella.to_netcdf(folder_areacella / f'areacella_input4MIPs_emissions_{cmip7_utils.DS_ATTRS['target_mip']}_{cmip7_utils.DS_ATTRS['institution_id']}-{VERSION_ESGF}_gn.nc', encoding=encoding)
+
 
 # %% [markdown]
 # # START OF POSTPROCESSING
@@ -1010,7 +1042,7 @@ def copy_attributes(
 # helper functions for spatial harmonization
 def copy_bounds_data_variables(
     source: xr.Dataset, target: xr.Dataset,
-    bounds_vars = ['lat_bnds', 'lon_bnds', 'time_bnds', 'sector_bnds', 'level_bnds']
+    bounds_vars = ['time_bnds', 'sector_bnds', 'level_bnds', 'lat_bnds', 'lon_bnds']
 ) -> xr.Dataset:
     """
     Copy bounds data variables from source to target
@@ -1033,7 +1065,7 @@ def copy_bounds_data_variables(
         (returning `target` is done for convenience)
     """
     
-    # Copy the data variables ['lat_bnds', 'lon_bnds', 'time_bnds', 'sector_bnds']
+    # Copy the data variables
     for var in bounds_vars:
         if var in source.data_vars: # as long as it is in the source dataset
             target[var] = source[var].load()
@@ -1062,11 +1094,6 @@ if run_spatial_harmonisation:
 
     # files that are produced above, that may need correction
     files_main, files_voc = return_nc_output_files_main_voc(gridded_data_location=settings.out_path / GRIDDING_VERSION)
-
-
-    # areas of gridcells for calculatings totals
-    areacella = xr.open_dataset(Path(settings.gridding_path, "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc"))
-    cell_area = areacella["areacella"]
 
     # for file in tqdm(files_main + files_voc, desc="Processing files"): # all
     for file in tqdm(files_main, desc="Processing files"): # only main
@@ -1887,6 +1914,7 @@ if run_openburning_h2:
     # Load the CO openburning emissions
     co_openburning_file = settings.out_path / GRIDDING_VERSION / f"CO-em-openburning_{FILE_NAME_ENDING}"
     co_openburning = xr.open_dataset(co_openburning_file)
+    co_openburning.close()
     
     # Load the H2/CO emission factor translation file
     h2_translation_file = settings.proxy_path / "EF_h2_div_EF_co.nc"
@@ -1933,25 +1961,33 @@ if run_openburning_h2:
                 co_slice = co_sector.isel(time=time_idx)
 
                 # Multiply and assign to result
-                h2_openburning_data[:, :, time_idx, sector_idx] = (co_slice * translation_slice).values # sensitive to coordinate order
+                h2_openburning_data.isel(time=time_idx, sector=sector_idx).values[...] = (co_slice * translation_slice).values
                 
                 # Assert that the sectors all align, ignoring dtype
-                assert h2_openburning_data[:, :, time_idx, sector_idx].sector.values == co_slice.sector.values
-                assert h2_openburning_data[:, :, time_idx, sector_idx].sector.values == translation_slice.sector.values
+                assert h2_openburning_data.isel(time=time_idx, sector=sector_idx).sector.values == co_slice.sector.values
+                assert h2_openburning_data.isel(time=time_idx, sector=sector_idx).sector.values == translation_slice.sector.values
 
 
     # Add the computed data to the result dataset
     gas_variable_name = "H2_em_openburning"
     h2_openburning[gas_variable_name] = h2_openburning_data
 
+    # copy & update attributes
+    h2_openburning.attrs.update(co_openburning.attrs)
     # Update attributes
     handle = 'openburning'
     h2_openburning.attrs['variable_id'] = gas_variable_name
     h2_openburning.attrs['title'] = f"Future {handle} emissions of H2 in {experiment_name}"
     h2_openburning.attrs['reporting_unit'] = f"Mass flux of {gas_variable_name}"
-    h2_openburning.attrs['long_name'] = f"{gas_variable_name} {handle} emissions"
     # Add global sums as metadata
     h2_openburning = h2_openburning.pipe(add_file_global_sum_totals_attrs, name=f"{gas_variable_name}") # add totals after 2022 is added
+    # Add bounds
+    h2_openburning = (
+        h2_openburning
+        .pipe(add_lon_lat_bounds) # add lat/lon bnds
+        .pipe(add_time_bounds)
+    )
+    
 
     # save out
     print('Writing out H2 openburning emissions')
@@ -1964,6 +2000,7 @@ if run_openburning_h2:
         }
     }
     h2_openburning.to_netcdf(outfile, mode="w", encoding=encoding, compute=True)
+    h2_openburning.close()
 
 
 # %%
@@ -2002,7 +2039,6 @@ if run_openburning_h2:
 
 # %% [markdown]
 # # VOC speciation
-# **NOTE: currently takes quite long, especially anthro VOC speciation
 
 
 # %%
@@ -2072,7 +2108,6 @@ def load_voc_bulk(type="anthro"):
 
 # %% [markdown]
 # # VOC speciation (BB4CMIP, openburnig)
-# **NOTE: currently takes long at ~5mins per VOC species, around 2hrs for all 25 VOC species**
 
 # %%
 # Calculate VOC-speciation data; keep the structure of the VOC (bulk) data
@@ -2174,10 +2209,14 @@ if run_openburning_supplemental_voc:
         voc_spec.attrs['variable_id'] = gas_variable_name
         voc_spec.attrs['title'] = f"Future {handle} emissions of speciated {gas_variable_name} in {experiment_name}"
         voc_spec.attrs['reporting_unit'] = f"Mass flux of {gas_variable_name}"
-        voc_spec.attrs['long_name'] = f"{gas_variable_name} {handle} emissions"
         # Add global sums as metadata
         voc_spec = voc_spec.pipe(add_file_global_sum_totals_attrs, name=f"{gas_variable_name}") # add totals after 2022 is added
-
+        # Add bounds
+        voc_spec = (
+            voc_spec
+            .pipe(add_lon_lat_bounds) # add lat/lon bnds
+            .pipe(add_time_bounds)
+        )
 
         # write output
         print(f"Writing out emissions of {v}")
@@ -2320,9 +2359,14 @@ if run_anthro_supplemental_voc:
         voc_spec.attrs['variable_id'] = gas_variable_name
         voc_spec.attrs['title'] = f"Future {handle} emissions of speciated {gas_variable_name} in {experiment_name}"
         voc_spec.attrs['reporting_unit'] = f"Mass flux of {gas_variable_name}"
-        voc_spec.attrs['long_name'] = f"{gas_variable_name} {handle} emissions"
         # Add global sums as metadata
         voc_spec = voc_spec.pipe(add_file_global_sum_totals_attrs, name=f"{gas_variable_name}") # add totals after 2022 is added
+        # Add bounds
+        voc_spec = (
+            voc_spec
+            .pipe(add_lon_lat_bounds) # add lat/lon bnds
+            .pipe(add_time_bounds)
+        )
 
         # write output
         print(f"Writing out emissions of {v}")
