@@ -66,6 +66,10 @@ DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. 
 # - openburning
 DO_VOC_SPECIATION_OPENBURNING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["C10H16"]
 # %%
+DO_GRIDDING_ONLY_FOR_THESE_SPECIES = ["CO2", "CO"]
+DO_GRIDDING_ONLY_FOR_THESE_SECTORS = ["anthro"]
+
+# %%
 # validate that we're receiving what we're expecting
 print(f"\n\nGRIDDING_VERSION received: {GRIDDING_VERSION}\n\n")
 print(f"\n\nDO_GRIDDING_ONLY_FOR_THESE_SPECIES received: {DO_GRIDDING_ONLY_FOR_THESE_SPECIES}\n\n")
@@ -1082,7 +1086,7 @@ def _what_emissions_variable_type(file, files_main=[], files_voc=[]):
 def remove_fillvalue_from_bounds(ds):
     for coord in ["time_bnds", "lon_bnds", "lat_bnds", "level_bnds", "sector_bnds"]:
         if coord in ds:
-            ds[coord].encoding.pop("_FillValue", None)
+            ds[coord].encoding["_FillValue"] = None
     return ds
 
 # helper function for int -> float encoding
@@ -1376,9 +1380,9 @@ if run_spatial_harmonisation:
         # Last metadata corrections
         emissions_harmonised = (
             emissions_harmonised
-            .pipe(remove_fillvalue_from_bounds) # remove _FillValue from bounds
             .pipe(ensure_float_not_int) # helper function for int -> float encoding
             .pipe(ensure_data_var_attrs) # bringing back in attributes for the main data variable (like 'BC_em_anthro')
+            .pipe(remove_fillvalue_from_bounds) # remove _FillValue from bounds
         )
 
         encoding = {
@@ -2071,8 +2075,8 @@ if run_openburning_h2:
         )
         .pipe(add_lon_lat_bounds) # add lat/lon bnds
         .pipe(add_time_bounds)
-        .pipe(remove_fillvalue_from_bounds)
         .pipe(ensure_float_not_int)
+        .pipe(remove_fillvalue_from_bounds)
     )  
 
     # save out
