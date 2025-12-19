@@ -103,7 +103,7 @@ from concordia.utils import MultiLineFormatter
 from concordia.workflow import WorkflowDriver
 from concordia.cmip7.CONSTANTS import return_marker_information, PROXY_YEARS, find_voc_data_variable_string, GASES_ESGF_CEDS, GASES_ESGF_BB4CMIP, GASES_ESGF_CEDS_VOC, GASES_ESGF_BB4CMIP_VOC
 from concordia.cmip7.dask_setup_alternative import setup_dask_client # to enable running with dask also from VSCode Interactive Window
-from concordia.cmip7.utils import calculate_ratio, return_nc_output_files_main_voc, SECTOR_ORDERING_GAS, SECTOR_ORDERING_DEFAULT, SECTOR_DICT_ANTHRO_DEFAULT, SECTOR_DICT_ANTHRO_CO2_SCENARIO, reorder_dimensions, add_file_global_sum_totals_attrs, SECTOR_DICT_OPENBURNING_DEFAULT, SECTOR_DICT_OPENBURNING_DEFAULT_FLIPPED, SECTOR_DICT_ANTHRO_CO2_SCENARIO_FLIPPED, add_lon_lat_bounds, add_time_bounds
+from concordia.cmip7.utils import calculate_ratio, return_nc_output_files_main_voc, SECTOR_ORDERING_GAS, SECTOR_ORDERING_DEFAULT, SECTOR_DICT_ANTHRO_DEFAULT, SECTOR_DICT_ANTHRO_CO2_SCENARIO, reorder_dimensions, add_file_global_sum_totals_attrs, SECTOR_DICT_OPENBURNING_DEFAULT, SECTOR_DICT_OPENBURNING_DEFAULT_FLIPPED, SECTOR_DICT_ANTHRO_CO2_SCENARIO_FLIPPED, add_lon_lat_bounds, add_time_bounds, clean_var, DATA_HANDLES
 from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total, plot_place_timeseries, plot_place_area_average_timeseries
 
 from tqdm import tqdm
@@ -1080,9 +1080,40 @@ def _what_emissions_variable_type(file, files_main=[], files_voc=[]):
     return type
 
 def remove_fillvalue_from_bounds(ds):
-    for coord in ["lon_bnds", "lat_bnds", "level_bnds"]:
+    for coord in ["time_bnds", "lon_bnds", "lat_bnds", "level_bnds", "sector_bnds"]:
         if coord in ds:
             ds[coord].encoding["_FillValue"] = None
+    return ds
+
+# helper function for int -> float encoding
+def ensure_float_not_int(ds, vars = ["time_bnds", "sector"]):
+    # Set encoding for variables to be saved as float64 in netCDF
+    # (values remain as-is, but encoding specifies how to store in file)
+    for v in vars:
+        if v in ds:
+            if v in ["time_bnds"]:
+                ds[v].encoding['dtype'] = 'float64'
+            if v in ["sector"]:
+                ds[v] = ds[v].astype("float64")
+
+    return ds
+
+# helper function for bringing back in attributes for the main data variable (like 'BC_em_anthro')
+def ensure_data_var_attrs(ds):
+    # N.B. currently cannot be applied to VOC speciation data (as the DATA_HANDLES dictionary does not have that yet)
+
+    # info
+    vars = list(ds.data_vars)
+    name = vars[0] # assumes the main data var is always the first one
+    gas, rest = name.split("_", 1)
+    handle = DATA_HANDLES[rest]
+
+    # DO:
+    # units: kg s-1 m-2
+    # cell_methods: "time: mean"
+    # long_name: ...
+    ds = clean_var(ds, name, gas, handle)
+
     return ds
 
 # %%
@@ -1316,8 +1347,6 @@ if run_spatial_harmonisation:
 
         # remove old file (from previous loop in processing)
         outfile.unlink(missing_ok=True)
-        # save weighted dataset (no dask)
-        encoding = {var: {"zlib": True, "complevel": 2}}
 
         # reorder dimensions when no computations are required anymore; except replacing 2022
         emissions_harmonised = emissions_harmonised.pipe(reorder_dimensions)
@@ -1341,11 +1370,23 @@ if run_spatial_harmonisation:
         xr.testing.assert_allclose(ceds_2022[f"{gas}_{type}"], emissions_harmonised.sel(time='2022')[f"{gas}_{type}"], rtol=0, atol=0)
         #assert np.allclose(test_difference, 0)
 
-        # remove _FillValue from bounds
-        emissions_harmonised = (
-            emissions_harmonised.pipe(remove_fillvalue_from_bounds)
-        )
+        # ensure the new file has the same variable attributes as the original gridded file
+        emissions_harmonised[var].attrs = gridded[var].attrs.copy()
         
+        # Last metadata corrections
+        emissions_harmonised = (
+            emissions_harmonised
+            .pipe(ensure_float_not_int) # helper function for int -> float encoding
+            .pipe(ensure_data_var_attrs) # bringing back in attributes for the main data variable (like 'BC_em_anthro')
+            .pipe(remove_fillvalue_from_bounds) # remove _FillValue from bounds
+        )
+
+        encoding = {
+            v: {"zlib": True, "complevel": 2}
+            for v in emissions_harmonised.variables
+            if emissions_harmonised[v].dtype.kind == "f"
+        }
+
         # Save out the updated file
         emissions_harmonised.to_netcdf(outfile, encoding=encoding)
         emissions_harmonised.close() # close the connection to the file
@@ -1502,9 +1543,12 @@ if run_AIR_anthro_timeseries_correction:
         # Remove old file before writing
         outfile.unlink(missing_ok=True)
 
-        # remove _FillValue from bounds
+        # Last metadata corrections
         scen_ds_corrected = (
-            scen_ds_corrected.pipe(remove_fillvalue_from_bounds)
+            scen_ds_corrected
+            .pipe(remove_fillvalue_from_bounds) # remove _FillValue from bounds
+            .pipe(ensure_float_not_int) # helper function for int -> float encoding
+            .pipe(ensure_data_var_attrs) # bringing back in attributes for the main data variable (like 'BC_em_anthro')
         )
         
         # Save corrected dataset
@@ -1512,7 +1556,7 @@ if run_AIR_anthro_timeseries_correction:
         scen_ds_corrected.close()
         
         print(f"\nSaved corrected {gas_name} AIR emissions timeseries to {outfile}")
-    
+
 
 # %%
 # run the em_anthro timeseries correction (only em_anthro)
@@ -1681,9 +1725,12 @@ if run_anthro_timeseries_correction:
         # Remove old file before writing
         outfile.unlink(missing_ok=True)
         
-        # remove _FillValue from bounds
+        # Last metadata corrections
         scen_ds_corrected = (
-            scen_ds_corrected.pipe(remove_fillvalue_from_bounds)
+            scen_ds_corrected
+            .pipe(remove_fillvalue_from_bounds) # remove _FillValue from bounds
+            .pipe(ensure_float_not_int) # helper function for int -> float encoding
+            .pipe(ensure_data_var_attrs) # bringing back in attributes for the main data variable (like 'BC_em_anthro')
         )
         
         # Save corrected dataset
@@ -1836,9 +1883,12 @@ if run_openburning_timeseries_correction:
         # Remove old file before writing
         outfile.unlink(missing_ok=True)
         
-        # remove _FillValue from bounds
+        # Last metadata corrections
         scen_ds_corrected = (
-            scen_ds_corrected.pipe(remove_fillvalue_from_bounds)
+            scen_ds_corrected
+            .pipe(remove_fillvalue_from_bounds) # remove _FillValue from bounds
+            .pipe(ensure_float_not_int) # helper function for int -> float encoding
+            .pipe(ensure_data_var_attrs) # bringing back in attributes for the main data variable (like 'BC_em_anthro')
         )
         
         # Save corrected dataset
@@ -1907,6 +1957,27 @@ def update_var_attrs(ds, var, **attrs):
 
 
 # %%
+def add_sector_bounds(ds, source_ds=None):
+
+    if source_ds is None:
+        return ds
+
+    if "sector_bnds" not in source_ds:
+        return ds
+
+    # Copy the bounds variable
+    ds = ds.assign({
+        "sector_bnds": source_ds["sector_bnds"]
+    })
+
+    # CF convention: link bounds to coordinate
+    if "sector" in ds.coords:
+        ds["sector"].attrs["bounds"] = "sector_bnds"
+
+    return ds
+
+
+# %%
 # STEPS:
 # 1. load CO file
 # 2. load translation file
@@ -1925,14 +1996,18 @@ if run_openburning_h2:
     h2_translation = xr.open_dataset(h2_translation_file)
     h2_translation = _to_sector_integers_and_reorder(h2_translation)
 
-    # Initialize result with same structure as co_openburning
     h2_openburning = xr.Dataset(
-        coords=co_openburning.coords,
+        coords={**co_openburning.coords},
         attrs=co_openburning.attrs.copy()
     )
+        
+    # Initialise variable
+    gas_variable_name = "H2_em_openburning"
+    h2_openburning[gas_variable_name] = xr.zeros_like(
+        co_openburning["CO_em_openburning"]
+    )
 
-    # Initialize the data variable with zeros
-    h2_openburning_data = xr.zeros_like(co_openburning["CO_em_openburning"])
+    h2_openburning = add_sector_bounds(h2_openburning, co_openburning)
 
     # Perform multiplication for burning sectors
     for openburning_sector in np.unique(co_openburning.sector):
@@ -1965,16 +2040,12 @@ if run_openburning_h2:
                 co_slice = co_sector.isel(time=time_idx)
 
                 # Multiply and assign to result
-                h2_openburning_data.isel(time=time_idx, sector=sector_idx).values[...] = (co_slice * translation_slice).values
+                h2_openburning.isel(time=time_idx, sector=sector_idx)[gas_variable_name].values = (co_slice * translation_slice).values
                 
                 # Assert that the sectors all align, ignoring dtype
-                assert h2_openburning_data.isel(time=time_idx, sector=sector_idx).sector.values == co_slice.sector.values
-                assert h2_openburning_data.isel(time=time_idx, sector=sector_idx).sector.values == translation_slice.sector.values
+                assert h2_openburning.isel(time=time_idx, sector=sector_idx).sector.values == co_slice.sector.values
+                assert h2_openburning.isel(time=time_idx, sector=sector_idx).sector.values == translation_slice.sector.values
 
-
-    # Add the computed data to the result dataset
-    gas_variable_name = "H2_em_openburning"
-    h2_openburning[gas_variable_name] = h2_openburning_data
 
     # copy & update attributes
     h2_openburning.attrs.update(co_openburning.attrs)
@@ -2001,6 +2072,7 @@ if run_openburning_h2:
         .pipe(add_lon_lat_bounds) # add lat/lon bnds
         .pipe(add_time_bounds)
         .pipe(remove_fillvalue_from_bounds)
+        .pipe(ensure_float_not_int)
     )  
 
     # save out
@@ -2228,6 +2300,8 @@ if run_openburning_supplemental_voc:
         voc_spec.attrs['reporting_unit'] = f"Mass flux of {gas_variable_name}"
         # Add global sums as metadata
         voc_spec = voc_spec.pipe(add_file_global_sum_totals_attrs, name=f"{gas_variable_name}") # add totals after 2022 is added
+        # add sector bounds
+        voc_spec = add_sector_bounds(voc_spec, voc_openburning)
         # Add bounds
         voc_spec = (
             voc_spec
@@ -2241,6 +2315,7 @@ if run_openburning_supplemental_voc:
             .pipe(add_lon_lat_bounds) # add lat/lon bnds
             .pipe(add_time_bounds)
             .pipe(remove_fillvalue_from_bounds)
+            .pipe(ensure_float_not_int)
         )
 
         # write output
@@ -2389,6 +2464,8 @@ if run_anthro_supplemental_voc:
         voc_spec.attrs['reporting_unit'] = f"Mass flux of {gas_variable_name}"
         # Add global sums as metadata
         voc_spec = voc_spec.pipe(add_file_global_sum_totals_attrs, name=f"{gas_variable_name}") # add totals after 2022 is added
+        # add sector bounds
+        voc_spec = add_sector_bounds(voc_spec, voc_anthro)
         # Add bounds
         voc_spec = (
             voc_spec
@@ -2402,6 +2479,7 @@ if run_anthro_supplemental_voc:
             .pipe(add_lon_lat_bounds) # add lat/lon bnds
             .pipe(add_time_bounds)
             .pipe(remove_fillvalue_from_bounds)
+            .pipe(ensure_float_not_int)
         )
 
         # write output
