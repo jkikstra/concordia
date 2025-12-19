@@ -2344,9 +2344,10 @@ if run_anthro_supplemental_voc:
             chunks={"time": 12},
             lock=lock,
         )
-
+        
         gas_variable_name = voc_share.gas.values[0]
-
+        gas = " ".join(gas_variable_name.split("_", 2)[:2])
+        
         # select gas and prepare share data
         share = voc_share["emissions_share"].sel(gas=gas_variable_name)
 
