@@ -103,7 +103,7 @@ from concordia.utils import MultiLineFormatter
 from concordia.workflow import WorkflowDriver
 from concordia.cmip7.CONSTANTS import return_marker_information, PROXY_YEARS, find_voc_data_variable_string, GASES_ESGF_CEDS, GASES_ESGF_BB4CMIP, GASES_ESGF_CEDS_VOC, GASES_ESGF_BB4CMIP_VOC
 from concordia.cmip7.dask_setup_alternative import setup_dask_client # to enable running with dask also from VSCode Interactive Window
-from concordia.cmip7.utils import calculate_ratio, return_nc_output_files_main_voc, SECTOR_ORDERING_GAS, SECTOR_ORDERING_DEFAULT, SECTOR_DICT_ANTHRO_DEFAULT, SECTOR_DICT_ANTHRO_CO2_SCENARIO, reorder_dimensions, add_file_global_sum_totals_attrs, SECTOR_DICT_OPENBURNING_DEFAULT, SECTOR_DICT_OPENBURNING_DEFAULT_FLIPPED, SECTOR_DICT_ANTHRO_CO2_SCENARIO_FLIPPED
+from concordia.cmip7.utils import calculate_ratio, return_nc_output_files_main_voc, SECTOR_ORDERING_GAS, SECTOR_ORDERING_DEFAULT, SECTOR_DICT_ANTHRO_DEFAULT, SECTOR_DICT_ANTHRO_CO2_SCENARIO, reorder_dimensions, add_file_global_sum_totals_attrs, SECTOR_DICT_OPENBURNING_DEFAULT, SECTOR_DICT_OPENBURNING_DEFAULT_FLIPPED, SECTOR_DICT_ANTHRO_CO2_SCENARIO_FLIPPED, add_lon_lat_bounds, add_time_bounds
 from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total, plot_place_timeseries, plot_place_area_average_timeseries
 
 from tqdm import tqdm
@@ -1911,6 +1911,7 @@ if run_openburning_h2:
     # Load the CO openburning emissions
     co_openburning_file = settings.out_path / GRIDDING_VERSION / f"CO-em-openburning_{FILE_NAME_ENDING}"
     co_openburning = xr.open_dataset(co_openburning_file)
+    co_openburning.close()
     
     # Load the H2/CO emission factor translation file
     h2_translation_file = settings.proxy_path / "EF_h2_div_EF_co.nc"
@@ -1969,15 +1970,21 @@ if run_openburning_h2:
     h2_openburning[gas_variable_name] = h2_openburning_data
 
     # copy & update attributes
-    h2_openburning.attrs.update(voc_openburning.attrs)
+    h2_openburning.attrs.update(co_openburning.attrs)
     # Update attributes
     handle = 'openburning'
     h2_openburning.attrs['variable_id'] = gas_variable_name
     h2_openburning.attrs['title'] = f"Future {handle} emissions of H2 in {experiment_name}"
     h2_openburning.attrs['reporting_unit'] = f"Mass flux of {gas_variable_name}"
-    h2_openburning.attrs['long_name'] = f"{gas_variable_name} {handle} emissions"
     # Add global sums as metadata
     h2_openburning = h2_openburning.pipe(add_file_global_sum_totals_attrs, name=f"{gas_variable_name}") # add totals after 2022 is added
+    # Add bounds
+    h2_openburning = (
+        h2_openburning
+        .pipe(add_lon_lat_bounds) # add lat/lon bnds
+        .pipe(add_time_bounds)
+    )
+    
 
     # save out
     print('Writing out H2 openburning emissions')
@@ -1990,6 +1997,7 @@ if run_openburning_h2:
         }
     }
     h2_openburning.to_netcdf(outfile, mode="w", encoding=encoding, compute=True)
+    h2_openburning.close()
 
 
 # %%
@@ -2200,7 +2208,6 @@ if run_openburning_supplemental_voc:
         voc_spec.attrs['variable_id'] = gas_variable_name
         voc_spec.attrs['title'] = f"Future {handle} emissions of speciated {gas_variable_name} in {experiment_name}"
         voc_spec.attrs['reporting_unit'] = f"Mass flux of {gas_variable_name}"
-        voc_spec.attrs['long_name'] = f"{gas_variable_name} {handle} emissions"
         # Add global sums as metadata
         voc_spec = voc_spec.pipe(add_file_global_sum_totals_attrs, name=f"{gas_variable_name}") # add totals after 2022 is added
 
@@ -2346,7 +2353,6 @@ if run_anthro_supplemental_voc:
         voc_spec.attrs['variable_id'] = gas_variable_name
         voc_spec.attrs['title'] = f"Future {handle} emissions of speciated {gas_variable_name} in {experiment_name}"
         voc_spec.attrs['reporting_unit'] = f"Mass flux of {gas_variable_name}"
-        voc_spec.attrs['long_name'] = f"{gas_variable_name} {handle} emissions"
         # Add global sums as metadata
         voc_spec = voc_spec.pipe(add_file_global_sum_totals_attrs, name=f"{gas_variable_name}") # add totals after 2022 is added
 
