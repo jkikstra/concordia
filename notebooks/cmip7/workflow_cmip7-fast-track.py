@@ -70,9 +70,6 @@ DO_VOC_SPECIATION_OPENBURNING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # 
 print(f"\n\nGRIDDING_VERSION received: {GRIDDING_VERSION}\n\n")
 print(f"\n\nDO_GRIDDING_ONLY_FOR_THESE_SPECIES received: {DO_GRIDDING_ONLY_FOR_THESE_SPECIES}\n\n")
 
-# %%
-DO_GRIDDING_ONLY_FOR_THESE_SPECIES = ["CO"]
-
 # %% [markdown]
 # ## Importing packages
 
