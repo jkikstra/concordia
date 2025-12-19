@@ -1085,6 +1085,19 @@ def remove_fillvalue_from_bounds(ds):
             ds[coord].encoding["_FillValue"] = None
     return ds
 
+# helper function for int -> float encoding
+def ensure_float_not_int(ds, vars = ["time_bnds", "sector"]):
+    # Set encoding for variables to be saved as float64 in netCDF
+    # (values remain as-is, but encoding specifies how to store in file)
+    for v in vars:
+        if v in ds:
+            if v in ["time_bnds"]:
+                ds[v].encoding['dtype'] = 'float64'
+            if v in ["sector"]:
+                ds[v] = ds[v].astype("float64")
+
+    return ds
+
 # %%
 years = [year for year in PROXY_YEARS if year >= settings.base_year] # all years, but not 2022 (before 2023); which should come directly from CEDS anthro (and CEDS AIR)
 
@@ -1347,15 +1360,10 @@ if run_spatial_harmonisation:
             emissions_harmonised.pipe(remove_fillvalue_from_bounds)
         )
 
-        # Set encoding for variables to be saved as float64 in netCDF
-        # (values remain as-is, but encoding specifies how to store in file)
-        for v in ["time_bnds"]:
-            if v in emissions_harmonised:
-                emissions_harmonised[v].encoding['dtype'] = 'float64'
-        for v in ["sector"]:
-            if v in emissions_harmonised:
-                emissions_harmonised[v] = emissions_harmonised[v].astype("float64")
-
+        # helper function for int -> float encoding
+        emissions_harmonised = (
+            emissions_harmonised.pipe(ensure_float_not_int)
+        )
 
         encoding = {
             v: {"zlib": True, "complevel": 2}
@@ -1522,6 +1530,11 @@ if run_AIR_anthro_timeseries_correction:
         # remove _FillValue from bounds
         scen_ds_corrected = (
             scen_ds_corrected.pipe(remove_fillvalue_from_bounds)
+        )
+        
+        # helper function for int -> float encoding
+        emissions_harmonised = (
+            emissions_harmonised.pipe(ensure_float_not_int)
         )
         
         # Save corrected dataset
@@ -1702,6 +1715,11 @@ if run_anthro_timeseries_correction:
         scen_ds_corrected = (
             scen_ds_corrected.pipe(remove_fillvalue_from_bounds)
         )
+
+        # helper function for int -> float encoding
+        emissions_harmonised = (
+            emissions_harmonised.pipe(ensure_float_not_int)
+        )
         
         # Save corrected dataset
         scen_ds_corrected.to_netcdf(outfile, encoding=encoding)
@@ -1856,6 +1874,11 @@ if run_openburning_timeseries_correction:
         # remove _FillValue from bounds
         scen_ds_corrected = (
             scen_ds_corrected.pipe(remove_fillvalue_from_bounds)
+        )
+
+        # helper function for int -> float encoding
+        emissions_harmonised = (
+            emissions_harmonised.pipe(ensure_float_not_int)
         )
         
         # Save corrected dataset
@@ -2018,6 +2041,7 @@ if run_openburning_h2:
         .pipe(add_lon_lat_bounds) # add lat/lon bnds
         .pipe(add_time_bounds)
         .pipe(remove_fillvalue_from_bounds)
+        .pipe(ensure_float_not_int)
     )  
 
     # save out
@@ -2258,6 +2282,7 @@ if run_openburning_supplemental_voc:
             .pipe(add_lon_lat_bounds) # add lat/lon bnds
             .pipe(add_time_bounds)
             .pipe(remove_fillvalue_from_bounds)
+            .pipe(ensure_float_not_int)
         )
 
         # write output
@@ -2419,6 +2444,7 @@ if run_anthro_supplemental_voc:
             .pipe(add_lon_lat_bounds) # add lat/lon bnds
             .pipe(add_time_bounds)
             .pipe(remove_fillvalue_from_bounds)
+            .pipe(ensure_float_not_int)
         )
 
         # write output
