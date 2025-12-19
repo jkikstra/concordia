@@ -1085,7 +1085,7 @@ def _what_emissions_variable_type(file, files_main=[], files_voc=[]):
 def remove_fillvalue_from_bounds(ds):
     for coord in ["time_bnds", "lon_bnds", "lat_bnds", "level_bnds", "sector_bnds"]:
         if coord in ds:
-            ds[coord].encoding["_FillValue"] = None
+            ds[coord].encoding.pop("_FillValue", None)
     return ds
 
 # helper function for int -> float encoding
