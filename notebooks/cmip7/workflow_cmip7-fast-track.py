@@ -66,8 +66,7 @@ DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. 
 # - openburning
 DO_VOC_SPECIATION_OPENBURNING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["C10H16"]
 # %%
-DO_GRIDDING_ONLY_FOR_THESE_SPECIES = ["CO2", "CO"]
-DO_GRIDDING_ONLY_FOR_THESE_SECTORS = ["anthro"]
+DO_GRIDDING_ONLY_FOR_THESE_SPECIES = ["CO2"]
 
 # %%
 # validate that we're receiving what we're expecting
@@ -2075,8 +2074,8 @@ if run_openburning_h2:
         )
         .pipe(add_lon_lat_bounds) # add lat/lon bnds
         .pipe(add_time_bounds)
-        .pipe(ensure_float_not_int)
         .pipe(remove_fillvalue_from_bounds)
+        .pipe(ensure_float_not_int)
     )  
 
     # save out

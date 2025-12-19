@@ -320,7 +320,7 @@ def clean_var(ds, name, gas, handle):
         if name != "TA_em_anthro"
         else ALKALINITY_ADDITION_LONGNAME
     )
-    ds[name].attrs.update({"cell_methods": "time: mean", "long_name": long_name})
+    ds[name].attrs.update({"units" : "kg s-1 m-2", "cell_methods": "time: mean", "long_name": long_name})
     return ds
 
 def _rename_cdr_sectors(ds,name,
