@@ -2036,7 +2036,6 @@ if run_openburning_h2:
 
 # %% [markdown]
 # # VOC speciation
-# **NOTE: currently takes quite long, especially anthro VOC speciation
 
 
 # %%
@@ -2106,7 +2105,6 @@ def load_voc_bulk(type="anthro"):
 
 # %% [markdown]
 # # VOC speciation (BB4CMIP, openburnig)
-# **NOTE: currently takes long at ~5mins per VOC species, around 2hrs for all 25 VOC species**
 
 # %%
 # Calculate VOC-speciation data; keep the structure of the VOC (bulk) data
