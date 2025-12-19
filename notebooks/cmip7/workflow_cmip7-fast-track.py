@@ -1512,8 +1512,6 @@ if run_AIR_anthro_timeseries_correction:
         scen_ds_corrected.close()
         
         print(f"\nSaved corrected {gas_name} AIR emissions timeseries to {outfile}")
-
-
     
 
 # %%
@@ -1903,6 +1901,12 @@ def _to_sector_integers_and_reorder(ds, type_name='em_openburning'):
 
 
 # %%
+def update_var_attrs(ds, var, **attrs):
+    ds[var].attrs.update(attrs)
+    return ds
+
+
+# %%
 # STEPS:
 # 1. load CO file
 # 2. load translation file
@@ -1976,19 +1980,28 @@ if run_openburning_h2:
     h2_openburning.attrs.update(co_openburning.attrs)
     # Update attributes
     handle = 'openburning'
+    gas = 'H2'
+    long_name = f"{gas} {handle} emissions"
     h2_openburning.attrs['variable_id'] = gas_variable_name
     h2_openburning.attrs['title'] = f"Future {handle} emissions of H2 in {experiment_name}"
     h2_openburning.attrs['reporting_unit'] = f"Mass flux of {gas_variable_name}"
+    
     # Add global sums as metadata
     h2_openburning = h2_openburning.pipe(add_file_global_sum_totals_attrs, name=f"{gas_variable_name}") # add totals after 2022 is added
     # Add bounds
     h2_openburning = (
         h2_openburning
+        .pipe(
+            update_var_attrs,
+            gas_variable_name,
+            units="kg s-1 m-2",
+            cell_methods="time: mean",
+            long_name=long_name,
+        )
         .pipe(add_lon_lat_bounds) # add lat/lon bnds
         .pipe(add_time_bounds)
         .pipe(remove_fillvalue_from_bounds)
-    )
-    
+    )  
 
     # save out
     print('Writing out H2 openburning emissions')
@@ -2195,9 +2208,10 @@ if run_openburning_supplemental_voc:
         voc_spec_data = voc_spec_data.drop_vars(["year", "month", "gas"], errors="ignore")
         voc_spec_data = voc_spec_data.fillna(0)
 
+        gas = voc_share.gas.values[0]
         # construct output variable name
         gas_variable_name = (
-            f"NMVOC_{voc_share.gas.values[0]}_em_speciated_VOC_openburning"
+            f"NMVOC_{gas}_em_speciated_VOC_openburning"
         )
 
         # build output dataset
@@ -2207,6 +2221,8 @@ if run_openburning_supplemental_voc:
         voc_spec.attrs.update(voc_openburning.attrs)
         # Update attributes
         handle = 'openburning'
+        long_name = f"{gas} {handle} speciated emissions"
+
         voc_spec.attrs['variable_id'] = gas_variable_name
         voc_spec.attrs['title'] = f"Future {handle} emissions of speciated {gas_variable_name} in {experiment_name}"
         voc_spec.attrs['reporting_unit'] = f"Mass flux of {gas_variable_name}"
@@ -2215,6 +2231,13 @@ if run_openburning_supplemental_voc:
         # Add bounds
         voc_spec = (
             voc_spec
+            .pipe(
+                update_var_attrs,
+                gas_variable_name,
+                units="kg s-1 m-2",
+                cell_methods="time: mean",
+                long_name=long_name,
+            )
             .pipe(add_lon_lat_bounds) # add lat/lon bnds
             .pipe(add_time_bounds)
             .pipe(remove_fillvalue_from_bounds)
@@ -2358,6 +2381,8 @@ if run_anthro_supplemental_voc:
         voc_spec.attrs.update(voc_anthro.attrs)
         # Update attributes
         handle = 'anthropogenic'
+        long_name = f"{gas} {handle} speciated emissions"
+
         voc_spec.attrs['variable_id'] = gas_variable_name
         voc_spec.attrs['title'] = f"Future {handle} emissions of speciated {gas_variable_name} in {experiment_name}"
         voc_spec.attrs['reporting_unit'] = f"Mass flux of {gas_variable_name}"
@@ -2366,6 +2391,13 @@ if run_anthro_supplemental_voc:
         # Add bounds
         voc_spec = (
             voc_spec
+            .pipe(
+                update_var_attrs,
+                gas_variable_name,
+                units="kg s-1 m-2",
+                cell_methods="time: mean",
+                long_name=long_name,
+            )
             .pipe(add_lon_lat_bounds) # add lat/lon bnds
             .pipe(add_time_bounds)
             .pipe(remove_fillvalue_from_bounds)
