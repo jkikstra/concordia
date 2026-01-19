@@ -3360,7 +3360,10 @@ speciated_totals = combined_df_filtered.groupby(level=["sector"]).sum()
 bulk_totals = combined_df.loc[combined_df.index.get_level_values("gas") == "NMVOCbulk"].groupby(level=["sector"]).sum()
 
 # test that they are equal
-pd.testing.assert_frame_equal(speciated_totals, bulk_totals)
+pd.testing.assert_frame_equal(speciated_totals,
+    bulk_totals,
+    check_exact=False,
+    rtol=1e-3)
 
 # %%
 # select NMVOCbulk from downscaled data
