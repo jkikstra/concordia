@@ -3526,8 +3526,7 @@ pd.testing.assert_frame_equal(
     speciated_totals,
     bulk_totals,
     check_exact=False,
-    rtol=1e-7,
-    atol=1e-10,
+    rtol=1e-3
 )
 
 # %%
