@@ -1372,6 +1372,12 @@ if run_spatial_harmonisation:
 
         # ensure the new file has the same variable attributes as the original gridded file
         emissions_harmonised[var].attrs = gridded[var].attrs.copy()
+
+        # ensure each file gets its own tracking_id and creation_timestamp
+        emissions_harmonised.attrs.update({
+        "creation_date" : generate_creation_timestamp(),
+        "tracking_id" : generate_tracking_id()
+        })
         
         # Last metadata corrections
         emissions_harmonised = (
@@ -1543,6 +1549,12 @@ if run_AIR_anthro_timeseries_correction:
         # Remove old file before writing
         outfile.unlink(missing_ok=True)
 
+        # ensure each file gets its own tracking_id and creation_timestamp
+        scen_ds_corrected.attrs.update({
+        "creation_date" : generate_creation_timestamp(),
+        "tracking_id" : generate_tracking_id()
+        })
+        
         # Last metadata corrections
         scen_ds_corrected = (
             scen_ds_corrected
@@ -1724,6 +1736,12 @@ if run_anthro_timeseries_correction:
         
         # Remove old file before writing
         outfile.unlink(missing_ok=True)
+
+        # ensure each file gets its own tracking_id and creation_timestamp
+        scen_ds_corrected.attrs.update({
+        "creation_date" : generate_creation_timestamp(),
+        "tracking_id" : generate_tracking_id()
+        })
         
         # Last metadata corrections
         scen_ds_corrected = (
@@ -1882,6 +1900,12 @@ if run_openburning_timeseries_correction:
         
         # Remove old file before writing
         outfile.unlink(missing_ok=True)
+
+        # ensure each file gets its own tracking_id and creation_timestamp
+        scen_ds_corrected.attrs.update({
+        "creation_date" : generate_creation_timestamp(),
+        "tracking_id" : generate_tracking_id()
+        })
         
         # Last metadata corrections
         scen_ds_corrected = (
@@ -2056,7 +2080,13 @@ if run_openburning_h2:
     h2_openburning.attrs['variable_id'] = gas_variable_name
     h2_openburning.attrs['title'] = f"Future {handle} emissions of H2 in {experiment_name}"
     h2_openburning.attrs['reporting_unit'] = f"Mass flux of {gas_variable_name}"
-    
+
+    # add individual tracking_id and creation_date
+    h2_openburning.attrs.update({
+        "creation_date" : generate_creation_timestamp(),
+        "tracking_id" : generate_tracking_id()
+        })
+
     # Add global sums as metadata
     h2_openburning = h2_openburning.pipe(add_file_global_sum_totals_attrs, name=f"{gas_variable_name}") # add totals after 2022 is added
     # Add bounds
@@ -2298,6 +2328,13 @@ if run_openburning_supplemental_voc:
         voc_spec.attrs['variable_id'] = gas_variable_name
         voc_spec.attrs['title'] = f"Future {handle} emissions of speciated {gas_variable_name} in {experiment_name}"
         voc_spec.attrs['reporting_unit'] = f"Mass flux of {gas_variable_name}"
+
+        # add individual tracking_id and creation_date
+        voc_spec.attrs.update({
+        "creation_date" : generate_creation_timestamp(),
+        "tracking_id" : generate_tracking_id()
+        })
+    
         # Add global sums as metadata
         voc_spec = voc_spec.pipe(add_file_global_sum_totals_attrs, name=f"{gas_variable_name}") # add totals after 2022 is added
         # add sector bounds
@@ -2462,6 +2499,13 @@ if run_anthro_supplemental_voc:
         voc_spec.attrs['variable_id'] = gas_variable_name
         voc_spec.attrs['title'] = f"Future {handle} emissions of speciated {gas_variable_name} in {experiment_name}"
         voc_spec.attrs['reporting_unit'] = f"Mass flux of {gas_variable_name}"
+
+        # add individual tracking_id and creation_date
+        voc_spec.attrs.update({
+        "creation_date" : generate_creation_timestamp(),
+        "tracking_id" : generate_tracking_id()
+        })
+        
         # Add global sums as metadata
         voc_spec = voc_spec.pipe(add_file_global_sum_totals_attrs, name=f"{gas_variable_name}") # add totals after 2022 is added
         # add sector bounds
