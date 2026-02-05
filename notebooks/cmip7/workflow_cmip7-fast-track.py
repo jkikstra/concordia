@@ -896,7 +896,7 @@ if run_main:
     )
     print(workflow.downscaled.data.loc[~isin(region="World")].reset_index().country.unique())
 
-    # check for negative values
+    # check for negative values where we don't expect them
     
     cdr_sectors = [
         "Direct Air Capture",
@@ -941,6 +941,50 @@ if run_main:
         )
     else:
         print("✅ No disallowed negative values found")
+
+# %%
+# test that ensures all values in the CDR sectors are negative where expected
+
+if run_main:
+    # List of CDR sectors to check (excluding "Other CDR")
+    cdr_sectors_check = [
+        "Direct Air Capture",
+        "Enhanced Weathering",
+        "BECCS",
+    ]
+    
+    # Compute max per row to detect positives
+    row_maxs = workflow.downscaled.data.select_dtypes("number").max(axis=1)
+    
+    # Find rows that are positive
+    positive_rows = row_maxs[row_maxs > 0]
+    
+    # Get sector info from MultiIndex
+    sector_series = workflow.downscaled.data.index.get_level_values("sector").to_series(index=workflow.downscaled.data.index)
+    
+    # Only consider disallowed positives: CDR sectors (except "Other CDR")
+    disallowed_positive_rows = positive_rows[
+        sector_series.loc[positive_rows.index].isin(cdr_sectors_check)
+    ]
+    
+    if not disallowed_positive_rows.empty:
+        positive_values_df = workflow.downscaled.data.loc[disallowed_positive_rows.index]
+    
+        problem_pairs = (
+            positive_values_df.index
+            .to_frame(index=False)[["sector", "gas"]]
+            .drop_duplicates()
+            .sort_values(["sector", "gas"])
+            .reset_index(drop=True)
+        )
+    
+        raise ValueError(
+            f"⚠️ Found disallowed positive values in {len(disallowed_positive_rows)} rows.\n\n"
+            "Positive values found for the following sector+gas combinations:\n"
+            f"{problem_pairs.to_string(index=False)}"
+        )
+    else:
+        print("✅ No positive values found for CDR sectors")
 
 # %%
 if run_main:
