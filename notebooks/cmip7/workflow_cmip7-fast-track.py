@@ -896,6 +896,52 @@ if run_main:
     )
     print(workflow.downscaled.data.loc[~isin(region="World")].reset_index().country.unique())
 
+    # check for negative values
+    
+    cdr_sectors = [
+        "Direct Air Capture",
+        "Other CDR",
+        "Enhanced Weathering",
+        "BECCS",
+    ]
+    
+    row_mins = workflow.downscaled.data.select_dtypes("number").min(axis=1)
+    negative_rows = row_mins[row_mins < 0]
+    
+    # Get sector and gas as Series aligned to the DataFrame index
+    sector_series = workflow.downscaled.data.index.get_level_values("sector").to_series(index=workflow.downscaled.data.index)
+    gas_series = workflow.downscaled.data.index.get_level_values("gas").to_series(index=workflow.downscaled.data.index)
+    
+    # Build a boolean mask of allowed exemptions
+    allowed_mask = (
+        sector_series.isin(cdr_sectors) |  # any CDR sector
+        ((sector_series == "Industrial Sector") & (gas_series == "CO2"))  # Industrial + CO2
+    )
+    
+    # Filter out exempted rows
+    disallowed_negative_rows = negative_rows[
+        ~allowed_mask.loc[negative_rows.index]
+    ]
+    
+    if not disallowed_negative_rows.empty:
+        negative_values_df = workflow.downscaled.data.loc[disallowed_negative_rows.index]
+    
+        problem_pairs = (
+            negative_values_df.index
+            .to_frame(index=False)[["sector", "gas"]]
+            .drop_duplicates()
+            .sort_values(["sector", "gas"])
+            .reset_index(drop=True)
+        )
+    
+        raise ValueError(
+            f"⚠️ Found disallowed negatives in {len(disallowed_negative_rows)} rows.\n\n"
+            "Negative values found for the following sector+gas combinations:\n"
+            f"{problem_pairs.to_string(index=False)}"
+        )
+    else:
+        print("✅ No disallowed negative values found")
+
 # %%
 if run_main:
     # Get unique countries from each dataframe
