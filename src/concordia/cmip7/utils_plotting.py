@@ -14,7 +14,7 @@ from pathlib import Path
 # From a grid to global anual totals
 def ds_to_annual_emissions_total_faster(gridded_data, var_name, cell_area: xr.DataArray | None = None, keep_sectors=True, sum_dims: list[str] | None = ["lat", "lon"]):
     """
-    Convert gridded emissions in kg/m2/s to Mt/year using dask for faster computation.
+    Convert gridded emissions in kg/m2/s to Mt/year using dask for faster, memory-safe computation.
     
     Parameters:
     - gridded_data: xr.Dataset containing the emission variable
@@ -28,11 +28,43 @@ def ds_to_annual_emissions_total_faster(gridded_data, var_name, cell_area: xr.Da
     """
     da = gridded_data[var_name]
     
-    # Chunk the data for dask processing (if not already chunked)
-    if not hasattr(da.data, 'chunks'):
-        # Chunk along time and spatial dimensions for efficiency
-        chunks = {'time': 12}  # Process 12 months at a time
-        da = da.chunk(chunks)
+    # Determine optimal chunk size based on dataset characteristics
+    # AIR files: have 'level' dimension but no 'sector'
+    # Anthro files: have 'sector' dimension (8-10 sectors) but no 'level'
+    # Openburning files: have 'sector' dimension (4 sectors) but no 'level'
+    has_sector = "sector" in da.dims
+    has_level = "level" in da.dims
+    n_sectors = len(da.sector) if has_sector else 0
+    
+    # Optimized chunking: balance memory safety with computation speed
+    # Key insight: spatial operations are fast, time/sector are the memory bottleneck
+    if has_sector:
+        # For files with many sectors (like CO2 with CDR), use moderate chunks
+        if n_sectors > 15:
+            time_chunk = 6  # Moderate chunks for CO2 files (25 sectors)
+        elif n_sectors > 8:
+            time_chunk = 12  # Standard chunks for regular anthro (8-10 sectors)
+        else:
+            time_chunk = 24  # Large chunks for openburning (4 sectors)
+        
+        chunks = {'time': time_chunk, 'sector': -1}  # Keep sectors together
+    elif has_level:
+        # For AIR: chunk by time and level
+        chunks = {'time': 12, 'level': -1}
+    else:
+        # Default: just chunk time
+        chunks = {'time': 24}
+    
+    # Spatial chunks: larger is better for performance since we're summing anyway
+    # Only chunk if dimensions are very large
+    if 'lat' in da.dims and 'lon' in da.dims:
+        if len(da.lat) > 180 or len(da.lon) > 360:
+            chunks['lat'] = 180
+            chunks['lon'] = 360
+        # Otherwise leave spatial dims unchunked for faster summation
+    
+    # Force rechunking - this prevents the MemoryError from loading entire array
+    da = da.chunk(chunks)
     
     # 1. Get seconds per month
     seconds_per_month = da.time.dt.days_in_month * 24 * 60 * 60
@@ -42,7 +74,7 @@ def ds_to_annual_emissions_total_faster(gridded_data, var_name, cell_area: xr.Da
     if "level" in da.dims:
         sum_dims_to_use.append("level")
     
-    # 3. Apply multiplications and spatial sum
+    # 3. Apply multiplications and spatial sum (all lazy operations)
     monthly = seconds_per_month * da  # kg/m2/s -> kg/m2/month
     area_weighted = cell_area * monthly  # kg/m2/month -> kg/month
     
@@ -51,20 +83,51 @@ def ds_to_annual_emissions_total_faster(gridded_data, var_name, cell_area: xr.Da
     else:
         kg_per_month = area_weighted
     
-    # 4. Group by year and sum
+    # 4. Group by year and sum (lazy operation)
     kg_per_year = kg_per_month.groupby("time.year").sum()
     
-    # 5. Convert to Mt/year
+    # 5. Convert to Mt/year (lazy operation)
     result = kg_per_year * 1e-9
     
-    # 6. Sum sectors if needed
+    # 6. Sum sectors if needed (lazy operation)
     if "sector" in result.dims and not keep_sectors:
         result = result.sum(dim="sector")
     
     # 7. Rename and ensure proper naming
     result.name = var_name
     
-    return result.compute()
+    # 8. Optimized computation strategy
+    # The aggressive chunking above prevents memory issues, so we can compute more directly
+    try:
+        # Result is small (aggregated data), should fit in memory easily
+        # With proper chunking, dask handles the large intermediate arrays
+        return result.compute()
+            
+    except MemoryError as e:
+        # Fallback: compute in smaller batches only if memory error occurs
+        print(f"Warning: Memory error, computing in batches: {e}")
+        n_result_sectors = len(result.sector) if 'sector' in result.dims else 1
+        
+        # For many sectors, compute by sector
+        if n_result_sectors > 15 and 'sector' in result.dims:
+            print(f"Computing {n_result_sectors} sectors separately...")
+            computed_sectors = []
+            for sector in result.sector.values:
+                sector_result = result.sel(sector=sector).compute()
+                computed_sectors.append(sector_result)
+            return xr.concat(computed_sectors, dim='sector')
+        
+        # Otherwise compute in year batches
+        else:
+            print(f"Computing in year batches...")
+            year_batch_size = 5
+            years = result.year.values
+            computed_chunks = []
+            for i in range(0, len(years), year_batch_size):
+                year_batch = years[i:i + year_batch_size]
+                chunk_result = result.sel(year=year_batch).compute()
+                computed_chunks.append(chunk_result)
+            return xr.concat(computed_chunks, dim='year')
 
 
 # note: # `cell_area: xr.DataArray | None = None` (PEP 604, may require Python 3.10+); alternative would be cell_area: Optional[xr.DataArray] = None; along which we need from typing import Optional
