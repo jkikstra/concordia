@@ -973,6 +973,13 @@ if run_main_gridding: # full run for all 10 species takes about ~1hour for 1 sce
 # Clarify which gridcell area we use
 
 # %%
+def remove_fillvalue_from_bounds(ds):
+    for coord in ["time_bnds", "lon_bnds", "lat_bnds", "level_bnds", "sector_bnds"]:
+        if coord in ds:
+            ds[coord].encoding["_FillValue"] = None
+    return ds
+
+# %%
 # areas of gridcells for calculatings totals
 areacella = xr.open_dataset(Path(settings.gridding_path, "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc"))
 cell_area = areacella["areacella"]
@@ -987,16 +994,19 @@ from input4mips_validation.io import (
 
 # update metadata
 cmip7_areacella = areacella
-cmip7_areacella.attrs['comment'] = "Research data produced using the Community Emissions Data System (CEDS), at Pacific Northwest National Laboratory - Joint Global Change Research Institute, College Park, MD 20740, USA. Reused for future emissions data."
-cmip7_areacella.attrs['contact'] = areacella.attrs['contact'] + '; ' + cmip7_utils.DS_ATTRS['contact']
+original_creators = areacella.attrs['contact']
+cmip7_areacella.attrs['contact'] = cmip7_utils.DS_ATTRS['contact']
 cmip7_areacella.attrs['source_id'] = cmip7_utils.DS_ATTRS['institution_id'] + '-' + VERSION_ESGF
 cmip7_areacella.attrs['creation_date'] = generate_creation_timestamp()
 cmip7_areacella.attrs['tracking_id'] = generate_tracking_id()
 for v in [
-    'institution', 'institution_id', 'doi', 'target_mip', 'source', 'license'
+    'institution', 'institution_id', 'doi', 'target_mip', 'source', 'license', 'further_info_url'
 ]:
     cmip7_areacella.attrs[v] = cmip7_utils.DS_ATTRS[v]
 
+cmip7_areacella.attrs['source_version'] = VERSION_ESGF.replace("-",".") # e.g. "1.0.0"
+cmip7_areacella.attrs['comment'] = f"Research data originally produced by {original_creators} using the Community Emissions Data System (CEDS), at Pacific Northwest National Laboratory - Joint Global Change Research Institute, College Park, MD 20740, USA. Reused for the production of all future {cmip7_utils.DS_ATTRS['target_mip']} emissions data."
+cmip7_areacella = cmip7_areacella.pipe(remove_fillvalue_from_bounds)
 folder_areacella = settings.out_path / GRIDDING_VERSION / 'areacella'
 folder_areacella.mkdir(parents=True, exist_ok=True)
 cmip7_areacella.to_netcdf(folder_areacella / f'areacella_input4MIPs_emissions_{cmip7_utils.DS_ATTRS['target_mip']}_{cmip7_utils.DS_ATTRS['institution_id']}-{VERSION_ESGF}_gn.nc', encoding=encoding)
@@ -1078,12 +1088,6 @@ def _what_emissions_variable_type(file, files_main=[], files_voc=[]):
     elif file in files_voc:
         type = "em_speciated_VOC_anthro"
     return type
-
-def remove_fillvalue_from_bounds(ds):
-    for coord in ["time_bnds", "lon_bnds", "lat_bnds", "level_bnds", "sector_bnds"]:
-        if coord in ds:
-            ds[coord].encoding["_FillValue"] = None
-    return ds
 
 # helper function for int -> float encoding
 def ensure_float_not_int(ds, vars = ["time_bnds", "sector"]):
