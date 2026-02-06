@@ -1003,7 +1003,8 @@ for v in [
     'institution', 'institution_id', 'doi', 'target_mip', 'source', 'license', 'further_info_url'
 ]:
     cmip7_areacella.attrs[v] = cmip7_utils.DS_ATTRS[v]
-cmip7_areacella.attrs['source_version'] = "1.0.0"
+
+cmip7_areacella.attrs['source_version'] = VERSION_ESGF.replace("-",".") # e.g. "1.0.0"
 cmip7_areacella.attrs['comment'] = f"Research data originally produced by {original_creators} using the Community Emissions Data System (CEDS), at Pacific Northwest National Laboratory - Joint Global Change Research Institute, College Park, MD 20740, USA. Reused for the production of all future {cmip7_utils.DS_ATTRS['target_mip']} emissions data."
 cmip7_areacella = cmip7_areacella.pipe(remove_fillvalue_from_bounds)
 folder_areacella = settings.out_path / GRIDDING_VERSION / 'areacella'
@@ -1375,6 +1376,12 @@ if run_spatial_harmonisation:
 
         # ensure the new file has the same variable attributes as the original gridded file
         emissions_harmonised[var].attrs = gridded[var].attrs.copy()
+
+        # ensure each file gets its own tracking_id and creation_timestamp
+        emissions_harmonised.attrs.update({
+        "creation_date" : generate_creation_timestamp(),
+        "tracking_id" : generate_tracking_id()
+        })
         
         # Last metadata corrections
         emissions_harmonised = (
@@ -1546,6 +1553,12 @@ if run_AIR_anthro_timeseries_correction:
         # Remove old file before writing
         outfile.unlink(missing_ok=True)
 
+        # ensure each file gets its own tracking_id and creation_timestamp
+        scen_ds_corrected.attrs.update({
+        "creation_date" : generate_creation_timestamp(),
+        "tracking_id" : generate_tracking_id()
+        })
+        
         # Last metadata corrections
         scen_ds_corrected = (
             scen_ds_corrected
@@ -1727,6 +1740,12 @@ if run_anthro_timeseries_correction:
         
         # Remove old file before writing
         outfile.unlink(missing_ok=True)
+
+        # ensure each file gets its own tracking_id and creation_timestamp
+        scen_ds_corrected.attrs.update({
+        "creation_date" : generate_creation_timestamp(),
+        "tracking_id" : generate_tracking_id()
+        })
         
         # Last metadata corrections
         scen_ds_corrected = (
@@ -1885,6 +1904,12 @@ if run_openburning_timeseries_correction:
         
         # Remove old file before writing
         outfile.unlink(missing_ok=True)
+
+        # ensure each file gets its own tracking_id and creation_timestamp
+        scen_ds_corrected.attrs.update({
+        "creation_date" : generate_creation_timestamp(),
+        "tracking_id" : generate_tracking_id()
+        })
         
         # Last metadata corrections
         scen_ds_corrected = (
@@ -2059,7 +2084,13 @@ if run_openburning_h2:
     h2_openburning.attrs['variable_id'] = gas_variable_name
     h2_openburning.attrs['title'] = f"Future {handle} emissions of H2 in {experiment_name}"
     h2_openburning.attrs['reporting_unit'] = f"Mass flux of {gas_variable_name}"
-    
+
+    # add individual tracking_id and creation_date
+    h2_openburning.attrs.update({
+        "creation_date" : generate_creation_timestamp(),
+        "tracking_id" : generate_tracking_id()
+        })
+
     # Add global sums as metadata
     h2_openburning = h2_openburning.pipe(add_file_global_sum_totals_attrs, name=f"{gas_variable_name}") # add totals after 2022 is added
     # Add bounds
@@ -2301,6 +2332,13 @@ if run_openburning_supplemental_voc:
         voc_spec.attrs['variable_id'] = gas_variable_name
         voc_spec.attrs['title'] = f"Future {handle} emissions of speciated {gas_variable_name} in {experiment_name}"
         voc_spec.attrs['reporting_unit'] = f"Mass flux of {gas_variable_name}"
+
+        # add individual tracking_id and creation_date
+        voc_spec.attrs.update({
+        "creation_date" : generate_creation_timestamp(),
+        "tracking_id" : generate_tracking_id()
+        })
+    
         # Add global sums as metadata
         voc_spec = voc_spec.pipe(add_file_global_sum_totals_attrs, name=f"{gas_variable_name}") # add totals after 2022 is added
         # add sector bounds
@@ -2465,6 +2503,13 @@ if run_anthro_supplemental_voc:
         voc_spec.attrs['variable_id'] = gas_variable_name
         voc_spec.attrs['title'] = f"Future {handle} emissions of speciated {gas_variable_name} in {experiment_name}"
         voc_spec.attrs['reporting_unit'] = f"Mass flux of {gas_variable_name}"
+
+        # add individual tracking_id and creation_date
+        voc_spec.attrs.update({
+        "creation_date" : generate_creation_timestamp(),
+        "tracking_id" : generate_tracking_id()
+        })
+        
         # Add global sums as metadata
         voc_spec = voc_spec.pipe(add_file_global_sum_totals_attrs, name=f"{gas_variable_name}") # add totals after 2022 is added
         # add sector bounds
@@ -3343,6 +3388,16 @@ if save_total_emissions_as_csv: # TODO: @Jarmo, you may want to introduce a diff
     combined_df.to_csv(folder_totals / f"{new_stem}_combined-annual-totals.csv")
 
 # %%
+new_stem
+
+# %%
+folder_totals = settings.out_path / GRIDDING_VERSION / "check_NMVOC_sums"
+
+# %%
+combined_df = pd.read_csv(folder_totals / f"{new_stem}_combined-annual-totals.csv", index_col=["gas", "sector"])
+combined_df
+
+# %%
 # test that the speciated NMVOC species add up to the bulk NMVOC
 
 # drop the bulk from the df
@@ -3353,7 +3408,10 @@ speciated_totals = combined_df_filtered.groupby(level=["sector"]).sum()
 bulk_totals = combined_df.loc[combined_df.index.get_level_values("gas") == "NMVOCbulk"].groupby(level=["sector"]).sum()
 
 # test that they are equal
-pd.testing.assert_frame_equal(speciated_totals, bulk_totals) # TODO: change to an allclose statement - exactly the same numbers is too strict. 
+pd.testing.assert_frame_equal(speciated_totals,
+    bulk_totals,
+    check_exact=False,
+    rtol=1e-3)
 
 # %%
 # select NMVOCbulk from downscaled data
@@ -3510,8 +3568,17 @@ speciated_totals = combined_df.groupby(level=["sector"]).sum()
 # isolate the bulk and process similarly to get df in same format
 bulk_totals = df_wide.groupby(level=["sector"]).sum()
 
-# test that they are equal
-pd.testing.assert_frame_equal(speciated_totals, bulk_totals) # TODO: change to an allclose statement - exactly the same numbers is too strict. 
+# test that structure is equal
+pd.testing.assert_index_equal(speciated_totals.index, bulk_totals.index)
+pd.testing.assert_index_equal(speciated_totals.columns, bulk_totals.columns)
+
+# Approximate value check
+pd.testing.assert_frame_equal(
+    speciated_totals,
+    bulk_totals,
+    check_exact=False,
+    rtol=1e-3
+)
 
 # %%
 # select NMVOCbulk from downscaled data
