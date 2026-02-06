@@ -239,6 +239,9 @@ df_combined = pd.concat([df_h, df_vl], ignore_index=True)
 # Remove CO2 emissions from openburning sector
 openburning_sectors = SECTOR_FILE_DICT['openburning']
 df_combined = df_combined[~((df_combined['gas'] == 'CO2') & (df_combined['sector'].isin(openburning_sectors)))]
+# Remove pre-processed Agriculture emissions (as they should be zero)
+df_combined = df_combined[~((df_combined['gas'] == 'CO2') & (df_combined['sector'].isin(["Agriculture"])))]
+
 
 print(f"Combined dataframe shape: {df_combined.shape}")
 print(f"Columns: {df_combined.columns.tolist()}")
@@ -348,6 +351,8 @@ hist = pd.concat([
 # Remove CO2 emissions from openburning sector
 openburning_sectors = SECTOR_FILE_DICT['openburning']
 hist = hist[~((hist['gas'] == 'CO2') & (hist['sector'].isin(openburning_sectors)))]
+# Remove pre-processed Agriculture emissions (as they should be zero)
+hist = hist[~((hist['gas'] == 'CO2') & (hist['sector'].isin(["Agriculture"])))]
 
 # create here two dataframes in the same way as above: one sum/melted `hist_melted` and one sector_file one `hist_sector_files`
 
