@@ -36,9 +36,12 @@ import pyreadr
 import xarray as xr
 
 from concordia.settings import Settings
+from pathlib import Path
 
-
-settings = Settings.from_config("config.yaml", base_path="..", version=None)
+settings = Settings.from_config(
+    "config_cmip7_v0_testing.yaml", 
+    base_path=Path(Path(__file__).parent, "..").resolve(), 
+    version=None)
 
 dim_order = ["gas", "sector", "level", "year", "month", "lat", "lon"]
 
@@ -137,7 +140,7 @@ def mask_to_ary(row):
 # translates them to xarray arrays and combines them into a single netcdf file.
 def gen_mask():
     print("Generating Mask Raster")
-    files = ceds_input_gridding_path.glob("mask/*.Rd")
+    files = ceds_input_gridding_path.glob("iso_mask/*.Rd")
     df = pd.DataFrame(
         [[f.stem.split("_")[0], f] for f in files],
         columns=["iso", "file"],

@@ -24,8 +24,10 @@ dependencies:
 - seaborn
 - tqdm
 - jupytext
+- jupyterlab
 - colorlog
 - ipykernel
+- papermill
 
 # ptolemy dependencies
 - netcdf4

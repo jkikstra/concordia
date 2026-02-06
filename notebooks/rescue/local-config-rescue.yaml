@@ -1,6 +1,7 @@
+
 out_path: "../results"
-data_path: "../data/<my project>" # this needs to be changed based on where you want to store your own data
-variabledefs_path: "../data/variabledefs-<my project>.csv"
+# data_path: "C:/Users/kikstra/IIASA/RESCUE - WP 1/data_2024_03_14/cmip7/v01_message" # this needs to be changed based on where you want to store your own data
+data_path: "C:/Users/kikstra/IIASA/RESCUE - WP 1/data_2024_09_16/" # this needs to be changed based on where you want to store your own data
 
 history_path: "$data_path/historical"
 scenario_path: "$data_path/scenarios"
@@ -13,8 +14,13 @@ encoding:
   complevel: 2
 
 regionmappings:
-  MyModelName:
-    path: "$scenario_path/regionmapping_mymodelname.csv"
+  REMIND-MAgPIE 3.2.0-4.7.1:
+    path: "$scenario_path/regionmappingH12.csv"
+    country_column: "CountryCode"
+    region_column: "RegionCode"
+    sep: ";"
+  REMIND-MAgPIE 3.2.0-4.8.0:
+    path: "$scenario_path/regionmappingH12.csv"
     country_column: "CountryCode"
     region_column: "RegionCode"
     sep: ";"

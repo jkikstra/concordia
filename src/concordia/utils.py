@@ -17,7 +17,7 @@ from IPython.core.magic import Magics, cell_magic, magics_class
 from pandas import DataFrame, isna
 from pandas.api.types import is_iterator, is_list_like
 from pandas_indexing import concat, isin
-
+from ptolemy import IndexRaster
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -75,6 +75,21 @@ class VariableDefinitions:
 
     @property
     def downscaling(self):
+        """
+        The `downscaling` property of the `VariableDefinitions` class processes the data to prepare it for downscaling by aggregating subsectors.
+
+        This property performs the following steps:
+        1. Identifies subsectors in the `sector` level of the data index. Subsector names are identified as those containing the "|" character.
+        2. Renames the `sector` level of the data index by splitting the subsector names at the "|" character and keeping only the first part (the main sector name).
+        3. Groups the data by the `gas` and `sector` levels and takes the first entry for each group.
+
+        Returns:
+            VariableDefinitions: A new instance of the `VariableDefinitions` class containing the processed data, where subsectors have been aggregated into their main sectors.
+
+        Note:
+            - This property is useful for simplifying the data structure by collapsing subsectors into their main sectors, which is often required for downscaling workflows.
+            - The original data remains unchanged; the property returns a new instance with the modified data.
+        """
         data = self.data
         subsectors = (
             data.pix.unique("sector")
@@ -581,3 +596,80 @@ class MultiLineFormatter(ColoredFormatter):
         indent = " " * self.get_header_length(record)
         head, *trailing = super().format(record).splitlines(True)
         return head + "".join(indent + line for line in trailing)
+
+
+def indexraster_info_to_txt(idxrast: IndexRaster, path: Path):
+    """
+    Write detailed information about an IndexRaster object to a text file.
+
+    This function extracts metadata and structural details from an IndexRaster
+    object, including its dictionary keys, dimensions, coordinates, attributes,
+    and country indices. The information is then written to a specified text file
+    in a human-readable format.
+
+    Parameters
+    ----------
+    idxrast : IndexRaster
+        The IndexRaster object containing raster data and metadata.
+    path : Path
+        The file path where the information will be written.
+
+    Details
+    -------
+    The following information is extracted and written to the file:
+    - Dictionary keys: All keys in the IndexRaster object's internal dictionary.
+    - Indicator:
+        - Dimensions: Dimensions of the indicator data.
+        - Coordinates: Coordinate keys of the indicator data.
+        - Attributes: Metadata attributes of the indicator data.
+    - Boundary:
+        - Dimensions: Dimensions of the boundary data.
+        - Coordinates: Coordinate keys of the boundary data.
+        - Attributes: Metadata attributes of the boundary data.
+    - Index (Countries): List of country indices in the raster.
+    - Cell area:
+        - Dimensions: Dimensions of the cell area data.
+        - Coordinates: Coordinate keys of the cell area data.
+        - Attributes: Metadata attributes of the cell area data.
+
+    The output file is structured with categories and their respective keys
+    listed under each category.
+
+    Example
+    -------
+    >>> from pathlib import Path
+    >>> from ptolemy import IndexRaster
+    >>> idxrast = IndexRaster.from_netcdf("example_raster.nc")
+    >>> indexraster_info_to_txt(idxrast, Path("raster_info.txt"))
+
+    This will create a file `raster_info.txt` containing the extracted information.
+
+    Notes
+    -----
+    - Ensure the `path` provided is writable.
+    - The function assumes the `IndexRaster` object has the expected attributes
+      (`indicator`, `boundary`, `index`, `cell_area`).
+
+    """
+    # Prepare keys
+    keys = {
+        "Dictionary keys": list(idxrast.__dict__.keys()),
+        "Indicator (Dimensions)": list(idxrast.indicator.dims),
+        "Indicator (Coordinates)": list(idxrast.indicator.coords.keys()),
+        "Indicator (Attributes)": list(idxrast.indicator.attrs.keys()),
+        "Boundary (Dimensions)": list(idxrast.boundary.dims),
+        "Boundary (Coordinates)": list(idxrast.boundary.coords.keys()),
+        "Boundary (Attributes)": list(idxrast.boundary.attrs.keys()),
+        "Index (Countries)": list(idxrast.index),
+        "Cell area (Dimensions)": list(idxrast.cell_area.dims),
+        "Cell area (Coordinates)": list(idxrast.cell_area.coords.keys()),
+        "Cell area (Attributes)": list(idxrast.cell_area.attrs.keys())
+    }
+
+    # Write to file
+    with open(path, "w") as f:
+        for category, key_list in keys.items():
+            f.write(f"{category}:\n")
+            for key in key_list:
+                f.write(f"  - {key}\n")
+            f.write("\n")

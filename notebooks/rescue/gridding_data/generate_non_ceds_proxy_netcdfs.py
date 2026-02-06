@@ -26,14 +26,15 @@ from scipy.ndimage import gaussian_filter
 
 from concordia.rescue.proxy import ReportMissingCountries, gu_to_xarray, plot_map
 from concordia.settings import Settings
-
+from pathlib import Path
 
 # %%
 settings = Settings.from_config(
-    "../config-rescue.yaml",
-    local_config_path="../local-config-rescue.yaml",
-    version=None,
-)
+    # "../config-rescue.yaml",
+    # local_config_path="../local-config-rescue.yaml",
+    "config_cmip7_v0_testing.yaml", 
+    base_path=Path(Path(__file__).parent, "..").resolve(), 
+    version=None)
 settings.gridding_path, settings.gridding_path.exists()
 
 # %%
@@ -159,7 +160,7 @@ transform = rio.transform.from_bounds(
 )
 
 # %%
-natearth_l = natearth.explode().loc[lambda df: df.to_crs("esri:54034").area > 2e10]
+natearth_l = natearth.explode().loc[lambda df: df.to_crs("esri:54034").area > 2e10] # if we want OAE in areas like around Mayotte/Comoros (north-western Madagascar) Western Sahara, and Taiwan, this might be the line to tweak.
 largeland = (
     gu.Vector(natearth_l)
     .rasterize(

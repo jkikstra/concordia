@@ -10,10 +10,15 @@ from typing import TYPE_CHECKING
 
 import dask
 import pandas as pd
+import numpy as np
 import ptolemy as pt
+#' pt.IndexRaster is important. 
+#' pt.IndexRaster has:
+#' - pt.IndexRaster.boundary example: (country: 234, spatial: 8070), where each row corresponds to a country (234 total), each column corresponds to a spatial cell (8070 grid cells in total). So, raster.boundary.sel(country=ix) would result in an array of shape = (spatial,) = (8070,). Where, spatial is a MultiIndex dimension that ties together. It gives a compact way to store only the relevant grid cells for each country, rather than a full 360×720 grid (which would be 259,200 cells).
 from attrs import define
 from pandas_indexing import concat, isin
 from pandas_indexing.utils import print_list
+from pathlib import Path
 from tqdm.auto import tqdm
 
 from .downscale import downscale
@@ -27,8 +32,11 @@ from .utils import (
     add_zeros_like,
     aggregate_subsectors,
     skipnone,
-)
+    indexraster_info_to_txt)
 
+from input4mips_validation.io import (
+    generate_creation_timestamp
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
@@ -81,6 +89,73 @@ class GlobalRegional:
 
 @define(slots=False)
 class WorkflowDriver:
+    """
+    A driver class for orchestrating the harmonization, downscaling, and gridding 
+    of emissions data for Integrated Assessment Models (IAMs) and historical datasets.
+
+    The `WorkflowDriver` class integrates various components of the Concordia framework 
+    to process emissions data at global, regional, and country levels. It provides 
+    methods for harmonizing IAM data with historical data, downscaling to finer spatial 
+    resolutions, and generating gridded outputs suitable for climate modeling.
+
+    Attributes:
+        model (pd.DataFrame): The IAM scenario data, typically containing emissions 
+            trajectories for various gases, sectors, and regions.
+        hist (pd.DataFrame): Historical emissions data, used as a baseline for harmonization.
+        gdp (pd.DataFrame): GDP data, used as a proxy for downscaling emissions to finer 
+            spatial resolutions.
+        regionmapping (RegionMapping): A mapping between IAM regions and countries, 
+            used for aggregating and disaggregating data.
+        indexraster_country (pt.IndexRaster): A raster object representing country-level 
+            spatial indices for gridding.
+        indexraster_region (pt.IndexRaster): A raster object representing region-level 
+            spatial indices for gridding.
+        variabledefs (VariableDefinitions): Definitions of variables, including their 
+            units, sectors, and associated proxies for downscaling.
+        harm_overrides (pd.Series[str]): Overrides for harmonization methods, allowing 
+            customization of the harmonization process for specific variables or regions.
+        settings (Settings): Configuration settings for the workflow, including paths 
+            to input data, output directories, and processing options.
+        history_aggregated (GlobalRegional): Aggregated historical data at global, 
+            regional, and country levels.
+        harmonized (GlobalRegional): Harmonized IAM data at global, regional, and 
+            country levels.
+        downscaled (GlobalRegional): Downscaled IAM data at global, regional, and 
+            country levels.
+
+    Methods:
+        proxies:
+            Cached property that generates proxy weights for downscaling based on 
+            variable definitions and spatial context.
+        country_groups(variabledefs=None):
+            Generates groups of countries and variables for country-level harmonization 
+            and downscaling, based on the availability of proxy weights.
+        harmdown_globallevel(variabledefs=None):
+            Harmonizes and downscales global-level variables.
+        harmdown_regionlevel(variabledefs=None):
+            Harmonizes and downscales region-level variables.
+        harmdown_countrylevel(variabledefs=None):
+            Harmonizes and downscales country-level variables.
+        harmonize_and_downscale(variabledefs=None):
+            Harmonizes and downscales data at all levels (global, regional, and country).
+        grid_proxy(output_variable, downscaled=None):
+            Applies a gridding proxy to downscaled data for a specific output variable.
+        grid(template_fn, directory=None, callback=None, encoding_kwargs=None, 
+             verify=True, skip_exists=False):
+            Harmonizes, downscales, and grids all variables, saving the results as 
+            NetCDF files.
+        harmonized_data:
+            Combines historical and harmonized data into a single dataset, formatted 
+            for IAMC (Integrated Assessment Modeling Consortium) compatibility.
+
+    Notes:
+        - This class is designed to handle large datasets efficiently using Dask for 
+          parallel computation.
+        - The workflow is modular, allowing users to customize individual steps such 
+          as harmonization, downscaling, and gridding.
+        - The `WorkflowDriver` is a central component of the Concordia framework, 
+          enabling end-to-end processing of emissions data for climate modeling.
+    """
     model: pd.DataFrame
     hist: pd.DataFrame
     gdp: pd.DataFrame
@@ -104,7 +179,16 @@ class WorkflowDriver:
             cell_area=self.indexraster_country.cell_area,
         )
 
-        return {
+        # return {
+        #     output_variable: ConcordiaProxy.from_variables(
+        #         self.variabledefs.for_proxy(output_variable), # does this go wrong when e.g. SO2/Sulfur
+        #         context,
+        #         self.settings.proxy_path,
+        #     )
+        #     for output_variable in self.variabledefs.proxies # e.g. BC_em_openburning
+        # }
+
+        proxies_dict = {
             output_variable: ConcordiaProxy.from_variables(
                 self.variabledefs.for_proxy(output_variable),
                 context,
@@ -112,10 +196,55 @@ class WorkflowDriver:
             )
             for output_variable in self.variabledefs.proxies
         }
+        
+        # Rename Sulfur to SO2 in proxy data if output_variable contains SO2
+        for output_variable, proxy in proxies_dict.items():
+            if 'SO2' in output_variable and 'Sulfur' in proxy.data.gas.values:
+                # Use a direct coordinate rename that preserves order
+                proxy.data.coords['gas'] = proxy.data.coords['gas'].astype(str).str.replace('Sulfur', 'SO2', regex=False)
+
+        # Rename VOC to NMVOC in proxy data if output_variable contains VOC
+        for output_variable, proxy in proxies_dict.items():
+            if 'NMVOC' in output_variable and 'VOC' in proxy.data.gas.values and 'openburning' in output_variable:
+                # Use a direct coordinate rename that preserves order
+                proxy.data.coords['gas'] = proxy.data.coords['gas'].astype(str).str.replace('VOC', 'NMVOCbulk', regex=False)
+            if 'NMVOC' in output_variable and 'VOC' in proxy.data.gas.values and 'anthro' in output_variable:
+                # Use a direct coordinate rename that preserves order
+                proxy.data.coords['gas'] = proxy.data.coords['gas'].astype(str).str.replace('VOC', 'NMVOC', regex=False)
+        
+        return proxies_dict
 
     def country_groups(
         self, variabledefs: VariableDefinitions | None = None
     ) -> Iterator[CountryGroup]:
+        """
+        Generate groups of countries and variables for country-level harmonization and downscaling.
+
+        This method divides the countries and variables into groups based on the availability 
+        of proxy weights for the variables. It categorizes variables into three types:
+        1. Variables without any proxy weights (no associated proxy data).
+        2. Variables with proxy weights but no associated weight values.
+        3. Variables with valid proxy weights for some countries.
+
+        For each group, it yields a `CountryGroup` object containing:
+        - A list of countries.
+        - A list of variables to harmonize and downscale.
+
+        Parameters:
+            variabledefs (VariableDefinitions | None): 
+                The variable definitions to use for grouping. If not provided, 
+                `self.variabledefs` is used.
+
+        Yields:
+            CountryGroup: A named tuple containing:
+                - `countries` (pd.Index): The list of countries in the group.
+                - `variables` (pd.Index): The list of variables in the group.
+
+        Notes:
+            - Proxy weights are computed for variables using the `self.proxies` dictionary.
+            - If no proxy weights are available, all variables are grouped together with all countries.
+            - Logs information about the generated groups for debugging and tracking purposes.
+        """
         if variabledefs is None:
             variabledefs = self.variabledefs
 
@@ -125,6 +254,19 @@ class WorkflowDriver:
         variabledefs = variabledefs.countrylevel
 
         # determine proxy weights for all related proxy variables
+        # Uses:
+        # - `self.proxies`: A dictionary mapping output variables to `ConcordiaProxy` objects, 
+        #   which contain proxy weights for downscaling.
+        # - `dask.compute`: Executes computations in parallel for proxy weights.
+        # - `proxy.weight["country"].sum("year")`: Sums proxy weights across the "year" dimension for each country.
+        # - `concat`: Combines multiple proxy weight series into a single DataFrame.
+        # - `variabledefs.countrylevel`: Filters variable definitions to include only country-level variables.
+        # - `variabledefs.index.pix.assign`: Adds a `short_sector` column to variables for easier grouping.
+        # - `variable_weights.pix.semijoin`: Aligns proxy weights with the variables to harmonize and downscale.
+        # - `variable_weights.groupby`: Groups proxy weights by `["gas", "sector"]` to calculate total weights.
+        # - `RegionMapping`: Filters and aggregates historical data based on region mappings.
+        # - `CountryGroup`: A named tuple containing `countries` and `variables` for harmonization and downscaling.
+        # - `logger.info`: Logs information about generated country groups for debugging and tracking.
         regional_proxies = variabledefs.proxies
         variable_weights = [
             w.to_series()
@@ -136,6 +278,17 @@ class WorkflowDriver:
                 ]
             )
         ]
+
+        # TODO:
+        # - [ ] add renaming of Sulfur to SO2 (in the proxy) until we've replaced that in the proxy generation 
+        # - [ ] code some exception/error that catches when the variable weight is zero; as this is a common issue and the debugging messages later are nontrivial
+
+        # Rename Sulfur to SO2 in variable_weights if SO2 is in regional_proxies
+        if variable_weights and any('SO2' in str(var) for var in regional_proxies):
+            variable_weights = [
+                w.rename(index={'Sulfur': 'SO2'}, level='gas') if 'Sulfur' in w.index.get_level_values('gas') else w
+                for w in variable_weights
+            ]
 
         if not variable_weights:
             # No proxies, so all variables fall into one group with all countries
@@ -225,10 +378,11 @@ class WorkflowDriver:
         harmonized = aggregate_subsectors(harmonized)
         hist = aggregate_subsectors(hist)
 
-        self.history_aggregated.globallevel = hist
-        self.harmonized.globallevel = harmonized
-        self.downscaled.globallevel = harmonized.pix.format(
-            method="single", country="{region}"
+        self.history_aggregated.globallevel = hist # add history_aggregated to the workflow object; global-level aggregated (over sub-sectors, if in the data) historical information 
+        self.harmonized.globallevel = harmonized # add harmonized.globallevel dataframe to the workflow object
+        self.downscaled.globallevel = harmonized.pix.format( # add 'downscaled'.'globallevel' dataframe to the workflow object
+            method="single", # format (accessors.format index levels based on a template refering to other levels) uses core.formatlevel, which uses core._formatlevel, where it is still unclear what `method="single"`  means.
+            country="{region}" # add 
         )
 
         return harmonized.droplevel("method").rename_axis(index={"region": "country"})
@@ -387,8 +541,22 @@ class WorkflowDriver:
             )
         ).rename(index=lambda s: s.rsplit(" ", 1)[0] + " s-1", level="unit")
 
+        
         for model, scenario in tabular.pix.unique(["model", "scenario"]):
             yield proxy.grid(tabular.loc[isin(model=model, scenario=scenario)])
+            # Around line 505, add debugging
+            # print(f"Processing {output_variable}: model={model}, scenario={scenario}")
+            # data_slice = tabular.loc[isin(model=model, scenario=scenario)]
+            # print(f"  Data shape: {data_slice.shape}, non-null values: {data_slice.notna().sum().sum()}")
+            # print(f"  Proxy data: min={proxy.data.min().values}, max={proxy.data.max().values}")
+
+            # try:
+            #     yield proxy.grid(data_slice)
+            # except ValueError as e:
+            #     if "must supply at least one object to concatenate" in str(e):
+            #         print(f"  WARNING: No valid gridded data for {output_variable}. Skipping.")
+            #     else:
+            #         raise
 
     def grid(
         self,
@@ -399,6 +567,33 @@ class WorkflowDriver:
         verify: bool = True,
         skip_exists: bool = False,
     ):
+    # ╔════════════════════════════╗
+    # ║        grid()              ║
+    # ╚════════════════════════════╝
+    #              │
+    #              ▼
+    #   harmonize_and_downscale()
+    #              │
+    #              ▼
+    # ┌────────────────────────────────┐
+    # │ Loop over output_variable in   │
+    # │ self.proxies.keys()            │
+    # └────────────────────────────────┘
+    #              │
+    #              ▼
+    # ┌───────────────────────────────┐
+    # │  grid_proxy(variable, data)   │
+    # │  ↳ Load proxy (e.g. raster)   │
+    # │  ↳ Apply to downscaled data   │
+    # └───────────────────────────────┘
+    #              │
+    #              ▼
+    # ┌────────────────────────────────────┐
+    # │ verify_and_save(gridded results)   │
+    # │ ↳ skip if exists                   │
+    # │ ↳ save NetCDF with Dask            │
+    # └────────────────────────────────────┘
+
         def verify_and_save(pathways: Sequence[Gridded]):
             def skip(gridded, template_fn, directory):
                 fname = gridded.fname(template_fn, directory)
@@ -409,17 +604,29 @@ class WorkflowDriver:
                         f"Skipping {fname} because the file already exists",
                     )
                 return to_skip
+            
+            # Helper to fill NaNs before writing
+            def to_netcdf_filled(gr: Gridded):
+                ds = gr.prepare_dataset(callback) # load the Dataset with this helper from aneris Gridded class
+
+                # enforce CMIP-compliant creation_date
+                ds.attrs["creation_date"] = generate_creation_timestamp()
+
+                # Fill all NaNs in numeric variables
+                numeric_vars = [v for v, da in ds.data_vars.items() if np.issubdtype(da.dtype, np.number)]
+                ds[numeric_vars] = ds[numeric_vars].fillna(0)
+                
+                encoding = ds[gr.proxy.name].encoding | {"zlib": True, "complevel": 2} | (encoding_kwargs or {})
+                return ds.to_netcdf(
+                    gr.fname(template_fn, directory),
+                    encoding={gr.proxy.name: encoding},
+                    compute=False,
+                )
 
             return dask.compute(
                 (
-                    gridded.to_netcdf(
-                        template_fn,
-                        callback,
-                        directory=directory,
-                        encoding_kwargs=encoding_kwargs,
-                        compute=False,
-                    ),
-                    gridded.verify(compute=False) if verify else None,
+                    to_netcdf_filled(gridded),                          # write filled NetCDF
+                    gridded.verify(compute=False) if verify else None,  # run verify on original Gridded
                 )
                 for gridded in pathways
                 if not skip(gridded, template_fn, directory)
@@ -445,3 +652,60 @@ class WorkflowDriver:
             harmonized=self.harmonized.data,
             skip_for_total=self.variabledefs.skip_for_total,
         )
+    
+
+    def save_info(self, path: Pathy, prefix: str | None = None):
+        """
+        Save workflow input data and metadata to the specified directory.
+
+        This method creates a directory (if it doesn't already exist) and writes
+        various input data and metadata used in the workflow to separate files.
+        The saved files include model data, historical data, GDP data, region
+        mappings, index raster information, variable definitions, harmonization
+        overrides, and settings.
+
+        Parameters
+        ----------
+        path : Pathy
+            The directory path where the input data and metadata will be saved.
+        prefix : str | None, optional
+            A prefix to prepend to each filename. If None, no prefix is added.
+
+        Notes
+        -----
+        - The method ensures that the directory is created before saving the files.
+        - Each type of data is saved in a separate file for clarity and organization.
+        - The following files are generated:
+            - `<prefix>model.csv`: Contains the model data.
+            - `<prefix>hist.csv`: Contains the historical data.
+            - `<prefix>gdp.csv`: Contains the GDP data.
+            - `<prefix>regionmapping.csv`: Contains the region mapping data filtered by GDP countries.
+            - `<prefix>indexraster_country_info.txt`: Contains metadata about the index raster.
+            - `<prefix>indexraster_region_info.txt`: Contains metadata about the regional index raster.
+            - `<prefix>variabledefs.csv`: Contains the variable definitions.
+            - `<prefix>harm_overrides.csv`: Contains the harmonization overrides.
+            - `<prefix>settings.txt`: Contains the workflow settings in text format.
+        """
+        # Create the directory
+        path.mkdir(parents=True, exist_ok=True)
+
+        # Define a helper function to prepend the prefix to filenames
+        def prefixed_filename(filename: str) -> str:
+            return f"{prefix}_{filename}" if prefix else filename
+
+        # Write out the input data
+        self.model.reset_index().to_csv(Path(path, prefixed_filename("model.csv")))
+        self.hist.reset_index().to_csv(Path(path, prefixed_filename("hist.csv")))
+        self.gdp.reset_index().to_csv(Path(path, prefixed_filename("gdp.csv")))
+        self.regionmapping.filter(self.gdp.pix.unique("country")).data.to_csv(
+            Path(path, prefixed_filename("regionmapping.csv"))
+        )
+        indexraster_info_to_txt(
+            self.indexraster_country, Path(path, prefixed_filename("indexraster_country_info.txt"))
+        )
+        indexraster_info_to_txt(
+            self.indexraster_region, Path(path, prefixed_filename("indexraster_region_info.txt"))
+        )
+        self.variabledefs.data.reset_index().to_csv(Path(path, prefixed_filename("variabledefs.csv")))
+        self.harm_overrides.to_csv(Path(path, prefixed_filename("harm_overrides.csv")))
+        self.settings.to_txt(Path(path, prefixed_filename("settings.txt")))
