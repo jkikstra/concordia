@@ -68,10 +68,11 @@ regionmappings:
     sep: ","
 
 
-country_combinations:
-  sdn_ssd: ["ssd", "sdn"]
-  isr_pse: ["isr", "pse"]
-  srb_ksv: ["srb", "srb (kosovo)"]
+country_combinations: null  # Set to null when no country combinations are needed
+  # Example combinations (currently disabled):
+  # sdn_ssd: ["ssd", "sdn"]
+  # isr_pse: ["isr", "pse"]
+  # srb_ksv: ["srb", "srb (kosovo)"]
 
 luc_sectors:
   - "Agricultural Waste Burning"

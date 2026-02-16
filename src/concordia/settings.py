@@ -31,7 +31,7 @@ class Settings:
     base_year: int
     luc_sectors: list[str]
     regionmappings: dict[str, dict[str, str]]
-    country_combinations: dict[str, list[str]]
+    country_combinations: dict[str, list[str]] | None
     variable_template: str
     # alkalinity_variable: str
 

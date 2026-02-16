@@ -322,9 +322,18 @@ regionmappings = {}
 
 for m, kwargs in settings.regionmappings.items():
     regionmapping = RegionMapping.from_regiondef(**kwargs)
-    regionmapping.data = regionmapping.data.pix.aggregate(
-        country=settings.country_combinations, agg_func="last"
-    )
+    if settings.country_combinations:  # only aggregate if not empty
+        regionmapping.data = regionmapping.data.pix.aggregate(
+            country=settings.country_combinations, agg_func="last"
+        )
+    # Ensure no duplicate country entries (pix.aggregate deduplicates when
+    # country_combinations is set, but without it the raw CSV may have duplicates)
+    if regionmapping.data.index.duplicated().any():
+        n_dups = regionmapping.data.index.duplicated().sum()
+        dups = regionmapping.data.index[regionmapping.data.index.duplicated(keep=False)]
+        print(f"⚠️  {m}: Dropping {n_dups} duplicate country entries from regionmapping")
+        print(f"   Duplicate countries: {sorted(set(dups.tolist()))}")
+        regionmapping.data = regionmapping.data[~regionmapping.data.index.duplicated(keep='last')]
     regionmappings[m] = regionmapping
 
 
@@ -509,8 +518,9 @@ gdp = (
     .rename(index=str.lower, level="country")
     .rename(columns=int)
     .pix.project(["ssp", "country"])
-    .pix.aggregate(country=settings.country_combinations)
 )
+if settings.country_combinations:  # only aggregate if not empty
+    gdp = gdp.pix.aggregate(country=settings.country_combinations)
 
 # SELECT ONLY FUTURE YEARS
 # Get all years in the range (min to max)
@@ -541,8 +551,9 @@ gdp_hist = (
     .rename(index=str.lower, level="country")
     # .rename(columns=int)
     .pix.project(["country"])
-    .pix.aggregate(country=settings.country_combinations)
 )
+if settings.country_combinations:  # only aggregate if not empty
+    gdp_hist = gdp_hist.pix.aggregate(country=settings.country_combinations)
 gdp_hist
 
 ## Merge
@@ -616,7 +627,8 @@ rename_gdp = {"bolivia": "bol",
               "laos": "lao",
               "micronesia": "fsm",
               "moldova": "mda",
-              "kosovo": "srb (kosovo)",
+            #   "kosovo": "srb (kosovo)",
+              "kosovo": "kos",
               "palestine": "pse",
               "north korea": "prk",
               "south korea": "kor",
@@ -629,14 +641,16 @@ rename_gdp = {"bolivia": "bol",
               "world": "World"
              }
 
-hist = hist.pix.aggregate(country=settings.country_combinations)
+if settings.country_combinations:  # only aggregate if not empty
+    hist = hist.pix.aggregate(country=settings.country_combinations)
 
 gdp.index = gdp.index.set_levels(
     gdp.index.levels[gdp.index.names.index("country")].to_series().replace(rename_gdp),
     level="country"
 )
 
-gdp = gdp.pix.aggregate(country=settings.country_combinations)
+if settings.country_combinations:  # only aggregate if not empty
+    gdp = gdp.pix.aggregate(country=settings.country_combinations)
 
 # %%
 SSP_per_pathway = cmip7_utils.guess_ssp(iam_df)
@@ -743,12 +757,29 @@ regionmapping = regionmappings[model_name]
 # %%
 # indexes for countries on a grid
 indexraster = IndexRaster.from_netcdf(
-    settings.gridding_path / "ssp_comb_indexraster.nc", # redo: notebooks\gridding_data\generate_ceds_proxy_netcdfs.py
+    settings.gridding_path / "ssp_comb_indexraster_splitsudankosovopalestine.nc", # redo: notebooks\gridding_data\generate_ceds_proxy_netcdfs.py
     chunks={},
 ).compute()
-indexraster_region = indexraster.dissolve(
-    regionmapping.filter(indexraster.index).data.rename("country")
-).compute()
+
+# Filter regionmapping and prepare for dissolve
+filtered_regionmapping = regionmapping.filter(indexraster.index).data.rename("country")
+
+# Check for duplicate index labels in the mapping
+if filtered_regionmapping.index.duplicated().any():
+    duplicates = filtered_regionmapping.index[filtered_regionmapping.index.duplicated(keep=False)]
+    print(f"⚠️  Found {len(duplicates.unique())} countries with duplicate region mappings:")
+    for dup in sorted(duplicates.unique()):
+        regions = list(filtered_regionmapping[filtered_regionmapping.index == dup].values)
+        print(f"  {dup}: {regions}")
+    print("  → Keeping first occurrence for dissolve()")
+    filtered_regionmapping = filtered_regionmapping[~filtered_regionmapping.index.duplicated(keep='first')]
+
+indexraster_region = indexraster.dissolve(filtered_regionmapping).compute()
+
+print(sorted(indexraster.index.tolist()))
+
+# 'kos' in regionmapping.index.tolist()
+# 'srb (kosovo)' in np.unique(indexraster.index)
 
 # %%
 iam_df.columns
@@ -805,7 +836,7 @@ workflow = WorkflowDriver(
     # gdp
     GDP_per_pathway, #select_only_countries_with_all_info(GDP_per_pathway),
     # regionmapping
-    regionmapping.filter(countries_with_hist_and_gdp_and_regionmapping_data[~countries_with_hist_and_gdp_and_regionmapping_data.isin(['myt','gum'])]), # mayotte and guam are missing some historical data for some sectors
+    regionmapping.filter(countries_with_hist_and_gdp_and_regionmapping_data), # missing historical data for any country (especially, ['myt', 'gum', 'kos', 'pse') is zero-filled above
     # indexraster_country
     indexraster,
     # indexraster_region
