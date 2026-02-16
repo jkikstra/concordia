@@ -934,6 +934,9 @@ if run_main:
         "Other CDR",
         "Enhanced Weathering",
         "BECCS",
+        "Ocean",
+        "Biochar",
+        "Soil Carbon Management"
     ]
     
     row_mins = workflow.downscaled.data.select_dtypes("number").min(axis=1)
