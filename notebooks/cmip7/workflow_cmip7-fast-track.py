@@ -1170,6 +1170,11 @@ if run_main:
     )
     print(workflow.downscaled.data.loc[~isin(region="World")].reset_index().country.unique())
 
+# %% [markdown]
+# #### Quality control tests on downscaled data
+
+# %% 
+if run_main:
     # check for negative values where we don't expect them
     
     cdr_sectors = [
@@ -1366,9 +1371,6 @@ if run_main:
 
 # %%
 cmip7_utils.DS_ATTRS
-
-# %%
-SKIP_EXISTING_MAIN_WORKFLOW_FILES = True
 
 # %%
 if run_main_gridding: # full run for all 10 species takes about ~1hour for 1 scenario
@@ -3282,7 +3284,7 @@ def plot_ceds_vs_scenario_comparison(ceds_da, scen_da, gas, sectors, time_slice,
     return fig
 
 # %%
-# NOTE: takes about ~mins per figure
+# NOTE: takes about ~1 min per figure
 
 folder_plots = settings.out_path / GRIDDING_VERSION / "plots"
 folder_plots.mkdir(parents=True, exist_ok=True)
