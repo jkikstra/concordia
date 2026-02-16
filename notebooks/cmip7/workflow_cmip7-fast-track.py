@@ -924,6 +924,192 @@ def assert_strings_covered(array1, array2):
     assert all(s in array2 for s in array1), "Not all regions are covered in the regionmapping"
 assert_strings_covered(reg_model, reg_mapped)
 
+# %%
+def check_harmonization_consistency(workflow, settings, version_path, atol=1e-6, rtol=1.0,
+                                     region=None, gas=None, sector=None):
+    """
+    Check whether the model data is already harmonized to the historical data.
+    
+    Compares model base-year values at regional level with aggregated country-level history.
+    Saves a mismatch table to CSV if any discrepancies found.
+    
+    Parameters
+    ----------
+    workflow : WorkflowDriver
+        Workflow object with model, hist, and regionmapping attributes
+    settings : Settings
+        Settings object with base_year attribute
+    version_path : Path
+        Output directory for saving mismatch CSV
+    atol : float, default 1e-6
+        Absolute tolerance for "exact match"
+    rtol : float, default 1.0
+        Relative tolerance in percent for "close match"
+    region : str or list of str, optional
+        Filter to specific region(s). If None, all regions included.
+    gas : str or list of str, optional
+        Filter to specific gas/species (e.g., "CO2", "CO"). If None, all gases included.
+    sector : str or list of str, optional
+        Filter to specific sector(s). If None, all sectors included.
+    """
+    base_year = settings.base_year
+    
+    print(f"\n{'='*80}")
+    print(f"HARMONIZATION CONSISTENCY CHECK (base year = {base_year})")
+    
+    # Describe filters if applied
+    filters_applied = []
+    if region is not None:
+        region_list = [region] if isinstance(region, str) else region
+        filters_applied.append(f"Region(s): {', '.join(region_list)}")
+    if gas is not None:
+        gas_list = [gas] if isinstance(gas, str) else gas
+        filters_applied.append(f"Gas/Species: {', '.join(gas_list)}")
+    if sector is not None:
+        sector_list = [sector] if isinstance(sector, str) else sector
+        filters_applied.append(f"Sector(s): {', '.join(sector_list)}")
+    
+    if filters_applied:
+        print(f"Filters: {' | '.join(filters_applied)}")
+    
+    print(f"{'='*80}\n")
+
+    # Aggregate country-level history to IAM regions
+    hist_agg = workflow.regionmapping.aggregate(workflow.hist.copy(), dropna=True)
+
+    # Get model data for non-World regions that exist in the regionmapping
+    model_regions = workflow.regionmapping.data.unique()
+    model_for_check = workflow.model.loc[isin(region=model_regions)].copy()
+
+    # Apply filters before comparison
+    if region is not None:
+        region_list = [region] if isinstance(region, str) else region
+        model_for_check = model_for_check.loc[isin(region=region_list)]
+        hist_agg = hist_agg.loc[isin(region=region_list)]
+    
+    if gas is not None:
+        gas_list = [gas] if isinstance(gas, str) else gas
+        model_for_check = model_for_check.loc[isin(gas=gas_list)]
+        hist_agg = hist_agg.loc[isin(gas=gas_list)]
+    
+    if sector is not None:
+        sector_list = [sector] if isinstance(sector, str) else sector
+        model_for_check = model_for_check.loc[isin(sector=sector_list)]
+        hist_agg = hist_agg.loc[isin(sector=sector_list)]
+
+    # Align on common (region, gas, sector, unit) index
+    model_by = model_for_check.droplevel(["model", "scenario"])[[base_year]].rename(columns={base_year: "model"})
+    hist_by = hist_agg[[base_year]].rename(columns={base_year: "hist"})
+
+    comparison = model_by.join(hist_by, how="inner")
+
+    if len(comparison) == 0:
+        print("⚠️  No matching data after applying filters. Check region/gas/sector names.")
+        return
+
+    # Compute absolute and relative differences
+    comparison["abs_diff"] = comparison["model"] - comparison["hist"]
+    # Avoid division by zero: relative diff only where hist != 0
+    comparison["rel_diff_pct"] = comparison.apply(
+        lambda row: (row["abs_diff"] / row["hist"] * 100) if abs(row["hist"]) > 1e-15 else (
+            0.0 if abs(row["model"]) < 1e-15 else float("inf")
+        ), axis=1
+    )
+
+    # Classify matches
+    exact_match = (comparison["abs_diff"].abs() < atol)
+    close_match = (comparison["rel_diff_pct"].abs() <= rtol) & ~exact_match
+    mismatch = ~exact_match & ~close_match
+
+    n_total = len(comparison)
+    n_exact = exact_match.sum()
+    n_close = close_match.sum()
+    n_mismatch = mismatch.sum()
+
+    print(f"Compared {n_total} (region, gas, sector, unit) combinations at base year {base_year}:")
+    print(f"  ✅ Exact match (|diff| < {atol}):         {n_exact} ({n_exact/n_total*100:.1f}%)")
+    print(f"  ≈  Close match (rel diff ≤ {rtol}%):       {n_close} ({n_close/n_total*100:.1f}%)")
+    print(f"  ❌ Mismatch (rel diff > {rtol}%):           {n_mismatch} ({n_mismatch/n_total*100:.1f}%)")
+
+    if n_mismatch > 0:
+        mismatched = comparison[mismatch].copy()
+        mismatched = mismatched.sort_values("rel_diff_pct", key=abs, ascending=False)
+        
+        print(f"\n⚠️  Top mismatches (model vs aggregated history):")
+        print(f"{'Region':<25} {'Gas':<12} {'Sector':<35} {'Model':>12} {'Hist':>12} {'Diff%':>10}")
+        print("-" * 110)
+        for idx, row in mismatched.head(30).iterrows():
+            region = idx[0] if isinstance(idx, tuple) else str(idx)
+            gas = idx[1] if isinstance(idx, tuple) and len(idx) > 1 else ""
+            sector = idx[2] if isinstance(idx, tuple) and len(idx) > 2 else ""
+            rdiff = f"{row['rel_diff_pct']:.2f}%" if not float("inf") == abs(row['rel_diff_pct']) else "inf"
+            print(f"{str(region):<25} {str(gas):<12} {str(sector):<35} {row['model']:>12.4f} {row['hist']:>12.4f} {rdiff:>10}")
+        
+        if len(mismatched) > 30:
+            print(f"  ... and {len(mismatched) - 30} more mismatches")
+        
+        # Save full comparison to CSV for inspection
+        mismatch_file = version_path / f"check_harmonization_consistency_{settings.version}.csv"
+        mismatched.to_csv(mismatch_file)
+        print(f"\n  Full mismatch table saved to: {mismatch_file}")
+        
+        print(f"\n📋 CONCLUSION: Model data does NOT perfectly match aggregated history at base year {base_year}.")
+        print(f"   The concordia harmonization step will adjust {n_mismatch} variable(s).")
+        print(f"   If input data is already harmonized upstream, consider skip_harmonization=True.")
+    else:
+        print(f"\n✅ CONCLUSION: Model base-year values match aggregated history for all variables.")
+        print(f"   The data appears to be already harmonized. Harmonization will be a near-pass-through.")
+        print(f"   Consider skip_harmonization=True to avoid potential artefacts from re-harmonization.")
+
+    # Also check variables in model but NOT in history
+    model_index = model_for_check.droplevel(["model", "scenario"]).index
+    hist_index = hist_agg.index
+    in_model_not_hist = model_index.difference(hist_index)
+
+    if len(in_model_not_hist) > 0:
+        unique_sectors = set(idx[2] if len(idx) > 2 else str(idx) for idx in in_model_not_hist)
+        print(f"\n⚠️  {len(in_model_not_hist)} model rows have no matching history (sectors: {sorted(unique_sectors)})")
+
+    # Save relevant regionmapping
+    filtered_regionmapping = workflow.regionmapping
+    if region is not None or gas is not None or sector is not None:
+        # Extract region names from the filtered comparison, then find the countries that map to those regions
+        filtered_regions = comparison.index.get_level_values('region').unique()
+        # regionmapping.data is a Series: country (index) -> region (values)
+        countries_in_filtered_regions = workflow.regionmapping.data[
+            workflow.regionmapping.data.isin(filtered_regions)
+        ].index.tolist()
+        filtered_regionmapping = workflow.regionmapping.filter(countries_in_filtered_regions)
+    
+    regionmapping_file = version_path / f"check_harmonization_consistency_regionmapping_{settings.version}.csv"
+    filtered_regionmapping.data.to_csv(regionmapping_file)
+    print(f"\nRegionmapping saved to: {regionmapping_file}")
+
+# %%
+check_harmonization_consistency(workflow, settings, version_path)
+
+# Check all regions (original behavior)
+check_harmonization_consistency(workflow, settings, version_path)
+
+# Check only one region
+check_harmonization_consistency(workflow, settings, version_path, region="Middle East and Central Asia")
+
+# Check multiple regions
+check_harmonization_consistency(workflow, settings, version_path, region=["Middle East and Central Asia", "Europe"])
+
+# Check only CO2
+check_harmonization_consistency(workflow, settings, version_path, gas="CO2")
+
+# Check only Agricultural Waste Burning sector
+check_harmonization_consistency(workflow, settings, version_path, sector="Agricultural Waste Burning")
+
+# Combine filters
+check_harmonization_consistency(workflow, settings, version_path, 
+                                region="REMIND-MAgPIE 3.5-4.11|Middle East and North Africa", 
+                                gas="CO", 
+                                sector="Agricultural Waste Burning")
+
+
 # %% [markdown]
 # # Harmonize, downscale and grid everything
 #
