@@ -827,6 +827,63 @@ def rename_voc_to_nmvoc_hist(idx):
 hist.index = hist.index.map(rename_voc_to_nmvoc_hist) 
 
 # %%
+# Fill missing historical data with zeros for countries in the regionmapping
+# that don't have data for all (gas, sector, unit) combinations.
+# This prevents MissingHistoricalError in the aneris downscaler.
+
+# Get all countries that will be used in the workflow
+workflow_countries = countries_with_hist_and_gdp_and_regionmapping_data
+
+# Build the full set of (gas, sector, unit) from hist (excluding World)
+hist_gas_sector_unit = (
+    hist.loc[~isin(country="World")]
+    .index.droplevel("country")
+    .drop_duplicates()
+)
+
+# Build the expected full index: every workflow country × every (gas, sector, unit)
+full_index = pd.MultiIndex.from_tuples(
+    [(c, g, s, u) for c in workflow_countries for g, s, u in hist_gas_sector_unit],
+    names=["country", "gas", "sector", "unit"]
+)
+
+# Find which entries are missing from hist
+existing_hist_index = hist.index
+missing_from_hist = full_index.difference(existing_hist_index)
+
+if len(missing_from_hist) > 0:
+    # Create zero-filled rows for missing entries
+    zero_rows = pd.DataFrame(
+        0.0,
+        index=missing_from_hist,
+        columns=hist.columns
+    )
+    hist = pd.concat([hist, zero_rows]).sort_index()
+    
+    # Report
+    missing_report = missing_from_hist.to_frame(index=False)
+    report_dir = Path(version_path, "workflow_driver_data")
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_file = report_dir / f"missing_historical_filled_with_zeros_{settings.version}.csv"
+    missing_report.to_csv(report_file, index=False)
+    
+    # Summary
+    n_countries = missing_report["country"].nunique()
+    n_combos = len(missing_report)
+    print(f"⚠️  Filled {n_combos} missing historical entries with zeros ")
+    print(f"   ({n_countries} countries affected: {sorted(missing_report['country'].unique())})")
+    print(f"   Report saved to: {report_file}")
+    
+    # Show summary by country
+    print(f"\n   Missing entries per country:")
+    for country, group in missing_report.groupby("country"):
+        sectors = sorted(group["sector"].unique())
+        gases = sorted(group["gas"].unique())
+        print(f"     {country}: {len(group)} entries — gases: {gases}, sectors: {sectors}")
+else:
+    print("✅ No missing historical data — all countries have complete coverage")
+
+# %%
 workflow = WorkflowDriver(
     # model
     # iam_df.loc[:, iam_df.columns.intersection(GDP_per_pathway.columns.tolist())], # model ; until GDP is interpolated, do only for years in GDP_per_pathway.columns.tolist()
