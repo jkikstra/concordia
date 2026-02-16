@@ -1265,6 +1265,59 @@ if run_main:
 
 # %%
 if run_main:
+    # Check for global totals that are suspiciously close to zero but not exactly zero
+    # This catches cases where harmonization/downscaling artifacts reduce meaningful
+    # emissions to near-zero values (e.g., order of 1e-6 or smaller)
+    
+    near_zero_threshold = 1e-6  # absolute value threshold
+    
+    # Sum across all countries to get global totals per (gas, sector, unit) for each year
+    downscaled_data = workflow.downscaled.data
+    global_totals = downscaled_data.groupby(["gas", "sector", "unit"]).sum()
+    
+    # For each (gas, sector, unit), check if any year has a value that is
+    # near-zero (|value| <= threshold) but not exactly zero
+    numeric_cols = global_totals.select_dtypes("number")
+    is_near_zero = (numeric_cols.abs() <= near_zero_threshold) & (numeric_cols.abs() > 0)
+    
+    # Flag rows where ANY year has a near-zero global total
+    rows_with_near_zero = is_near_zero.any(axis=1)
+    
+    if rows_with_near_zero.any():
+        near_zero_df = global_totals[rows_with_near_zero]
+        
+        # Count how many years are affected per row
+        n_years_affected = is_near_zero[rows_with_near_zero].sum(axis=1)
+        
+        # Get the minimum absolute non-zero value per row for context
+        abs_nonzero = numeric_cols[rows_with_near_zero].replace(0, float("nan")).abs()
+        min_abs_val = abs_nonzero.min(axis=1)
+        
+        problem_info = near_zero_df.index.to_frame(index=False)
+        problem_info["n_years_near_zero"] = n_years_affected.values
+        problem_info["min_abs_value"] = min_abs_val.values
+        
+        print(f"⚠️  Found {rows_with_near_zero.sum()} (gas, sector) combinations with near-zero "
+              f"global totals (0 < |total| ≤ {near_zero_threshold}):")
+        print(f"{'Gas':<12} {'Sector':<35} {'Unit':<20} {'# Years':>8} {'Min |value|':>14}")
+        print("-" * 95)
+        for _, row in problem_info.iterrows():
+            print(f"{str(row['gas']):<12} {str(row['sector']):<35} {str(row['unit']):<20} "
+                  f"{row['n_years_near_zero']:>8} {row['min_abs_value']:>14.2e}")
+        
+        # Save for inspection
+        near_zero_file = version_path / f"qc_near_zero_global_totals_{settings.version}.csv"
+        near_zero_df.to_csv(near_zero_file)
+        print(f"\n  Near-zero global totals saved to: {near_zero_file}")
+        print("  These may indicate harmonization/downscaling artifacts that should be investigated.")
+    else:
+        print("✅ No suspiciously near-zero global totals found")
+
+# END OF DOWNSCALING CHECK
+
+
+# %%
+if run_main:
     # Get unique countries from each dataframe
     # what countries do we have in each data set?
     countries_with_gdp_data = GDP_per_pathway.pix.unique("country") # as Index
