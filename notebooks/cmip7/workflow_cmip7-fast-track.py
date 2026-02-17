@@ -1141,6 +1141,130 @@ check_harmonization_consistency(workflow, settings, version_path,
 # %%
 if run_main:
     downscaled = workflow.harmonize_and_downscale() # For a 1 scenario, this takes about 50 seconds on Jarmo's DELL laptop.
+    
+    # ─── Post-downscaling fixes ───────────────────────────────────────────
+    # These fixes are applied to BOTH the local `downscaled` DataFrame AND
+    # the workflow object's internal state (workflow.downscaled.*), so that
+    # they carry through to workflow.grid(), QC checks, and data exports.
+    
+    # Helper: apply an in-place zeroing fix to a DataFrame
+    def _apply_zero_fix(df, row_mask, cell_mask_fn, label):
+        """Zero out cells matching cell_mask_fn within rows matching row_mask. Returns count."""
+        if df is None or row_mask is None:
+            return 0
+        if not row_mask.any():
+            return 0
+        data = df.loc[row_mask]
+        cell_mask = cell_mask_fn(data)
+        n = cell_mask.sum().sum()
+        if n > 0:
+            df.loc[row_mask] = data.where(~cell_mask, 0.0)
+        return n
+    
+    # FIX 1: Zero out tiny negatives in Agricultural Waste Burning for REMIND-MAgPIE
+    # The harmonization/downscaling can produce very small negative values for AWB
+    # in certain countries. If the absolute value is < 1e-4, set to zero.
+    print("\n[FIX 1] Checking for small negatives in AWB (REMIND-MAgPIE)...")
+    def _awb_row_mask(df):
+        return (
+            (df.index.get_level_values("sector") == "Agricultural Waste Burning") &
+            (df.index.get_level_values("model") == "REMIND-MAgPIE 3.5-4.11")
+        )
+    def _awb_cell_mask(data):
+        return (data < 0) & (data.abs() < 1e-4)
+    
+    n_fixed_1 = _apply_zero_fix(downscaled, _awb_row_mask(downscaled), _awb_cell_mask, "downscaled")
+    # Also fix workflow internal countrylevel (has extra method/region index levels)
+    cl = workflow.downscaled.countrylevel
+    if cl is not None:
+        _apply_zero_fix(cl, _awb_row_mask(cl), _awb_cell_mask, "countrylevel")
+    
+    if n_fixed_1 > 0:
+        print(f"  Set {n_fixed_1} small negative AWB values to zero")
+    else:
+        print(f"  [OK] No small negative AWB values found")
+
+    # FIX 2: Zero out near-zero global (International Shipping / Aircraft) values
+    # These global-level sectors can end up with very small residual values (< 1e-6)
+    # from harmonization artifacts. Set them to zero.
+    print("\n[FIX 2] Checking for near-zero global Shipping/Aircraft values...")
+    def _global_row_mask(df):
+        if "country" not in df.index.names:
+            return None
+        return (
+            (df.index.get_level_values("country") == "World") &
+            (df.index.get_level_values("sector").isin(["International Shipping", "Aircraft"]))
+        )
+    def _global_cell_mask(data):
+        return (data.abs() < 1e-6)  # includes exact zeros, but where(~mask, 0.0) is no-op for those
+    
+    n_fixed_2 = _apply_zero_fix(downscaled, _global_row_mask(downscaled), _global_cell_mask, "downscaled")
+    # Also fix workflow internal globallevel
+    gl = workflow.downscaled.globallevel
+    if gl is not None:
+        _apply_zero_fix(gl, _global_row_mask(gl), _global_cell_mask, "globallevel")
+    
+    if n_fixed_2 > 0:
+        print(f"  Set {n_fixed_2} near-zero global Shipping/Aircraft values to zero")
+    else:
+        print(f"  [OK] No near-zero global Shipping/Aircraft values found")
+
+    # FIX 3: Handle remaining negative values for non-CO2 gases
+    # For non-CO2 gases: throw error if value < -1e-10, set to zero if >= -1e-10 and < 0
+    # For CO2: allow negatives (carbon capture is legitimate)
+    print("\n[FIX 3] Checking remaining negatives for non-CO2 gases...")
+    
+    # Get non-CO2 rows
+    if "gas" in downscaled.index.names:
+        non_co2_rows = downscaled.index.get_level_values("gas") != "CO2"
+        downscaled_non_co2 = downscaled.loc[non_co2_rows]
+        
+        # Check for significant negatives (< -1e-10) in non-CO2 gases
+        sig_neg_mask = downscaled_non_co2 < -1e-10
+        if sig_neg_mask.any().any():
+            sig_neg_values = downscaled_non_co2[sig_neg_mask]
+            print(f"  ERROR: Found significantly negative values (< -1e-10) in non-CO2 gases:")
+            # Show non-zero entries
+            for col in sig_neg_values.columns:
+                col_data = sig_neg_values[col]
+                if col_data.notna().any():
+                    print(f"    {col}:")
+                    print(col_data[col_data.notna()])
+            raise ValueError("Significant negative values (< -1e-10) found in non-CO2 gases after harmonization")
+        
+        # Set small negatives (>= -1e-10 and < 0) in non-CO2 gases to zero
+        small_neg_mask = (downscaled_non_co2 >= -1e-10) & (downscaled_non_co2 < 0)
+        n_small_fixed = small_neg_mask.sum().sum()
+        
+        if n_small_fixed > 0:
+            # Apply fix to main downscaled DataFrame
+            downscaled.loc[non_co2_rows] = downscaled.loc[non_co2_rows].where(
+                (downscaled.loc[non_co2_rows] >= 0) | (downscaled.loc[non_co2_rows].isna()),
+                0.0
+            )
+            
+            # Also fix workflow internal sub-levels
+            for _attr in ['globallevel', 'regionlevel', 'countrylevel']:
+                _df = getattr(workflow.downscaled, _attr)
+                if _df is not None and "gas" in _df.index.names:
+                    _non_co2_rows = _df.index.get_level_values("gas") != "CO2"
+                    _df.loc[_non_co2_rows] = _df.loc[_non_co2_rows].where(
+                        (_df.loc[_non_co2_rows] >= 0) | (_df.loc[_non_co2_rows].isna()),
+                        0.0
+                    )
+            
+            print(f"  Set {n_small_fixed} small negative values (>= -1e-10, < 0) to zero for non-CO2 gases")
+        else:
+            print(f"  [OK] No small negative values found in non-CO2 gases")
+    else:
+        print(f"  [SKIP] No 'gas' level in index - skipping non-CO2 check")
+    
+    # Cache the fixed downscaled data and monkey-patch harmonize_and_downscale
+    # so that workflow.grid() uses the fixed data instead of re-running from scratch.
+    _fixed_downscaled = downscaled
+    workflow.harmonize_and_downscale = lambda variabledefs=None: _fixed_downscaled
+    print("\n[OK] Fixed downscaled data cached — workflow.grid() will use the patched result")
+
 
 # %% [markdown]
 # ### Export harmonized scenarios
