@@ -3543,14 +3543,15 @@ LOCATIONS = {
     # 'Delhi': (28.6139, 77.2090),
     # 'Spain': (40.4637, 3.7492), # central spain, close to Madrid
     # 'New_York': (40.7128, -74.0060),
-    'London': (51.5074, -0.1278),
+    # 'London': (51.5074, -0.1278),
     # 'Tokyo': (35.6762, 139.6503),
     # 'São_Paulo': (-23.5505, -46.6333),
-    'Lagos': (6.5244, 3.3792),
+    # 'Lagos': (6.5244, 3.3792),
+    'South Sudan': (6.8770, 31.3070),
     # 'Mumbai': (19.0760, 72.8777),
     # 'Rural_Amazon': (-3.4653, -62.2159),  # Remote area in Amazon
     # 'North_Atlantic': (45.0, -30.0),     # Shipping route
-    'South_China_Sea': (12.0, 113.0)     # Shipping route
+    # 'South_China_Sea': (12.0, 113.0)     # Shipping route
 }
 
 # %%
