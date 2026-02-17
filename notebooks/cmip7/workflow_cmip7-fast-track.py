@@ -1137,6 +1137,26 @@ check_harmonization_consistency(workflow, settings, version_path,
 # hot-patch to deal with proxies that have NA values
 # see src/concordia/_patches_ptolemy.py
 
+# %%
+# DEBUG: Patch base_year_pattern to diagnose negative downscaled values
+# This patches aneris.downscaling.methods.base_year_pattern to:
+# 1. Log country coverage mismatches between hist and regionmap
+# 2. Log NaN values in weights (from missing countries)
+# 3. Log negative weights/results
+# Set fill_missing_countries=True to fix the issue by filling missing countries with 0
+# Set return_debug_info=True to store weights and other debug info for manual inspection
+#
+# IMPORTANT: base_year_pattern is only used for Agriculture/LULUCF sectors by default.
+# Most sectors use ipat_2100_gdp (intensity_convergence).
+# For Agricultural Waste Burning, we use patch_base_year_pattern to capture weights.
+from debug_base_year_pattern import patch_base_year_pattern, get_debug_info
+patch_base_year_pattern(fill_missing_countries=False, log_diagnostics=True, return_debug_info=True)
+
+# Patch to capture harmonized data before downscaling (or skip harmonization entirely)
+# Set skip_harmonization=True to test if harmonization is creating the negatives
+from patch_harmonization import patch_harmonize_and_downscale, get_harmonized_data
+skip_harmonization = False  # Set to True to skip harmonization and only downscale
+patch_harmonize_and_downscale(workflow, skip_harmonization=skip_harmonization)
 
 # %%
 if run_main:
@@ -1264,6 +1284,113 @@ if run_main:
     _fixed_downscaled = downscaled
     workflow.harmonize_and_downscale = lambda variabledefs=None: _fixed_downscaled
     print("\n[OK] Fixed downscaled data cached — workflow.grid() will use the patched result")
+
+# debug downscaling
+debug_harmonize_info = True
+if debug_harmonize_info:
+    # Get the stored debug info - now returns list of all calls
+    all_calls = get_debug_info()
+    
+    if not all_calls:
+        print("[WARNING] No debug info captured - base_year_pattern may not have been called")
+    else:
+        print(f"\n[OK] Debug info captured from {len(all_calls)} call(s)")
+        for i, call_info in enumerate(all_calls):
+            sectors = call_info.get('sectors', [])
+            print(f"  Call #{call_info['call_number']}: {', '.join(sectors) if sectors else 'unknown sectors'}")
+        
+        # Get specifically the Agricultural Waste Burning call
+        awb_calls = get_debug_info(sector='Agricultural Waste Burning')
+        
+        if not awb_calls:
+            print("\n[WARNING] No 'Agricultural Waste Burning' sector found in any call")
+        else:
+            print(f"\n[OK] Found {len(awb_calls)} call(s) with Agricultural Waste Burning")
+            
+            # Use the first call with AWB
+            awb_info = awb_calls[0]
+            weights = awb_info['weights']
+            result = awb_info['result']
+            res_before_where = awb_info['res_before_where']
+            
+            # Filter for Agricultural Waste Burning
+            awb_mask = weights.index.get_level_values('sector') == 'Agricultural Waste Burning'
+            if awb_mask.any():
+                print(f"\n{'='*70}")
+                print("WEIGHTS FOR AGRICULTURAL WASTE BURNING")
+                print(f"{'='*70}")
+                awb_weights = weights[awb_mask]
+                print(f"\nShape: {awb_weights.shape}")
+                print(f"\nSummary statistics:")
+                print(awb_weights.describe())
+                print(f"\nFirst 20 weights:")
+                print(awb_weights.head(20))
+                
+                # Save weights to CSV for detailed inspection
+                weights_file = version_path / f"debug_weights_awb_{settings.version}.csv"
+                awb_weights.to_csv(weights_file)
+                print(f"\n[OK] Saved AWB weights to: {weights_file}")
+                
+                # Check for negatives in results
+                awb_result = result[result.index.get_level_values('sector') == 'Agricultural Waste Burning']
+                negative_in_result = (awb_result < 0).any(axis=1)
+                if negative_in_result.any():
+                    print(f"\n[WARNING] Found {negative_in_result.sum()} AWB trajectories with negative values")
+                    neg_awb = awb_result[negative_in_result]
+                    print("\nTrajectories with negatives:")
+                    print(neg_awb)
+                    
+                    # Save negative results
+                    neg_file = version_path / f"debug_negative_awb_{settings.version}.csv"
+                    neg_awb.to_csv(neg_file)
+                    print(f"[OK] Saved negative AWB results to: {neg_file}")
+                    
+                    # Also check res_before_where
+                    awb_before = res_before_where[res_before_where.index.get_level_values('sector') == 'Agricultural Waste Burning']
+                    neg_before = (awb_before < 0).any(axis=1)
+                    if neg_before.any():
+                        print(f"\n[WARNING] Negatives present BEFORE where() clause: {neg_before.sum()} rows")
+                        before_file = version_path / f"debug_negative_awb_before_where_{settings.version}.csv"
+                        awb_before[neg_before].to_csv(before_file)
+                        print(f"[OK] Saved to: {before_file}")
+    
+    # Check harmonized data (before downscaling)
+    print(f"\n{'='*70}")
+    print("HARMONIZED DATA (before downscaling)")
+    print(f"{'='*70}")
+    harmonized = get_harmonized_data("harmonized_before_downscaling")
+    if harmonized is not None:
+        print(f"Retrieved harmonized data: {harmonized.shape}")
+        
+        # Check for AWB MENA
+        if 'sector' in harmonized.index.names and 'region' in harmonized.index.names and 'gas' in harmonized.index.names:
+            awb_mask = (harmonized.index.get_level_values('sector') == 'Agricultural Waste Burning') & \
+                       (harmonized.index.get_level_values('gas') == 'CO')
+            if awb_mask.any():
+                awb_harm = harmonized[awb_mask]
+                print(f"\nAWB CO rows in harmonized data: {len(awb_harm)}")
+                
+                # Focus on MENA
+                mena_mask = awb_harm.index.get_level_values('region').str.contains('Middle East', na=False)
+                if mena_mask.any():
+                    mena_awb_harm = awb_harm[mena_mask]
+                    print(f"MENA AWB CO rows: {len(mena_awb_harm)}")
+                    
+                    if len(mena_awb_harm) > 0:
+                        row = mena_awb_harm.iloc[0]
+                        print(f"\nMENA AWB CO values AFTER harmonization, BEFORE downscaling:")
+                        for year in [2023, 2024, 2025, 2026, 2027, 2030, 2050, 2080, 2100]:
+                            if year in row.index:
+                                val = row[year]
+                                status = "NEGATIVE!" if val < 0 else ("zero" if val == 0 else "positive")
+                                print(f"  {year}: {val:.10f} ({status})")
+                        
+                        # Save harmonized MENA AWB
+                        harm_file = version_path / f"debug_harmonized_mena_awb_{settings.version}.csv"
+                        mena_awb_harm.to_csv(harm_file)
+                        print(f"\n[OK] Saved harmonized MENA AWB to: {harm_file}")
+    else:
+        print("[WARNING] No harmonized data captured")
 
 
 # %% [markdown]
