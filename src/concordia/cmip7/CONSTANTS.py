@@ -107,7 +107,7 @@ def return_marker_information(m, v="cmip7_esgf_v0_alpha", fixed_metadata=False, 
             SCENARIO_SELECTION = "SSP2 - Medium-Low Emissions"
         if m == "l":
             MODEL_SELECTION = "MESSAGEix-GLOBIOM-GAINS 2.1-M-R12"
-            SCENARIO_SELECTION = "SSP2 - Low Emissions_f"
+            SCENARIO_SELECTION = "SSP2 - Low Emissions"
         if m == "ln":
             MODEL_SELECTION = "AIM 3.0"
             SCENARIO_SELECTION = "SSP2 - Low Overshoot_a" # (email from Shinichiro, weekend of 25.10.2025)
