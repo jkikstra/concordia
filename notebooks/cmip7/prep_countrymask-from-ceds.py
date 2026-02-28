@@ -32,17 +32,17 @@ from concordia.cmip7.utils import read_r_variable, read_r_to_da
 from concordia.settings import Settings
 
 # %%
-HARMONIZATION_VERSION = "cmip7_esgf_v0_alpha"
+HARMONIZATION_VERSION = "try_sudansplit"
 
-CONFIG_FILE = "config_cmip7_esgf_v0_alpha.yaml"
+CONFIG_FILE = "config_cmip7_v0-4-0.yaml"
 
 try:
-    SETTINGS_FILE = Path(__file__).parent.parent / CONFIG_FILE
+    SETTINGS_FILE = Path(__file__).parent.parent / "notebooks" / "cmip7" / CONFIG_FILE
     settings = Settings.from_config(version=HARMONIZATION_VERSION,
                                 local_config_path=Path(Path.cwd(),
                                                        SETTINGS_FILE))
 except (NameError, FileNotFoundError):
-    SETTINGS_FILE = Path().resolve() / CONFIG_FILE
+    SETTINGS_FILE = Path().resolve() / "notebooks" / "cmip7" / CONFIG_FILE
     settings = Settings.from_config(version=HARMONIZATION_VERSION,
                                 local_config_path=Path(Path.cwd(),
                                                        SETTINGS_FILE))
@@ -65,7 +65,9 @@ settings.country_combinations
 
 # %%
 def mask_to_ary(row):
-    a = pyreadr.read_r(row.file)[f"{row.iso}_mask"]
+    # R file keys use original iso names; 'kos' was renamed from 'srb (kosovo)'
+    r_iso = "srb (kosovo)" if row.iso == "kos" else row.iso
+    a = pyreadr.read_r(row.file)[f"{r_iso}_mask"]
     lat = template.lat[::-1][row.start_row - 1 : row.end_row]
     lon = template.lon[row.start_col - 1 : row.end_col]
     da = xr.DataArray(
@@ -84,6 +86,8 @@ def gen_mask():
     )
     idxs = pd.read_csv(settings.gridding_path / "country_location_index_05.csv")
     data = pd.merge(df, idxs, on="iso")
+    # Rename 'srb (kosovo)' to 'kos' to align with regionmapping iso codes
+    data["iso"] = data["iso"].replace({"srb (kosovo)": "kos"})
     mask = xr.concat([mask_to_ary(s) for i, s in data.iterrows()], data.iso)
     return mask
 
@@ -91,17 +95,24 @@ def gen_mask():
 # %%
 def recombine_mask(mask, include_world=True):
     country_combinations = settings.country_combinations
-    for comb, (iso1, iso2) in country_combinations.items():
-        mask = xr.concat(
-            [
-                mask,
-                (
-                    mask.sel(iso=iso1).fillna(0) + mask.sel(iso=iso2).fillna(0)
-                ).assign_coords({"iso": comb}),
-            ],
-            dim="iso",
-        )
-    comb_mask = mask.drop_sel(iso=list(itertools.chain(*country_combinations.values())))
+
+    # Only combine countries if country_combinations is defined
+    if country_combinations:
+        for comb, (iso1, iso2) in country_combinations.items():
+            mask = xr.concat(
+                [
+                    mask,
+                    (
+                        mask.sel(iso=iso1).fillna(0) + mask.sel(iso=iso2).fillna(0)
+                    ).assign_coords({"iso": comb}),
+                ],
+                dim="iso",
+            )
+        comb_mask = mask.drop_sel(iso=list(itertools.chain(*country_combinations.values())))
+    else:
+        # No combinations defined, use mask as-is
+        comb_mask = mask
+
     if include_world:
         comb_mask = xr.concat(
             [
@@ -160,7 +171,7 @@ def mask_to_indexraster(mask):
 def gen_indexraster(mask):
     print("Generating indexraster")
     indexraster = mask_to_indexraster(mask)
-    indexraster.to_netcdf(settings.gridding_path / "ssp_comb_indexraster.nc")
+    indexraster.to_netcdf(settings.gridding_path / "ssp_comb_indexraster_splitsudankosovopalestine.nc")
 
 
 # %% [markdown]
@@ -208,7 +219,7 @@ corrected = mask * scale
 mask = corrected.clip(min=0, max=1)
 
 # save to a new file
-mask.to_netcdf(settings.gridding_path / "ssp_comb_countrymask.nc")
+mask.to_netcdf(settings.gridding_path / "ssp_comb_indexraster_splitsudankosovopalestine.nc")
 
 # %% [markdown]
 # ## create indexraster
