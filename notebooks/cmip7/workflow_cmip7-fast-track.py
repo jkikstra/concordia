@@ -3483,7 +3483,7 @@ for file in tqdm((settings.out_path / GRIDDING_VERSION).glob("*.nc"), "Plot maps
 # Total emissions (<1min per file)
 save_total_emissions_as_csv = True
 CALCULATE_TOTALS_GASES: list[str] | None = None # e.g. ["CO2", "SO2", "VOC01_alcohols", "VOC02_ethane", "NMVOC-C2H2", "NMVOC-C10H16"]; default is run all
-CALCULATE_TOTALS_GASES: list[str] | None = GASES_ESGF_CEDS # e.g. ["CO2", "SO2", "VOC01_alcohols", "VOC02_ethane", "NMVOC-C2H2", "NMVOC-C10H16"]; default is run all
+CALCULATE_TOTALS_GASES: list[str] | None = list(dict.fromkeys(GASES_ESGF_CEDS + GASES_ESGF_BB4CMIP)) # e.g. ["CO2", "SO2", "VOC01_alcohols", "VOC02_ethane", "NMVOC-C2H2", "NMVOC-C10H16"]; default is run all
 
 
 if save_total_emissions_as_csv:
