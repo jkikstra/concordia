@@ -31,7 +31,7 @@ HISTORY_FILE: str = "country-history_202511261223_202511040855_202512032146_2025
 # Settings
 # SETTINGS_FILE: str = "config_cmip7_esgf_v0_alpha.yaml" # was used for preparing for first upload to ESGF
 SETTINGS_FILE: str = "config_cmip7_v0-4-0.yaml" # for second ESGF version
-VERSION_ESGF: str = "1-0-0" # for second ESGF version
+VERSION_ESGF: str = "1-1-0" # for second ESGF version
 
 # Which scenario to run from the markers
 marker_to_run: str = "h" # options: h, hl, m, ml, l, ln, vl
@@ -79,6 +79,7 @@ from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total, plot_pl
 from tqdm import tqdm
 import xarray as xr
 import numpy as np
+import os
 
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
@@ -198,7 +199,8 @@ def load_result(var_name, FILE_NAME_ENDING=FILE_NAME_ENDING, settings=settings, 
 # ## PREP DATA
 
 # %%
-PATH_RESULTS = Path('D:\\concordia-results\\rc4')
+# PATH_RESULTS = Path('D:\\concordia-results\\rc4')
+PATH_RESULTS = Path('C:\\Users\\kikstra\\IIASA\\ECE.prog - Documents\\Projects\\CMIP7\\IAM Data Processing\\Shared emission fields data\\v1_1-testing-findmistakes')
 
 
 scenario_h = PATH_RESULTS / f"h_{VERSION_ESGF}" / "scenarios_processed.csv"
