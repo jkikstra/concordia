@@ -49,44 +49,25 @@ aneris.__file__
 import concordia
 concordia.__file__
 
-import logging
 from pathlib import Path
 
-import dask
-from dask.utils import SerializableLock
 from dask.diagnostics import ProgressBar
 import pandas as pd
-import pycountry
 from pandas_indexing import isin, ismatch, assignlevel, extractlevel
 from pandas_indexing.units import set_openscm_registry_as_default
-from ptolemy.raster import IndexRaster
 import concordia._patches_ptolemy # seemingly not used, not used in this script, but sets fill_value for xarray_reduce to 0 
 
-from aneris import logger
-from concordia import (
-    RegionMapping,
-    VariableDefinitions,
-)
 from concordia.cmip7 import utils as cmip7_utils # update to cmip7 utils (e.g. for dressing up netcdf)
 from concordia.settings import Settings
-from concordia.utils import MultiLineFormatter
-from concordia.workflow import WorkflowDriver
-from concordia.cmip7.CONSTANTS import return_marker_information, PROXY_YEARS, find_voc_data_variable_string, GASES_ESGF_CEDS, GASES_ESGF_BB4CMIP, GASES_ESGF_CEDS_VOC, GASES_ESGF_BB4CMIP_VOC
-from concordia.cmip7.dask_setup_alternative import setup_dask_client # to enable running with dask also from VSCode Interactive Window
-from concordia.cmip7.utils import calculate_ratio, return_nc_output_files_main_voc, SECTOR_ORDERING_GAS, SECTOR_ORDERING_DEFAULT, SECTOR_DICT_ANTHRO_DEFAULT, SECTOR_DICT_ANTHRO_CO2_SCENARIO, reorder_dimensions, add_file_global_sum_totals_attrs, SECTOR_DICT_OPENBURNING_DEFAULT, SECTOR_DICT_OPENBURNING_DEFAULT_FLIPPED, SECTOR_DICT_ANTHRO_CO2_SCENARIO_FLIPPED, add_lon_lat_bounds, add_time_bounds
-from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total, plot_place_timeseries, plot_place_area_average_timeseries
+from concordia.cmip7.CONSTANTS import return_marker_information
+from concordia.cmip7.utils import SECTOR_DICT_ANTHRO_DEFAULT, SECTOR_DICT_ANTHRO_CO2_SCENARIO 
+from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total
 
-from tqdm import tqdm
 import xarray as xr
 import numpy as np
 import os
 
 import matplotlib.pyplot as plt
-import cartopy.crs as ccrs
-from matplotlib import colors
-import cartopy.feature as cfeature # for country borders
-import cftime
-import seaborn as sns
 
 # %%
 # Scenario information
