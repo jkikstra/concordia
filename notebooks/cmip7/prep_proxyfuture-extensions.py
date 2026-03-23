@@ -356,6 +356,16 @@ for file in scenario_data_location.glob("*.nc"):
         # Free memory
         del ds, ds_reordered
 
+# %% [markdown]
+# ## Openburning proxies
+
+# %%
+sector_mapping = {0.0: 'AWB', 
+                  1.0: 'PEAT', 
+                  2.0: 'GRSB', 
+                  3.0: 'FRTB'
+                 }
+
 # %%
 # OPENBURNING proxies
 
@@ -376,19 +386,62 @@ for file in scenario_data_location.glob("*.nc"):
             chunks={},
             lock=lock
         )
+
+        # Slice only year 2100 first to reduce size
+        ds = ds.sel(time=ds["time"].dt.year == 2100)
         
+        # Rename main emissions variable
+        var_name = f"{species}_em_openburning"
+        if var_name in ds.data_vars:
+            ds = ds.rename({var_name: "emissions"})
+        else:
+            # fallback to first variable
+            ds = ds.rename({list(ds.data_vars)[0]: "emissions"})
+
+        # Drop all attributes
+        ds.attrs = {}
+        for var in ds.data_vars:
+            ds[var].attrs = {}
+
         # add gas dimension
         ds = ds.expand_dims(dim={"gas": [f"{species}"]})
-    
-        # split time into year and month
-        ds = ds.assign_coords(year=("time", ds["time"].dt.year.data), month=("time", ds["time"].dt.month.data)).groupby(["year", "month"]).mean()
-    
+
+        # rename NMVOCbulk to VOC    
+        if species == "NMVOCbulk":
+            ds = ds.assign_coords(gas=["VOC"])
+            species = "VOC"
+            
+        # rename SO2 to Sulfur
+        if species == "SO2":
+            ds = ds.assign_coords(gas=["Sulfur"])
+            species = "Sulfur"
+            
+        # Split time into year/month and compute monthly mean
+        ds = (
+            ds.assign_coords(
+                year=("time", ds["time"].dt.year.data),
+                month=("time", ds["time"].dt.month.data)
+            )
+            .groupby(["year", "month"])
+            .mean()
+        )
+        print(ds)
+
         # select 2100 data and project it onto future years
         ds = ds.sel(year=2100).expand_dims({"year": EXT_PROXY_YEARS})
     
+        # Transpose to final dimension order and chunk lazily
+        ds_reordered = ds.transpose("lat", "lon", "gas", "sector", "year", "month").chunk({"month": 12})
+
         outfile = new_proxies_location / f"openburning_{species}.nc"
+        # Skip if already processed
         if outfile.exists():
-            outfile.unlink()
+            print(f"Skipping {file} (already exists)")
+            continue
+            
+# or, if we want to override
+#            outfile.unlink()
+
     
         encoding = {
             var: {"zlib": True, "complevel": 4, "dtype": "float32"}
@@ -397,3 +450,63 @@ for file in scenario_data_location.glob("*.nc"):
         
         with ProgressBar():
             ds.to_netcdf(outfile, mode="w", encoding=encoding, compute=True)
+            
+        # Free memory
+        del ds, ds_reordered
+
+# %% [markdown]
+# ## Openburning NMVOC speciation
+
+# %%
+nmvoc_proxy_location = Path(grid_file_location + "proxy_rasters" + "/NMVOC_speciation")
+
+# %%
+nmvoc_proxy_location
+
+# %%
+new_proxies_location = Path(grid_file_location, "proxy_rasters_extensions" + "/NMVOC_speciation")
+
+# %%
+new_proxies_location
+
+# %%
+# Loop through all scenario files
+for file in nmvoc_proxy_location.glob("*.nc"):
+
+    print(f"Processing {file}")
+
+    # Open dataset with fixed numeric chunks (safe for object dtypes)
+    ds = xr.open_dataset(
+        file,
+        engine="netcdf4",
+        chunks={},  # adjust for your RAM / dataset
+        lock=lock
+    )
+    
+    # Project to future years
+    ds = ds.sel(year=2100).expand_dims({"year": EXT_PROXY_YEARS})
+    
+    # Transpose to final dimension order and chunk lazily
+    ds_reordered = ds.transpose("lat", "lon", "gas", "sector", "year", "month").chunk({"month": 12})
+
+    # Output file
+    outfile = new_proxies_location / f"{file.stem + ".nc"}"
+    print(outfile)
+    # Skip if already processed
+    if outfile.exists():
+        print(f"Skipping {file} (already exists)")
+        continue
+        
+# or, if we want to override
+#            outfile.unlink()
+
+
+    # Encoding for NetCDF compression
+    encoding = {var: {"zlib": True, "complevel": 4, "dtype": "float32"} for var in ds_reordered.data_vars}
+
+    # Write lazily to NetCDF with progress bar
+    with ProgressBar():
+        ds_reordered.to_netcdf(outfile, mode="w", encoding=encoding, compute=True)
+
+    # Free memory
+    del ds, ds_reordered
