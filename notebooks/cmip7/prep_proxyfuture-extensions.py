@@ -459,19 +459,62 @@ for file in scenario_data_location.glob("*.nc"):
 
 # %%
 nmvoc_proxy_location = Path(grid_file_location + "proxy_rasters" + "/NMVOC_speciation")
-
-# %%
-nmvoc_proxy_location
-
-# %%
 new_proxies_location = Path(grid_file_location, "proxy_rasters_extensions" + "/NMVOC_speciation")
-
-# %%
-new_proxies_location
+new_proxies_location.mkdir(parents=True, exist_ok=True)
 
 # %%
 # Loop through all scenario files
 for file in nmvoc_proxy_location.glob("*.nc"):
+
+    print(f"Processing {file}")
+
+    # Open dataset with fixed numeric chunks (safe for object dtypes)
+    ds = xr.open_dataset(
+        file,
+        engine="netcdf4",
+        chunks={},  # adjust for your RAM / dataset
+        lock=lock
+    )
+    
+    # Project to future years
+    ds = ds.sel(year=2100).expand_dims({"year": EXT_PROXY_YEARS})
+    
+    # Transpose to final dimension order and chunk lazily
+    ds_reordered = ds.transpose("lat", "lon", "gas", "sector", "year", "month").chunk({"month": 12})
+
+    # Output file
+    outfile = new_proxies_location / f"{file.stem + ".nc"}"
+    print(outfile)
+    # Skip if already processed
+    if outfile.exists():
+        print(f"Skipping {file} (already exists)")
+        continue
+        
+# or, if we want to override
+#            outfile.unlink()
+
+
+    # Encoding for NetCDF compression
+    encoding = {var: {"zlib": True, "complevel": 4, "dtype": "float32"} for var in ds_reordered.data_vars}
+
+    # Write lazily to NetCDF with progress bar
+    with ProgressBar():
+        ds_reordered.to_netcdf(outfile, mode="w", encoding=encoding, compute=True)
+
+    # Free memory
+    del ds, ds_reordered
+
+# %% [markdown]
+# ## Anthro VOC speciation
+
+# %%
+voc_proxy_location = Path(grid_file_location + "proxy_rasters" + "/VOC_speciation")
+new_proxies_location = Path(grid_file_location, "proxy_rasters_extensions" + "/VOC_speciation")
+new_proxies_location.mkdir(parents=True, exist_ok=True)
+
+# %%
+# Loop through all scenario files
+for file in voc_proxy_location.glob("*.nc"):
 
     print(f"Processing {file}")
 
