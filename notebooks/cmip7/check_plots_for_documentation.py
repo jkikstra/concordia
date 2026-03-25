@@ -49,44 +49,25 @@ aneris.__file__
 import concordia
 concordia.__file__
 
-import logging
 from pathlib import Path
 
-import dask
-from dask.utils import SerializableLock
 from dask.diagnostics import ProgressBar
 import pandas as pd
-import pycountry
 from pandas_indexing import isin, ismatch, assignlevel, extractlevel
 from pandas_indexing.units import set_openscm_registry_as_default
-from ptolemy.raster import IndexRaster
 import concordia._patches_ptolemy # seemingly not used, not used in this script, but sets fill_value for xarray_reduce to 0 
 
-from aneris import logger
-from concordia import (
-    RegionMapping,
-    VariableDefinitions,
-)
 from concordia.cmip7 import utils as cmip7_utils # update to cmip7 utils (e.g. for dressing up netcdf)
 from concordia.settings import Settings
-from concordia.utils import MultiLineFormatter
-from concordia.workflow import WorkflowDriver
-from concordia.cmip7.CONSTANTS import return_marker_information, PROXY_YEARS, find_voc_data_variable_string, GASES_ESGF_CEDS, GASES_ESGF_BB4CMIP, GASES_ESGF_CEDS_VOC, GASES_ESGF_BB4CMIP_VOC
-from concordia.cmip7.dask_setup_alternative import setup_dask_client # to enable running with dask also from VSCode Interactive Window
-from concordia.cmip7.utils import calculate_ratio, return_nc_output_files_main_voc, SECTOR_ORDERING_GAS, SECTOR_ORDERING_DEFAULT, SECTOR_DICT_ANTHRO_DEFAULT, SECTOR_DICT_ANTHRO_CO2_SCENARIO, reorder_dimensions, add_file_global_sum_totals_attrs, SECTOR_DICT_OPENBURNING_DEFAULT, SECTOR_DICT_OPENBURNING_DEFAULT_FLIPPED, SECTOR_DICT_ANTHRO_CO2_SCENARIO_FLIPPED, add_lon_lat_bounds, add_time_bounds
-from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total, plot_place_timeseries, plot_place_area_average_timeseries
+from concordia.cmip7.CONSTANTS import return_marker_information
+from concordia.cmip7.utils import SECTOR_DICT_ANTHRO_DEFAULT, SECTOR_DICT_ANTHRO_CO2_SCENARIO 
+from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total
 
-from tqdm import tqdm
 import xarray as xr
 import numpy as np
 import os
 
 import matplotlib.pyplot as plt
-import cartopy.crs as ccrs
-from matplotlib import colors
-import cartopy.feature as cfeature # for country borders
-import cftime
-import seaborn as sns
 
 # %%
 # Scenario information
@@ -785,4 +766,881 @@ for scenario in sorted(df_plot_sf['scenario'].unique()):
     plt.show()
 
 
+# %%
+
+# %% [markdown]
+# # Comparing two versions
+
+# %%
+# load (aggregate) data
+
+# old
+VERSION_ESGF_OLD = '1-0-0'
+PATH_RESULTS_OLD = Path('C:\\Users\\kikstra\\IIASA\\ECE.prog - Documents\\Projects\\CMIP7\\IAM Data Processing\\Shared emission fields data\\v1_0-testing-findmistakes\\rc4')
+location_scenario_h_old = PATH_RESULTS_OLD / f"h_{VERSION_ESGF_OLD}" / "check_annual_totals (redone)"
+location_scenario_vl_old = PATH_RESULTS_OLD / f"vl_{VERSION_ESGF_OLD}" / "check_annual_totals (redone)"
+
+
+# new
+PATH_RESULTS = Path('C:\\Users\\kikstra\\IIASA\\ECE.prog - Documents\\Projects\\CMIP7\\IAM Data Processing\\Shared emission fields data\\v1_1-testing-findmistakes')
+location_scenario_h = PATH_RESULTS / f"h_{VERSION_ESGF}" / "check_annual_totals"
+location_scenario_vl = PATH_RESULTS / f"vl_{VERSION_ESGF}" / "check_annual_totals"
+
+
+# %% [markdown]
+# ## Comparing two versions: A1) global totals per files
+
+# %%
+
+# load totals
+h_old_tot = pd.read_csv(os.path.join(location_scenario_h_old, 'BC-em-anthro_input4MIPs_emissions_ScenarioMIP_IIASA-IAMC-h-1-0-0_gn_202201-210012_annual_totals.csv'))
+vl_old_tot = pd.read_csv(os.path.join(location_scenario_vl_old, 'BC-em-anthro_input4MIPs_emissions_ScenarioMIP_IIASA-IAMC-vl-1-0-0_gn_202201-210012_annual_totals.csv'))
+h_new_tot = pd.read_csv(os.path.join(location_scenario_h, 'BC-em-anthro_input4MIPs_emissions_ScenarioMIP_IIASA-IAMC-h-1-1-0_gn_202201-210012_annual_totals.csv'))
+vl_new_tot = pd.read_csv(os.path.join(location_scenario_vl, 'BC-em-anthro_input4MIPs_emissions_ScenarioMIP_IIASA-IAMC-vl-1-1-0_gn_202201-210012_annual_totals.csv'))
+
+
+# %% [markdown]
+# ## Comparing two versions: A2) global totals per files
+
+# %%
+
+# load totals by sector
+h_old_sec = pd.read_csv(os.path.join(location_scenario_h_old, 'BC-em-anthro_input4MIPs_emissions_ScenarioMIP_IIASA-IAMC-h-1-0-0_gn_202201-210012_annual_totals_by_sector.csv'))
+vl_old_sec = pd.read_csv(os.path.join(location_scenario_vl_old, 'BC-em-anthro_input4MIPs_emissions_ScenarioMIP_IIASA-IAMC-vl-1-0-0_gn_202201-210012_annual_totals_by_sector.csv'))
+h_new_sec = pd.read_csv(os.path.join(location_scenario_h, 'BC-em-anthro_input4MIPs_emissions_ScenarioMIP_IIASA-IAMC-h-1-1-0_gn_202201-210012_annual_totals_by_sector.csv'))
+vl_new_sec = pd.read_csv(os.path.join(location_scenario_vl, 'BC-em-anthro_input4MIPs_emissions_ScenarioMIP_IIASA-IAMC-vl-1-1-0_gn_202201-210012_annual_totals_by_sector.csv'))
+
+
+
+
+# %% [markdown]
+# ## Comparing two versions: Loop over all species and emission types
+
+# %%
+# Define species and emission types to loop over
+SPECIES_LIST = ["BC", "CH4", "CO", "CO2", "N2O", "NH3", "NOx", "OC", "SO2", "NMVOC", "NMVOCbulk"]
+EMISSION_TYPES = ["em-anthro", "em-openburning", "em-AIR-anthro"]
+
+# Create output folder for comparison plots
+comparison_output_folder = output_folder / "version_comparison"
+comparison_output_folder.mkdir(exist_ok=True)
+print(f"Comparison plots will be saved to: {comparison_output_folder}")
+
+# Define sector colors for multi-sector plots
+SECTOR_COLORS = plt.cm.tab20.colors  # Use a colormap with many distinct colors
+
+# %%
+def get_file_pattern(species, emission_type, marker, version):
+    """Generate filename pattern for annual totals CSV files."""
+    return f"{species}-{emission_type}_input4MIPs_emissions_ScenarioMIP_IIASA-IAMC-{marker}-{version}_gn_202201-210012_annual_totals.csv"
+
+def get_sector_file_pattern(species, emission_type, marker, version):
+    """Generate filename pattern for annual totals by sector CSV files."""
+    return f"{species}-{emission_type}_input4MIPs_emissions_ScenarioMIP_IIASA-IAMC-{marker}-{version}_gn_202201-210012_annual_totals_by_sector.csv"
+
+def load_totals_data(location, species, emission_type, marker, version):
+    """Load total emissions data, return None if file doesn't exist.
+    
+    File format: year, emissions_Mt_year
+    """
+    filename = get_file_pattern(species, emission_type, marker, version)
+    filepath = os.path.join(location, filename)
+    if os.path.exists(filepath):
+        return pd.read_csv(filepath)
+    return None
+
+def load_sector_data(location, species, emission_type, marker, version):
+    """Load sector emissions data, return None if file doesn't exist.
+    
+    File format: wide format with columns: year, 0.0, 1.0, 2.0, ... (sector indices)
+    """
+    filename = get_sector_file_pattern(species, emission_type, marker, version)
+    filepath = os.path.join(location, filename)
+    if os.path.exists(filepath):
+        return pd.read_csv(filepath)
+    return None
+
+def get_sector_columns(df):
+    """Get sector column names (all columns except 'year')."""
+    if df is None:
+        return []
+    return [col for col in df.columns if col != 'year']
+
+def get_sector_name(sector_col, emission_type, species):
+    """Map sector number column to sector name based on emission type and species.
+    
+    Args:
+        sector_col: Column name (e.g., '0.0', '1.0')
+        emission_type: One of 'em-anthro', 'em-openburning', 'em-AIR-anthro'
+        species: Species name (e.g., 'CO2', 'BC')
+    
+    Returns:
+        Sector name string
+    """
+    try:
+        sector_num = int(float(sector_col))
+    except (ValueError, TypeError):
+        return sector_col  # Return as-is if not a number
+    
+    if emission_type == 'em-openburning':
+        return SECTOR_DICT_OPENBURNING_DEFAULT.get(sector_num, f'Sector {sector_num}')
+    elif emission_type == 'em-AIR-anthro':
+        return 'Aircraft' if sector_num == 0 else f'Sector {sector_num}'
+    elif emission_type == 'em-anthro':
+        # Use CO2 scenario dict for CO2 (has CDR sectors), otherwise default
+        if species == 'CO2':
+            return SECTOR_DICT_ANTHRO_CO2_SCENARIO.get(sector_num, f'Sector {sector_num}')
+        else:
+            return SECTOR_DICT_ANTHRO_DEFAULT.get(sector_num, f'Sector {sector_num}')
+    else:
+        return f'Sector {sector_num}'
+
+def enforce_min_yrange(ax, min_range=0.01):
+    """Ensure the y-axis span is at least min_range (default 0.01%).
+    Expands symmetrically around the midpoint if needed.
+    """
+    ymin, ymax = ax.get_ylim()
+    current_range = ymax - ymin
+    if current_range < min_range:
+        mid = (ymin + ymax) / 2
+        ax.set_ylim(mid - min_range / 2, mid + min_range / 2)
+
+# %% [markdown]
+# ## Comparing two versions: B1) Global totals comparison (new vs old)
+
+# %%
+# Loop over species and emission types - Total emissions comparison
+for species in SPECIES_LIST:
+    for emission_type in EMISSION_TYPES:
+        print(f"Processing {species} - {emission_type}...")
+        
+        # Load data for H scenario
+        h_old = load_totals_data(location_scenario_h_old, species, emission_type, 'h', VERSION_ESGF_OLD)
+        h_new = load_totals_data(location_scenario_h, species, emission_type, 'h', VERSION_ESGF)
+        
+        # Load data for VL scenario
+        vl_old = load_totals_data(location_scenario_vl_old, species, emission_type, 'vl', VERSION_ESGF_OLD)
+        vl_new = load_totals_data(location_scenario_vl, species, emission_type, 'vl', VERSION_ESGF)
+        
+        # Skip if no data available
+        if all(x is None for x in [h_old, h_new, vl_old, vl_new]):
+            print(f"  Skipping {species} - {emission_type}: no data found")
+            continue
+        
+        # Create figure with 2 subplots (H and VL scenarios)
+        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+        
+        # Plot H scenario
+        ax = axes[0]
+        # Plot new (solid) first, then old (dashed) on top
+        if h_new is not None and 'year' in h_new.columns and 'emissions_Mt_year' in h_new.columns:
+            ax.plot(h_new['year'], h_new['emissions_Mt_year'], 'b-', linewidth=2, label=f'New ({VERSION_ESGF})')
+        if h_old is not None and 'year' in h_old.columns and 'emissions_Mt_year' in h_old.columns:
+            ax.plot(h_old['year'], h_old['emissions_Mt_year'], color='cornflowerblue', linestyle='--', linewidth=2, alpha=0.8, label=f'Old ({VERSION_ESGF_OLD})')
+        ax.set_title(f'{species} - {emission_type} (H)', fontsize=12, fontweight='bold')
+        ax.set_xlabel('Year')
+        ax.set_ylabel('Total Emissions (Mt/yr)')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        
+        # Plot VL scenario
+        ax = axes[1]
+        # Plot new (solid) first, then old (dashed) on top
+        if vl_new is not None and 'year' in vl_new.columns and 'emissions_Mt_year' in vl_new.columns:
+            ax.plot(vl_new['year'], vl_new['emissions_Mt_year'], 'r-', linewidth=2, label=f'New ({VERSION_ESGF})')
+        if vl_old is not None and 'year' in vl_old.columns and 'emissions_Mt_year' in vl_old.columns:
+            ax.plot(vl_old['year'], vl_old['emissions_Mt_year'], color='lightsalmon', linestyle='--', linewidth=2, alpha=0.8, label=f'Old ({VERSION_ESGF_OLD})')
+        ax.set_title(f'{species} - {emission_type} (VL)', fontsize=12, fontweight='bold')
+        ax.set_xlabel('Year')
+        ax.set_ylabel('Total Emissions (Mt/yr)')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        fig.savefig(comparison_output_folder / f'B1_total_{species}_{emission_type}_comparison.png', dpi=100, bbox_inches='tight')
+        plt.close(fig)
+
+print("B1 total emissions comparison plots complete.")
+
+# %% [markdown]
+# ## Comparing two versions: B2) Global totals by sector comparison
+
+# %%
+# Loop over species and emission types - Sector emissions comparison
+for species in SPECIES_LIST:
+    for emission_type in EMISSION_TYPES:
+        print(f"Processing sectors for {species} - {emission_type}...")
+        
+        # Load sector data for H scenario
+        h_old_sec = load_sector_data(location_scenario_h_old, species, emission_type, 'h', VERSION_ESGF_OLD)
+        h_new_sec = load_sector_data(location_scenario_h, species, emission_type, 'h', VERSION_ESGF)
+        
+        # Load sector data for VL scenario
+        vl_old_sec = load_sector_data(location_scenario_vl_old, species, emission_type, 'vl', VERSION_ESGF_OLD)
+        vl_new_sec = load_sector_data(location_scenario_vl, species, emission_type, 'vl', VERSION_ESGF)
+        
+        # Skip if no data available
+        if all(x is None for x in [h_old_sec, h_new_sec, vl_old_sec, vl_new_sec]):
+            print(f"  Skipping {species} - {emission_type}: no sector data found")
+            continue
+        
+        # Create figure with 2 subplots (H and VL scenarios)
+        fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+        
+        # Get all unique sector columns across all datasets
+        all_sectors = set()
+        for df in [h_old_sec, h_new_sec, vl_old_sec, vl_new_sec]:
+            all_sectors.update(get_sector_columns(df))
+        all_sectors = sorted(list(all_sectors), key=lambda x: float(x) if x.replace('.', '').replace('-', '').isdigit() else x)
+        
+        # Create color mapping for sectors
+        sector_color_map = {sector: SECTOR_COLORS[i % len(SECTOR_COLORS)] for i, sector in enumerate(all_sectors)}
+        
+        # Helper function to lighten a color
+        def lighten_color(color, amount=0.3):
+            import matplotlib.colors as mcolors
+            c = mcolors.to_rgb(color)
+            return tuple(min(1, x + (1 - x) * amount) for x in c)
+        
+        # Plot H scenario
+        ax = axes[0]
+        for sector in all_sectors:
+            color = sector_color_map[sector]
+            light_color = lighten_color(color, 0.4)
+            sector_name = get_sector_name(sector, emission_type, species)
+            # New data (solid) first
+            if h_new_sec is not None and sector in h_new_sec.columns:
+                ax.plot(h_new_sec['year'], h_new_sec[sector], '-', color=color, linewidth=1.5, label=sector_name)
+            # Old data (dashed) on top with lighter color
+            if h_old_sec is not None and sector in h_old_sec.columns:
+                ax.plot(h_old_sec['year'], h_old_sec[sector], '--', color=light_color, linewidth=1.5, alpha=0.9)
+        
+        ax.set_title(f'{species} - {emission_type} (H)', fontsize=12, fontweight='bold')
+        ax.set_xlabel('Year')
+        ax.set_ylabel('Sector Emissions (Mt/yr)')
+        ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=8)
+        ax.grid(True, alpha=0.3)
+        
+        # Plot VL scenario
+        ax = axes[1]
+        for sector in all_sectors:
+            color = sector_color_map[sector]
+            light_color = lighten_color(color, 0.4)
+            sector_name = get_sector_name(sector, emission_type, species)
+            # New data (solid) first
+            if vl_new_sec is not None and sector in vl_new_sec.columns:
+                ax.plot(vl_new_sec['year'], vl_new_sec[sector], '-', color=color, linewidth=1.5, label=sector_name)
+            # Old data (dashed) on top with lighter color
+            if vl_old_sec is not None and sector in vl_old_sec.columns:
+                ax.plot(vl_old_sec['year'], vl_old_sec[sector], '--', color=light_color, linewidth=1.5, alpha=0.9)
+        
+        ax.set_title(f'{species} - {emission_type} (VL)', fontsize=12, fontweight='bold')
+        ax.set_xlabel('Year')
+        ax.set_ylabel('Sector Emissions (Mt/yr)')
+        ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=8)
+        ax.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        fig.savefig(comparison_output_folder / f'B2_sectors_{species}_{emission_type}_comparison.png', dpi=100, bbox_inches='tight')
+        plt.close(fig)
+
+print("B2 sector emissions comparison plots complete.")
+
+# %% [markdown]
+# ## Comparing two versions: C1) Percentage difference (relative to 2023 old value) - Totals
+
+# %%
+# Loop over species and emission types - Percentage difference for totals
+for species in SPECIES_LIST:
+    for emission_type in EMISSION_TYPES:
+        print(f"Processing % diff for {species} - {emission_type}...")
+        
+        # Load data for H scenario
+        h_old = load_totals_data(location_scenario_h_old, species, emission_type, 'h', VERSION_ESGF_OLD)
+        h_new = load_totals_data(location_scenario_h, species, emission_type, 'h', VERSION_ESGF)
+        
+        # Load data for VL scenario
+        vl_old = load_totals_data(location_scenario_vl_old, species, emission_type, 'vl', VERSION_ESGF_OLD)
+        vl_new = load_totals_data(location_scenario_vl, species, emission_type, 'vl', VERSION_ESGF)
+        
+        # Skip if no data available
+        if all(x is None for x in [h_old, h_new, vl_old, vl_new]):
+            print(f"  Skipping {species} - {emission_type}: no data found")
+            continue
+        
+        # Create figure with 2 subplots (H and VL scenarios)
+        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+        
+        # Plot H scenario percentage difference
+        ax = axes[0]
+        if h_old is not None and h_new is not None:
+            if 'year' in h_old.columns and 'emissions_Mt_year' in h_old.columns and 'year' in h_new.columns and 'emissions_Mt_year' in h_new.columns:
+                # Get 2023 value from old data as reference
+                ref_value_h = h_old[h_old['year'] == 2023]['emissions_Mt_year'].values
+                if len(ref_value_h) > 0 and ref_value_h[0] != 0:
+                    ref_value_h = ref_value_h[0]
+                    # Merge on year to compute difference
+                    merged_h = pd.merge(h_old[['year', 'emissions_Mt_year']], h_new[['year', 'emissions_Mt_year']], 
+                                        on='year', suffixes=('_old', '_new'))
+                    merged_h['pct_diff'] = ((merged_h['emissions_Mt_year_new'] - merged_h['emissions_Mt_year_old']) / abs(ref_value_h)) * 100
+                    ax.plot(merged_h['year'], merged_h['pct_diff'], 'b-', linewidth=2, label='(New - Old) / Old_2023')
+                    ax.axhline(y=0, color='black', linestyle='--', linewidth=1)
+        
+        ax.set_title(f'{species} - {emission_type} (H) - % Diff', fontsize=12, fontweight='bold')
+        ax.set_xlabel('Year')
+        ax.set_ylabel('% Difference (rel. to 2023 old)')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        enforce_min_yrange(ax)
+        
+        # Plot VL scenario percentage difference
+        ax = axes[1]
+        if vl_old is not None and vl_new is not None:
+            if 'year' in vl_old.columns and 'emissions_Mt_year' in vl_old.columns and 'year' in vl_new.columns and 'emissions_Mt_year' in vl_new.columns:
+                # Get 2023 value from old data as reference
+                ref_value_vl = vl_old[vl_old['year'] == 2023]['emissions_Mt_year'].values
+                if len(ref_value_vl) > 0 and ref_value_vl[0] != 0:
+                    ref_value_vl = ref_value_vl[0]
+                    # Merge on year to compute difference
+                    merged_vl = pd.merge(vl_old[['year', 'emissions_Mt_year']], vl_new[['year', 'emissions_Mt_year']], 
+                                         on='year', suffixes=('_old', '_new'))
+                    merged_vl['pct_diff'] = ((merged_vl['emissions_Mt_year_new'] - merged_vl['emissions_Mt_year_old']) / abs(ref_value_vl)) * 100
+                    ax.plot(merged_vl['year'], merged_vl['pct_diff'], 'r-', linewidth=2, label='(New - Old) / Old_2023')
+                    ax.axhline(y=0, color='black', linestyle='--', linewidth=1)
+        
+        ax.set_title(f'{species} - {emission_type} (VL) - % Diff', fontsize=12, fontweight='bold')
+        ax.set_xlabel('Year')
+        ax.set_ylabel('% Difference (rel. to 2023 old)')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        enforce_min_yrange(ax)
+        
+        plt.tight_layout()
+        fig.savefig(comparison_output_folder / f'C1_pct_diff_total_{species}_{emission_type}.png', dpi=100, bbox_inches='tight')
+        plt.close(fig)
+
+print("C1 percentage difference plots (totals) complete.")
+
+# %% [markdown]
+# ## Comparing two versions: C2) Percentage difference (relative to 2023 old value) - By Sector
+
+# %%
+# Loop over species and emission types - Percentage difference for sectors
+for species in SPECIES_LIST:
+    for emission_type in EMISSION_TYPES:
+        print(f"Processing % diff sectors for {species} - {emission_type}...")
+        
+        # Load sector data for H scenario
+        h_old_sec = load_sector_data(location_scenario_h_old, species, emission_type, 'h', VERSION_ESGF_OLD)
+        h_new_sec = load_sector_data(location_scenario_h, species, emission_type, 'h', VERSION_ESGF)
+        
+        # Load sector data for VL scenario
+        vl_old_sec = load_sector_data(location_scenario_vl_old, species, emission_type, 'vl', VERSION_ESGF_OLD)
+        vl_new_sec = load_sector_data(location_scenario_vl, species, emission_type, 'vl', VERSION_ESGF)
+        
+        # Skip if no data available
+        if all(x is None for x in [h_old_sec, h_new_sec, vl_old_sec, vl_new_sec]):
+            print(f"  Skipping {species} - {emission_type}: no sector data found")
+            continue
+        
+        # Create figure with 2 subplots (H and VL scenarios)
+        fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+        
+        # Get all unique sector columns across all datasets
+        all_sectors = set()
+        for df in [h_old_sec, h_new_sec, vl_old_sec, vl_new_sec]:
+            all_sectors.update(get_sector_columns(df))
+        all_sectors = sorted(list(all_sectors), key=lambda x: float(x) if x.replace('.', '').replace('-', '').isdigit() else x)
+        
+        # Create color mapping for sectors
+        sector_color_map = {sector: SECTOR_COLORS[i % len(SECTOR_COLORS)] for i, sector in enumerate(all_sectors)}
+        
+        # Plot H scenario percentage difference
+        ax = axes[0]
+        if h_old_sec is not None and h_new_sec is not None:
+            for sector in all_sectors:
+                if sector in h_old_sec.columns and sector in h_new_sec.columns:
+                    color = sector_color_map[sector]
+                    sector_name = get_sector_name(sector, emission_type, species)
+                    # Get 2023 value from old data as reference
+                    ref_row = h_old_sec[h_old_sec['year'] == 2023]
+                    if len(ref_row) > 0:
+                        ref_value = ref_row[sector].values[0]
+                        if ref_value != 0:
+                            # Merge on year to compute difference
+                            merged = pd.merge(h_old_sec[['year', sector]], h_new_sec[['year', sector]], 
+                                              on='year', suffixes=('_old', '_new'))
+                            merged['pct_diff'] = ((merged[f'{sector}_new'] - merged[f'{sector}_old']) / abs(ref_value)) * 100
+                            ax.plot(merged['year'], merged['pct_diff'], '-', color=color, linewidth=1.5, label=sector_name)
+        
+        ax.axhline(y=0, color='black', linestyle='--', linewidth=1)
+        ax.set_title(f'{species} - {emission_type} (H) - % Diff by Sector', fontsize=12, fontweight='bold')
+        ax.set_xlabel('Year')
+        ax.set_ylabel('% Difference (rel. to 2023 old)')
+        ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=8)
+        ax.grid(True, alpha=0.3)
+        enforce_min_yrange(ax)
+        
+        # Plot VL scenario percentage difference
+        ax = axes[1]
+        if vl_old_sec is not None and vl_new_sec is not None:
+            for sector in all_sectors:
+                if sector in vl_old_sec.columns and sector in vl_new_sec.columns:
+                    color = sector_color_map[sector]
+                    sector_name = get_sector_name(sector, emission_type, species)
+                    # Get 2023 value from old data as reference
+                    ref_row = vl_old_sec[vl_old_sec['year'] == 2023]
+                    if len(ref_row) > 0:
+                        ref_value = ref_row[sector].values[0]
+                        if ref_value != 0:
+                            # Merge on year to compute difference
+                            merged = pd.merge(vl_old_sec[['year', sector]], vl_new_sec[['year', sector]], 
+                                              on='year', suffixes=('_old', '_new'))
+                            merged['pct_diff'] = ((merged[f'{sector}_new'] - merged[f'{sector}_old']) / abs(ref_value)) * 100
+                            ax.plot(merged['year'], merged['pct_diff'], '-', color=color, linewidth=1.5, label=sector_name)
+        
+        ax.axhline(y=0, color='black', linestyle='--', linewidth=1)
+        ax.set_title(f'{species} - {emission_type} (VL) - % Diff by Sector', fontsize=12, fontweight='bold')
+        ax.set_xlabel('Year')
+        ax.set_ylabel('% Difference (rel. to 2023 old)')
+        ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=8)
+        ax.grid(True, alpha=0.3)
+        enforce_min_yrange(ax)
+        
+        plt.tight_layout()
+        fig.savefig(comparison_output_folder / f'C2_pct_diff_sectors_{species}_{emission_type}.png', dpi=100, bbox_inches='tight')
+        plt.close(fig)
+
+print("C2 percentage difference plots (by sector) complete.")
+print(f"\nAll comparison plots saved to: {comparison_output_folder}")
+# %%
+
+
+# %%
+# examples of loading (gridded) data
+
+# old
+VERSION_ESGF_OLD = '1-0-0'
+PATH_RESULTS_OLD = Path('C:\\Users\\kikstra\\IIASA\\ECE.prog - Documents\\Projects\\CMIP7\\IAM Data Processing\\Shared emission fields data\\v1_0-testing-findmistakes\\rc4')
+file_scenario_h_old = PATH_RESULTS_OLD / f"h_{VERSION_ESGF_OLD}" / "BC-em-anthro_input4MIPs_emissions_ScenarioMIP_IIASA-IAMC-h-1-0-0_gn_202201-210012.nc"
+file_scenario_vl_old = PATH_RESULTS_OLD / f"vl_{VERSION_ESGF_OLD}" / "BC-em-anthro_input4MIPs_emissions_ScenarioMIP_IIASA-IAMC-vl-1-0-0_gn_202201-210012.nc"
+
+
+# new
+PATH_RESULTS = Path('C:\\Users\\kikstra\\IIASA\\ECE.prog - Documents\\Projects\\CMIP7\\IAM Data Processing\\Shared emission fields data\\v1_1-testing-findmistakes')
+file_scenario_h = PATH_RESULTS / f"h_{VERSION_ESGF}" / "BC-em-anthro_input4MIPs_emissions_ScenarioMIP_IIASA-IAMC-h-1-1-0_gn_202201-210012.nc"
+file_scenario_vl = PATH_RESULTS / f"vl_{VERSION_ESGF}" / "BC-em-anthro_input4MIPs_emissions_ScenarioMIP_IIASA-IAMC-vl-1-1-0_gn_202201-210012.nc"
+
+
+# %% [markdown]
+# ## Comparing two versions: C1) gridpoint totals per file (as percentage relative to 2023 values)
+
+# %%
+def get_nc_filepath(path_base, species, emission_type, marker, version):
+    """Generate full path for a version's NC file."""
+    filename = f"{species}-{emission_type}_input4MIPs_emissions_ScenarioMIP_IIASA-IAMC-{marker}-{version}_gn_202201-210012.nc"
+    return path_base / f"{marker}_{version}" / filename
+
+def get_var_name(species, emission_type):
+    """Get xarray variable name from species and emission type.
+
+    E.g. ('BC', 'em-anthro') -> 'BC_em_anthro'
+         ('CO2', 'em-AIR-anthro') -> 'CO2_em_AIR_anthro'
+    """
+    return f"{species.replace('-', '_')}_{emission_type.replace('-', '_')}"
+
+# Create output folder for gridpoint comparison plots
+gridpoint_output_folder = output_folder / "version_comparison_gridpoint"
+gridpoint_output_folder.mkdir(exist_ok=True)
+print(f"Gridpoint comparison plots will be saved to: {gridpoint_output_folder}")
+
+# %%
+# C1 gridpoint: Histograms of gridpoint-level differences for totals (summed across sectors)
+for species in SPECIES_LIST:
+    for emission_type in EMISSION_TYPES:
+        print(f"Processing gridpoint histogram (totals) for {species} - {emission_type}...")
+        var_name = get_var_name(species, emission_type)
+
+        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+        has_data = False
+
+        for idx, (marker, marker_label, color) in enumerate([('h', 'H', 'blue'), ('vl', 'VL', 'red')]):
+            ax = axes[idx]
+
+            fp_old = get_nc_filepath(PATH_RESULTS_OLD, species, emission_type, marker, VERSION_ESGF_OLD)
+            fp_new = get_nc_filepath(PATH_RESULTS, species, emission_type, marker, VERSION_ESGF)
+
+            if not fp_old.exists() or not fp_new.exists():
+                ax.text(0.5, 0.5, 'No data', transform=ax.transAxes, ha='center', va='center', fontsize=14)
+                ax.set_title(f'{species} - {emission_type} ({marker_label})')
+                continue
+
+            has_data = True
+
+            # Open datasets lazily with dask
+            ds_old = xr.open_dataset(str(fp_old), chunks={"time": 12})
+            ds_new = xr.open_dataset(str(fp_new), chunks={"time": 12})
+            da_old = ds_old[var_name]
+            da_new = ds_new[var_name]
+
+            # Sum across all non-spatial/temporal dims (sector, level, etc.) for totals
+            extra_dims = [d for d in da_old.dims if d not in ('time', 'lat', 'lon')]
+            if extra_dims:
+                da_old_total = da_old.sum(extra_dims)
+                da_new_total = da_new.sum(extra_dims)
+            else:
+                da_old_total = da_old
+                da_new_total = da_new
+
+            # Reference: average absolute gridpoint value in 2023 (old)
+            old_2023 = da_old_total.sel(time=da_old_total.time.dt.year == 2023).mean('time')
+            ref_value = float(abs(old_2023).mean().compute())
+
+            if ref_value == 0:
+                ax.text(0.5, 0.5, 'Zero reference\n(2023 avg = 0)', transform=ax.transAxes,
+                        ha='center', va='center', fontsize=12)
+                ax.set_title(f'{species} - {emission_type} ({marker_label})')
+                ds_old.close()
+                ds_new.close()
+                continue
+
+            # Compute annual mean per gridpoint for all years
+            old_annual = da_old_total.groupby('time.year').mean('time')
+            new_annual = da_new_total.groupby('time.year').mean('time')
+
+            # Compute difference and normalize by 2023 average gridpoint value
+            diff = new_annual - old_annual
+            pct_diff = (diff / ref_value) * 100
+
+            # Compute and flatten
+            with ProgressBar():
+                all_values = pct_diff.compute().values.flatten()
+            all_values = all_values[~np.isnan(all_values)]
+
+            # Plot histogram
+            if len(all_values) > 0:
+                # Use central 99% for bin range to avoid extreme outlier distortion
+                p_low, p_high = np.percentile(all_values, [0.5, 99.5])
+                bin_range = (p_low, p_high) if p_low != p_high else None
+                ax.hist(all_values, bins=100, range=bin_range, color=color, alpha=0.7, edgecolor='none')
+                ax.axvline(x=0, color='black', linestyle='--', linewidth=1)
+
+                # Summary statistics
+                ax.text(0.02, 0.98,
+                        f'Mean: {np.mean(all_values):.4f}%\n'
+                        f'Median: {np.median(all_values):.4f}%\n'
+                        f'Std: {np.std(all_values):.4f}%\n'
+                        f'N: {len(all_values):,}',
+                        transform=ax.transAxes, va='top', fontsize=9,
+                        bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+
+            ax.set_title(f'{species} - {emission_type} ({marker_label})', fontsize=12, fontweight='bold')
+            ax.set_xlabel('% Difference (rel. to avg gridpoint 2023)')
+            ax.set_ylabel('Count (gridpoints × years)')
+            ax.grid(True, alpha=0.3)
+
+            ds_old.close()
+            ds_new.close()
+
+        if not has_data:
+            plt.close(fig)
+            print(f"  Skipping {species} - {emission_type}: no data found")
+            continue
+
+        plt.tight_layout()
+        fig.savefig(gridpoint_output_folder / f'D1_gridpoint_hist_total_{species}_{emission_type}.png',
+                    dpi=100, bbox_inches='tight')
+        plt.close(fig)
+
+print("C1 gridpoint histogram plots (totals) complete.")
+
+# %% [markdown]
+# ## Comparing two versions: C2) gridpoint totals per sector (as percentage relative to 2023 values)
+
+# %%
+# C2 gridpoint: Histograms of gridpoint-level differences per sector (faceted)
+for species in SPECIES_LIST:
+    for emission_type in EMISSION_TYPES:
+        print(f"Processing gridpoint histogram (sectors) for {species} - {emission_type}...")
+        var_name = get_var_name(species, emission_type)
+
+        for marker, marker_label, color in [('h', 'H', 'blue'), ('vl', 'VL', 'red')]:
+            fp_old = get_nc_filepath(PATH_RESULTS_OLD, species, emission_type, marker, VERSION_ESGF_OLD)
+            fp_new = get_nc_filepath(PATH_RESULTS, species, emission_type, marker, VERSION_ESGF)
+
+            if not fp_old.exists() or not fp_new.exists():
+                print(f"  Skipping {species} - {emission_type} ({marker_label}): file(s) not found")
+                continue
+
+            ds_old = xr.open_dataset(str(fp_old), chunks={"time": 12})
+            ds_new = xr.open_dataset(str(fp_new), chunks={"time": 12})
+            da_old = ds_old[var_name]
+            da_new = ds_new[var_name]
+
+            if 'sector' not in da_old.dims:
+                print(f"  Skipping {species} - {emission_type} ({marker_label}): no sector dimension")
+                ds_old.close()
+                ds_new.close()
+                continue
+
+            sectors = da_old.sector.values
+            n_sectors = len(sectors)
+            ncols = min(4, n_sectors)
+            nrows = int(np.ceil(n_sectors / ncols))
+
+            fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 4 * nrows))
+            if nrows == 1 and ncols == 1:
+                axes = np.array([axes])
+            axes_flat = np.array(axes).flatten()
+
+            for si, sector_idx in enumerate(sectors):
+                ax = axes_flat[si]
+                sector_name = get_sector_name(str(float(sector_idx)), emission_type, species)
+
+                old_sec = da_old.sel(sector=sector_idx)
+                new_sec = da_new.sel(sector=sector_idx)
+
+                # Sum over any extra dims (e.g., level) except time, lat, lon
+                extra = [d for d in old_sec.dims if d not in ('time', 'lat', 'lon')]
+                if extra:
+                    old_sec = old_sec.sum(extra)
+                    new_sec = new_sec.sum(extra)
+
+                # Reference: avg absolute gridpoint value in 2023 (old)
+                old_2023 = old_sec.sel(time=old_sec.time.dt.year == 2023).mean('time')
+                ref = float(abs(old_2023).mean().compute())
+
+                if ref == 0:
+                    ax.text(0.5, 0.5, 'Zero reference', transform=ax.transAxes,
+                            ha='center', va='center', fontsize=10)
+                    ax.set_title(f'{sector_name}', fontsize=10, fontweight='bold')
+                    continue
+
+                # Annual means
+                old_ann = old_sec.groupby('time.year').mean('time')
+                new_ann = new_sec.groupby('time.year').mean('time')
+
+                diff = new_ann - old_ann
+                pct = (diff / ref) * 100
+
+                with ProgressBar():
+                    vals = pct.compute().values.flatten()
+                vals = vals[~np.isnan(vals)]
+
+                if len(vals) > 0:
+                    p_low, p_high = np.percentile(vals, [0.5, 99.5])
+                    bin_range = (p_low, p_high) if p_low != p_high else None
+                    ax.hist(vals, bins=100, range=bin_range, color=color, alpha=0.7, edgecolor='none')
+                    ax.axvline(x=0, color='black', linestyle='--', linewidth=1)
+
+                    ax.text(0.02, 0.98,
+                            f'Mean: {np.mean(vals):.4f}%\n'
+                            f'Std: {np.std(vals):.4f}%',
+                            transform=ax.transAxes, va='top', fontsize=8,
+                            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+
+                ax.set_title(f'{sector_name}', fontsize=10, fontweight='bold')
+                ax.set_xlabel('% Diff (rel. 2023 avg)')
+                ax.set_ylabel('Count')
+                ax.grid(True, alpha=0.3)
+
+            # Hide empty axes
+            for si in range(n_sectors, len(axes_flat)):
+                axes_flat[si].set_visible(False)
+
+            fig.suptitle(f'{species} - {emission_type} ({marker_label}) - Gridpoint % Diff by Sector',
+                         fontsize=14, fontweight='bold')
+            plt.tight_layout()
+            fig.savefig(gridpoint_output_folder / f'D2_gridpoint_hist_sectors_{species}_{emission_type}_{marker_label}.png',
+                        dpi=100, bbox_inches='tight')
+            plt.close(fig)
+
+            ds_old.close()
+            ds_new.close()
+
+print("C2 gridpoint histogram plots (by sector) complete.")
+print(f"\nAll gridpoint comparison plots saved to: {gridpoint_output_folder}")
+
+# %% [markdown]
+# ## Comparing two versions: E) Gridpoint difference CSVs (Mt/yr, new − old) and combined summary
+
+# %%
+# Create output folder for gridpoint difference CSVs
+gridpoint_diff_folder = output_folder / "version_comparison_gridpoint_diffs"
+gridpoint_diff_folder.mkdir(exist_ok=True)
+print(f"Gridpoint diff CSVs will be saved to: {gridpoint_diff_folder}")
+
+# %%
+csv_paths: list[Path] = []
+
+# for species in SPECIES_LIST:
+for species in ['SO2']:
+    # for emission_type in EMISSION_TYPES:
+    for emission_type in ['em-anthro']:
+        for marker, marker_label in [("h", "H"), ("vl", "VL")]:
+            print(f"Computing diff CSV for {species} - {emission_type} ({marker_label})...")
+
+            fp_old = get_nc_filepath(PATH_RESULTS_OLD, species, emission_type, marker, VERSION_ESGF_OLD)
+            fp_new = get_nc_filepath(PATH_RESULTS, species, emission_type, marker, VERSION_ESGF)
+
+            if not fp_old.exists() or not fp_new.exists():
+                print("  Skipping: file(s) not found")
+                continue
+
+            var_name = get_var_name(species, emission_type)
+
+            # Open datasets (cell_area loaded automatically inside helper)
+            ds_old = xr.open_dataset(str(fp_old), chunks={"time": 12})
+            ds_new = xr.open_dataset(str(fp_new), chunks={"time": 12})
+
+            # --- Per-sector totals (Mt/yr) ---
+            with ProgressBar():
+                old_sectors = ds_to_annual_emissions_total(ds_old, var_name, keep_sectors=True)
+                new_sectors = ds_to_annual_emissions_total(ds_new, var_name, keep_sectors=True)
+
+            diff_sectors = new_sectors - old_sectors  # Mt/yr, new − old
+
+            # Build a tidy DataFrame: one row per sector, columns = years
+            rows = []
+            if "sector" in diff_sectors.dims:
+                for sec_idx in diff_sectors.sector.values:
+                    sec_ts = diff_sectors.sel(sector=sec_idx)
+                    sec_label = get_sector_name(str(float(sec_idx)), emission_type, species)
+                    row: dict = {
+                        "species": species,
+                        "emission_type": emission_type,
+                        "marker": marker,
+                        "sector": int(float(sec_idx)),
+                        "sector_name": sec_label,
+                    }
+                    for yr in sec_ts.year.values:
+                        row[int(yr)] = float(sec_ts.sel(year=yr))
+                    rows.append(row)
+
+                # Add a "Total" row (sum across sectors)
+                total_ts = diff_sectors.sum("sector")
+                total_row: dict = {
+                    "species": species,
+                    "emission_type": emission_type,
+                    "marker": marker,
+                    "sector": "Total",
+                    "sector_name": "Total",
+                }
+                for yr in total_ts.year.values:
+                    total_row[int(yr)] = float(total_ts.sel(year=yr))
+                rows.append(total_row)
+            else:
+                # No sector dimension — single timeseries
+                total_row: dict = {
+                    "species": species,
+                    "emission_type": emission_type,
+                    "marker": marker,
+                    "sector": "Total",
+                    "sector_name": "Total",
+                }
+                for yr in diff_sectors.year.values:
+                    total_row[int(yr)] = float(diff_sectors.sel(year=yr))
+                rows.append(total_row)
+
+            df = pd.DataFrame(rows)
+
+            # Save individual CSV
+            csv_path = gridpoint_diff_folder / f"E1_diff_{species}_{emission_type}_{marker}.csv"
+            df.to_csv(csv_path, index=False)
+            csv_paths.append(csv_path)
+            print(f"  Saved: {csv_path.name}")
+
+            ds_old.close()
+            ds_new.close()
+
+print(f"\nIndividual diff CSVs complete. {len(csv_paths)} files written.")
+
+# %%
+# Combine all individual CSVs into one summary file
+if csv_paths:
+    combined = pd.concat([pd.read_csv(p) for p in csv_paths], ignore_index=True)
+    combined_path = gridpoint_diff_folder / f"E1_combined_gridpoint_diffs_{VERSION_ESGF_OLD}_vs_{VERSION_ESGF}.csv"
+    combined.to_csv(combined_path, index=False)
+    print(f"Combined CSV saved to: {combined_path}")
+    print(f"Shape: {combined.shape[0]} rows × {combined.shape[1]} columns")
+else:
+    print("No CSVs were produced — nothing to combine.")
+
+# %% [markdown]
+# ## Comparing two versions: F) Per-file per-sector min/max gridpoint values
+
+# %%
+# Scan every NC file (old & new, h & vl) and record min/max per sector.
+# Files are opened one at a time to keep memory use low.
+
+minmax_rows: list[dict] = []
+
+for species in SPECIES_LIST:
+# for species in ['SO2']:
+    for emission_type in EMISSION_TYPES:
+    # for emission_type in ['em-openburning']:
+        var_name = get_var_name(species, emission_type)
+
+        for marker in ("h", "vl"):
+            for version, path_base in [
+                (VERSION_ESGF_OLD, PATH_RESULTS_OLD),
+                (VERSION_ESGF, PATH_RESULTS),
+            ]:
+                fp = get_nc_filepath(path_base, species, emission_type, marker, version)
+                if not fp.exists():
+                    continue
+
+                print(f"Min/max scan: {fp.name}")
+                ds = xr.open_dataset(str(fp), chunks={"time": 12})
+                da = ds[var_name]
+
+                if "sector" in da.dims:
+                    for sec_idx in da.sector.values:
+                        sec_da = da.sel(sector=sec_idx)
+                        sec_annual_min = sec_da.groupby("time.year").min()
+                        sec_annual_max = sec_da.groupby("time.year").max()
+                        with ProgressBar():
+                            sec_annual_min = sec_annual_min.compute()
+                            sec_annual_max = sec_annual_max.compute()
+                        sec_name = get_sector_name(str(float(sec_idx)), emission_type, species)
+                        for yr in sec_annual_min.year.values:
+                            minmax_rows.append({
+                                "filename": fp.name,
+                                "species": species,
+                                "emissions_type": emission_type,
+                                "marker": marker,
+                                "version": str(version),
+                                "sector": sec_name,
+                                "year": int(yr),
+                                "min": float(sec_annual_min.sel(year=yr).min()),
+                                "max": float(sec_annual_max.sel(year=yr).max()),
+                            })
+                else:
+                    # No sector dimension (e.g. some openburning files)
+                    annual_min = da.groupby("time.year").min()
+                    annual_max = da.groupby("time.year").max()
+                    with ProgressBar():
+                        annual_min = annual_min.compute()
+                        annual_max = annual_max.compute()
+                    for yr in annual_min.year.values:
+                        minmax_rows.append({
+                            "filename": fp.name,
+                            "species": species,
+                            "emissions_type": emission_type,
+                            "marker": marker,
+                            "version": str(version),
+                            "sector": "Total",
+                            "year": int(yr),
+                            "min": float(annual_min.sel(year=yr).min()),
+                            "max": float(annual_max.sel(year=yr).max()),
+                        })
+
+                ds.close()
+
+df_minmax = pd.DataFrame(minmax_rows)
+minmax_path = gridpoint_diff_folder / f"F1_minmax_per_file_sector_{VERSION_ESGF_OLD}_and_{VERSION_ESGF}.csv"
+df_minmax.to_csv(minmax_path, index=False)
+print(f"\nMin/max summary saved to: {minmax_path}")
+print(f"Shape: {df_minmax.shape[0]} rows × {df_minmax.shape[1]} columns")
+df_minmax
 # %%
