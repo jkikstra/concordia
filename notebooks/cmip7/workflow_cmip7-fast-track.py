@@ -2659,14 +2659,20 @@ if run_openburning_h2:
         }
     }
     h2_openburning.to_netcdf(outfile, mode="w", encoding=encoding, compute=True)
-  #  h2_openburning.close()
-  #  co_openburning.close()
 
-# %%
-# plot to check
-data_slice = h2_openburning["H2_em_openburning"].isel(sector=0, time=2)
-vmax = np.percentile(data_slice.values, 99)  # 99th percentile
-data_slice.plot(vmax=vmax, cmap="viridis")  # or your favorite cmap
+    
+    ## OPTIONAL: plot to ensure file is not empty and emissions distribution looks reasonable
+    data_slice = h2_openburning["H2_em_openburning"].isel(sector=0, time=2)
+    vmax = np.percentile(data_slice.values, 99)
+
+    plt.figure(figsize=(10, 5))
+    im = data_slice.plot(vmin=vmin, vmax=vmax, cmap="viridis")
+    h2_plot_name = settings.out_path / GRIDDING_VERSION / "plots" / "H2-em-openburning_timeslice.png"
+    plt.savefig(h2_plot_name, dpi=300, bbox_inches='tight')
+    plt.close()
+
+    h2_openburning.close()
+    co_openburning.close()
 
 # %%
 # -----------------------------
