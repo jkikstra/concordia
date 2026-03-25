@@ -2614,7 +2614,7 @@ if run_openburning_h2:
                 co_slice = co_sector.isel(time=time_idx)
 
                 # Multiply and assign to result
-                h2_openburning.isel(time=time_idx, sector=sector_idx)[gas_variable_name].values = (co_slice * translation_slice).values
+                h2_openburning[gas_variable_name].values[time_idx, sector_idx, :, :] = (co_slice * translation_slice).values
                 
                 # Assert that the sectors all align, ignoring dtype
                 assert h2_openburning.isel(time=time_idx, sector=sector_idx).sector.values == co_slice.sector.values
