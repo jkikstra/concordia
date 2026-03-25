@@ -64,6 +64,7 @@ from __future__ import annotations
 # - Module B: Min/max value statistics per file
 # - Module C: Downscaled data QC (replicating workflow checks)
 # - Module D: Annual totals 3-way comparison (input / harmonized / gridded)
+#             NOTE: CSV output works; PNG plots are broken (TODO: fix or replace)
 # - Module E: Animated grid maps (fast PIL-based GIFs)
 # - Module F: Documentation plots 03 and 04
 # - Module G: Per-location timeseries vs CEDS history (mirrors workflow §4.1; slow, off by default)
@@ -910,6 +911,9 @@ def _aggregate_harmonized_csv_to_totals(
     return melted
 
 
+# TODO: The plotting part of check_annual_totals (PNG output) does not work
+# correctly. The CSV output is fine and can be used directly. The plots should
+# be re-implemented or debugged separately.
 def check_annual_totals(
     version_path: Path,
     gridded_folder: Path,
