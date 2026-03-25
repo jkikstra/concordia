@@ -217,8 +217,8 @@ DS_ATTRS = dict(
     table_id="input4MIPs",
     target_mip="ScenarioMIP", # Should this be ScenarioMIP? what is target_mip?
     product="derived",
-    start_date="202201",
-    end_date="210012",
+    start_date="210101",
+    end_date="250012",
     creation_date=generate_creation_timestamp(),
     tracking_id=generate_tracking_id()
 )
