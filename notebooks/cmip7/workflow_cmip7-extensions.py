@@ -27,19 +27,19 @@
 # **Note:** these options below can also be changed and driven from a driver script. 
 
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
-HISTORY_FILE: str = "country-history_202511261223_202511040855_202512032146_202512021030_7e32405ade790677a6022ff498395bff00d9792d.csv"
+HISTORY_FILE: str = "downscaled-only-vl_1-1-0.csv"
 # Settings
 # SETTINGS_FILE: str = "config_cmip7_esgf_v0_alpha.yaml" # was used for preparing for first upload to ESGF
-SETTINGS_FILE: str = "config_cmip7_v0-4-0.yaml" # for second ESGF version
-VERSION_ESGF: str = "1-1-0" # for second ESGF version
+SETTINGS_FILE: str = "config_cmip7_v0-4-0-EXT.yaml" # for second ESGF version
+VERSION_ESGF: str = "1-1-0-EXT" # for extensions
 
 # Which scenario to run from the markers
 marker_to_run: str = "vl" # options: h, hl, m, ml, l, ln, vl
 
 # What folder to save this run in
 GRIDDING_VERSION: str | None = None
-GRIDDING_VERSION: str | None = f"{marker_to_run}_{VERSION_ESGF}_ext"
-
+GRIDDING_VERSION: str | None = f"{marker_to_run}_{VERSION_ESGF}"
+GRIDDING_HISTORY: str | None = GRIDDING_VERSION.removesuffix("-EXT")
 
 # Which parts to run
 run_main: bool = True # skips downscaling and the saving out of data of the main workflow; can still run supplemental workflows with this set to False
@@ -65,6 +65,10 @@ DO_GRIDDING_ONLY_FOR_THESE_SECTORS: list[str] | None = None # all: ['anthro', 'o
 DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["VOC01_alcohols_em_speciated_VOC_anthro"]
 # - openburning
 DO_VOC_SPECIATION_OPENBURNING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["C10H16"]
+# %%
+DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES = ["VOC01_alcohols_em_speciated_VOC_anthro"]
+DO_VOC_SPECIATION_OPENBURNING_ONLY_FOR_THESE_SPECIES = ["C10H16"]
+
 # %%
 # validate that we're receiving what we're expecting
 print(f"\n\nGRIDDING_VERSION received: {GRIDDING_VERSION}\n\n")
@@ -125,7 +129,8 @@ _, MODEL_SELECTION, SCENARIO_SELECTION, _ = return_marker_information(
 )
 if GRIDDING_VERSION is None:
     GRIDDING_VERSION = f"{marker_to_run}" # default to just the marker abbreviation if no versioning is provided
-SCENARIO_FILE = f"harmonised-gridding_{MODEL_SELECTION}.csv"
+
+SCENARIO_FILE = f"extensions_full_emissions_timeseries_2023_2500.csv"
 
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
 # filename template
@@ -205,20 +210,6 @@ def return_emission_names(file):
 def load_result(var_name, FILE_NAME_ENDING=FILE_NAME_ENDING, settings=settings, GRIDDING_VERSION=GRIDDING_VERSION):
     return xr.open_dataset(settings.out_path / GRIDDING_VERSION / f'{var_name}_{FILE_NAME_ENDING}')
 
-
-# %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
-# location for reading in raw historical (anthropogenic) emissions data for spatial harmonization
-ceds_data_location: Path | None = None # if None here, it is replaced by settings.ceds_data_location later on
-ceds_data_location_voc: Path | None = None # if None here, it is replaced by settings.ceds_data_location_voc later on
-ceds_data_location_AIR: Path | None = None # if None here, it is replaced by settings.ceds_data_location_voc later on
-
-# %%
-if ceds_data_location is None:
-    ceds_data_location = settings.postprocess_path / "CMIP7_anthro"
-if ceds_data_location_voc is None:
-    ceds_data_location_voc = settings.postprocess_path / "CMIP7_anthro_VOC"
-if ceds_data_location_AIR is None:
-    ceds_data_location_AIR = settings.postprocess_path / "CMIP7_AIR"
 
 # %% [markdown]
 # Set logger (uses setting)
@@ -322,9 +313,18 @@ regionmappings = {}
 
 for m, kwargs in settings.regionmappings.items():
     regionmapping = RegionMapping.from_regiondef(**kwargs)
-    regionmapping.data = regionmapping.data.pix.aggregate(
-        country=settings.country_combinations, agg_func="last"
-    )
+    if settings.country_combinations:  # only aggregate if not empty
+        regionmapping.data = regionmapping.data.pix.aggregate(
+            country=settings.country_combinations, agg_func="last"
+        )
+    # Ensure no duplicate country entries (pix.aggregate deduplicates when
+    # country_combinations is set, but without it the raw CSV may have duplicates)
+    if regionmapping.data.index.duplicated().any():
+        n_dups = regionmapping.data.index.duplicated().sum()
+        dups = regionmapping.data.index[regionmapping.data.index.duplicated(keep=False)]
+        print(f"⚠️  {m}: Dropping {n_dups} duplicate country entries from regionmapping")
+        print(f"   Duplicate countries: {sorted(set(dups.tolist()))}")
+        regionmapping.data = regionmapping.data[~regionmapping.data.index.duplicated(keep='last')]
     regionmappings[m] = regionmapping
 
 
@@ -333,42 +333,39 @@ for m, kwargs in settings.regionmappings.items():
 #
 
 # %%
-hist = (
-    pd.read_csv(settings.history_path / HISTORY_FILE) # like "cmip7_history_countrylevel_250721.csv" 
-    .drop(columns=['model', 'scenario'])
-    .rename(columns={"region": "country"})
+scenario_hist = (
+    pd.read_csv(settings.out_path / GRIDDING_HISTORY / HISTORY_FILE) # like "cmip7_history_countrylevel_250721.csv" 
+    .drop(columns=['model', 'region', 'scenario', 'method'])
 )
-
-hist = extractlevel(hist.set_index(['country', 'variable', 'unit']), variable="Emissions|{gas}|{sector}", drop=True)
-
-# Reorder the MultiIndex of hist
-hist = hist.reorder_levels(['country', 'gas', 'sector', 'unit'])
-hist = hist.sort_index()
+scenario_hist = scenario_hist.set_index(['country', 'gas', 'sector', 'unit'])
+scenario_hist = scenario_hist.sort_index()
 
 # Update column type and name
-hist.columns = hist.columns.astype(int)
-hist.columns.name = 'year'
+scenario_hist.columns = scenario_hist.columns.astype(int)
+scenario_hist.columns.name = 'year'
+scenario_hist
 
-# History fixes:
+# %%
+scenario_hist.index.get_level_values("sector").unique()
 
-# only country-level emissions
-hist_nonglobal = hist.loc[~isin(country="global")]
-hist_nonglobal = hist_nonglobal.loc[~ismatch(sector=["**Shipping", "**Aircraft"])]# let's also make sure there's no shipping (10.08.2025: zero values present) and aircraft (10.08.2025: no data) anymore for country-level data 
+# %%
+cmip7_hist = (pd.read_csv(settings.history_path / "vl_1-1-0_hist.csv", index_col=0))
+cmip7_hist = cmip7_hist.set_index(['country', 'gas', 'sector', 'unit'])
+cmip7_hist = cmip7_hist.sort_index()
 
-# keep international/bunkers emissions & rename to country='World'
-hist_global = hist.loc[isin(country="global")]
-hist_global_nonzero = hist_global[ismatch(sector=["**Shipping", "**Aircraft"])]
-hist_global_nonzero = hist_global_nonzero.rename(index=lambda v: v.replace("global", "World"))
+# Update column type and name
+cmip7_hist.columns = cmip7_hist.columns.astype(int)
+cmip7_hist.columns.name = 'year'
 
-# calculate the sum of all countries for the other countries
-hist_nonglobal_world = assignlevel(hist_nonglobal.groupby(["gas", "sector", "unit"]).sum(), country="World").reorder_levels(["country","gas", "sector", "unit"])
+# %%
+missing_idx = cmip7_hist.index.difference(scenario_hist.index)
+missing_idx.to_frame(index=False).to_csv(settings.out_path / "rows_missing_from_downscaled_hist.csv")
 
-# recombine
-hist = pd.concat([
-    hist_nonglobal,
-    hist_global_nonzero,
-    hist_nonglobal_world
-])
+# %%
+cmip7_hist.index.get_level_values("sector").unique()
+
+# %%
+hist = pd.concat([cmip7_hist, scenario_hist], axis=1).dropna()
 
 # %% [markdown]
 # # IAM: Read and process IAM data
@@ -386,21 +383,17 @@ iam_df = cmip7_utils.load_data(
 )
 
 # filter only one scenario  
-iam_df = cmip7_utils.filter_scenario(iam_df, scenarios=SCENARIO_SELECTION) # TODO: remove this after test code is done
+iam_df = cmip7_utils.filter_scenario(iam_df, scenarios=SCENARIO_SELECTION)
 
-# %%
-# TODO: add historical data as 2022 (for bb4cmip; for CEDS we should drop it again)
-
-# %%
 IAMC_COLS = ["model", "scenario", "region", "variable", "unit"]
-HARMONIZED_YEAR_COLS = [col for col in iam_df.columns if col.isdigit() and settings.base_year <= int(col) <= 2100]
+iam_df.columns = [
+    str(int(float(col))) if str(col).replace('.', '', 1).isdigit() else col
+    for col in iam_df.columns
+]
+HARMONIZED_YEAR_COLS = [col for col in iam_df.columns if col.isdigit() and settings.base_year <= int(col) <= 2500]
 
-# %%
 # keep only relevant columns
 iam_df = iam_df[(IAMC_COLS + HARMONIZED_YEAR_COLS)]
-
-# %%
-iam_df
 
 # %% [markdown]
 # ### Process (using pix - formatting)
@@ -454,21 +447,6 @@ harm_overrides
 # test that this is indeed empty, which is expected
 assert harm_overrides.empty
 
-# %%
-# No need to reharmonise, so no rechoosing methods.
-# But if one must, it can be done using the extend_overrides() function like so:
-# harm_overrides = extend_overrides(
-#     harm_overrides,
-#     "constant_ratio",
-#     sector=[
-#         f"{sec} Burning"
-#         for sec in ["Agricultural Waste", "Forest", "Grassland", "Peat"]
-#     ],
-#     variables=variabledefs.data.index,
-#     regionmappings=regionmappings,
-#     model_baseyear=iam_df[settings.base_year],
-# )
-
 # %% [markdown]
 # # Prepare GDP proxy
 #
@@ -481,9 +459,13 @@ settings.scenario_path
 # %%
 # New; updated SSP data from CMIP7 era (downloaded from: http://files.ece.iiasa.ac.at/ssp/downloads/ssp_basic_drivers_release_3.2.beta_full.xlsx, and then selected only the GDP|PPP variable)
 gdp_new = pd.read_csv(
-        settings.scenario_path / "ssp_basic_drivers_release_3.2.beta_full_gdp.csv",
+        settings.scenario_path / "ssp_basic_drivers_release_3.2.beta_full_gdp-extensions.csv",
         index_col=list(range(5)),
     )
+
+# drop the Historical Reference data
+gdp_new = gdp_new.loc[~ismatch(Scenario="Historical Reference")]
+
 # get iso3c instead of country names
 country_name_to_iso = {country.name: country.alpha_3 for country in pycountry.countries}
 index_df = gdp_new.index.to_frame()
@@ -507,98 +489,23 @@ gdp = (
         ~ismatch(country = "**(r**" ) # filter out region names like 'africa (r10)'
     ]
     .rename(index=str.lower, level="country")
-    .rename(columns=int)
+#    .rename(columns=int)
     .pix.project(["ssp", "country"])
     .pix.aggregate(country=settings.country_combinations)
 )
 
-# SELECT ONLY FUTURE YEARS
-# Get all years in the range (min to max)
-# all_years = range(min(gdp.columns), max(gdp.columns) + 1) # is possible, but would need to deal with "Scenario=='Historical Reference'"
-all_years = range(2021, 2100 + 1)
+# ensure integer columns
+gdp.columns = [int(float(col)) for col in gdp.columns]
 
-# Reindex to include all years, then interpolate
+# full year range
+all_years = range(2100, 2501)
+
+# reindex
 gdp = gdp.reindex(columns=all_years)
 
-
-
-# ADD HISTORICAL VALUE FOR EACH SCENARIO (to get 2023 and 2024 GDP)
-## get 2020 historical value for interpolation to 2023 and 2024
-gdp_new = gdp_new.rename_axis(index=str.lower)
-hist_mask = (
-    # gdp_new.index.get_level_values("model") == "OECD Env-Growth" &
-    (gdp_new.index.get_level_values("scenario") == "Historical Reference") &
-    (gdp_new.index.get_level_values("variable") == "GDP|PPP") &
-    (gdp_new.index.get_level_values("unit") == "billion USD_2017/yr")
-)
-gdp_hist = (
-    gdp_new.loc[hist_mask,"2020"]
-    # gdp_new.loc[hist_mask,"2020"].reset_index().loc[:, ["region", "variable", "unit", "2020"]]
-    .rename_axis(index={"region": "country"})
-    .loc[
-        ~ismatch(country = "**(r**" ) # filter out region names like 'africa (r10)'
-    ]
-    .rename(index=str.lower, level="country")
-    # .rename(columns=int)
-    .pix.project(["country"])
-    .pix.aggregate(country=settings.country_combinations)
-)
-gdp_hist
-
-## Merge
-### Step 1: Reset index on gdp_hist to prepare for merge
-gdp_hist_reset = gdp_hist.reset_index()  # 'country' becomes a column
-gdp_hist_reset
-
-### Step 2: Merge on 'country', keeping all rows in gdp
-# We assume gdp has a MultiIndex ('ssp', 'country')
-gdp_reset = gdp.reset_index()  # so we can merge on 'country'
-merged = gdp_reset.merge(gdp_hist_reset[['country', '2020']], on='country', how='left')
-
-### Step 3: Set index back to ('ssp', 'country') if needed
-merged = merged.set_index(['ssp', 'country'])
-
-### Step 4: Reorder columns by year
-# First, get all columns that are years (int or str), sort them
-year_cols = sorted([col for col in merged.columns if str(col).isdigit()], key=int)
-merged = merged[year_cols]  # reordering only the year columns
-# merged
-
-
-
-# INTERPOLATE:
-# Interpolate GDP DataFrame to annual data (fill all years in the column range)
-# Assumes 'gdp' is a DataFrame with years as columns (integers) and a MultiIndex
-
-# Reindex to include all years, then interpolate
+# interpolate to fill all years
 gdp = gdp.interpolate(axis=1, method='linear', limit_direction='both')
-
 gdp
-# merged
-
-
-# # Old; original SSP data from CMIP6 era
-# gdp = (
-#     pd.read_csv(
-#         settings.scenario_path / "SspDb_country_data_2013-06-12.csv",
-#         index_col=list(range(5)),
-#     )
-#     .rename_axis(index=str.lower)
-#     .loc[
-#         isin(
-#             model="OECD Env-Growth",
-#             scenario=[f"SSP{n+1}_v9_130325" for n in range(5)],
-#             variable="GDP|PPP",
-#         )
-#     ]
-#     .dropna(how="all", axis=1)
-#     .rename_axis(index={"scenario": "ssp", "region": "country"})
-#     .rename(index=str.lower, level="country")
-#     .rename(columns=int)
-#     .pix.project(["ssp", "country"])
-#     # .pix.aggregate(country=settings.country_combinations)
-# )
-# gdp
 
 # %% [markdown]
 # Determine likely SSP for each harmonized pathway from scenario string and create proxy data aligned with pathways
@@ -616,7 +523,8 @@ rename_gdp = {"bolivia": "bol",
               "laos": "lao",
               "micronesia": "fsm",
               "moldova": "mda",
-              "kosovo": "srb (kosovo)",
+            #   "kosovo": "srb (kosovo)",
+              "kosovo": "kos",
               "palestine": "pse",
               "north korea": "prk",
               "south korea": "kor",
@@ -629,14 +537,16 @@ rename_gdp = {"bolivia": "bol",
               "world": "World"
              }
 
-hist = hist.pix.aggregate(country=settings.country_combinations)
+if settings.country_combinations:  # only aggregate if not empty
+    hist = hist.pix.aggregate(country=settings.country_combinations)
 
 gdp.index = gdp.index.set_levels(
     gdp.index.levels[gdp.index.names.index("country")].to_series().replace(rename_gdp),
     level="country"
 )
 
-gdp = gdp.pix.aggregate(country=settings.country_combinations)
+if settings.country_combinations:  # only aggregate if not empty
+    gdp = gdp.pix.aggregate(country=settings.country_combinations)
 
 # %%
 SSP_per_pathway = cmip7_utils.guess_ssp(iam_df)
@@ -689,31 +599,47 @@ print(countries_with_hist_and_gdp_and_regionmapping_data)
 # # Sector coverage (check historical)
 
 # %%
-hist_sectors = hist.index.get_level_values("sector").unique()
-iam_sectors = iam_df.index.get_level_values("sector").unique()
+# expected sectors from reference data:
+reference_set = set(['Agricultural Waste Burning', 'Agriculture', 'Energy Sector',
+       'Forest Burning', 'Grassland Burning', 'Industrial Sector', 'Other CDR',
+       'Peat Burning', 'Residential Commercial Other',
+       'Solvents Production and Application', 'Transportation Sector', 'Waste',
+       'BECCS', 'Biochar', 'Direct Air Capture', 'Enhanced Weathering',
+       'Ocean', 'Soil Carbon Management', 'Aircraft',
+       'International Shipping'])
 
-missing = set(iam_sectors) - set(hist_sectors)
-print(f"Separately considering CDR sectors {missing}")  # CDR sectors
+# %%
+# make sure the "historical" scenario emissions have the correct sectors
+assert set(hist.index.get_level_values("sector")) == set(reference_set)
 
-expected_sectors_missing_cdr = {
-    'Enhanced Weathering', 'BECCS', 'Direct Air Capture', 'Ocean', 'Biochar', 'Soil Carbon Management', 'Other CDR'
-}
-assert missing.issubset(expected_sectors_missing_cdr), f"Unexpected missing sectors found: {missing - expected_sectors_missing_cdr}"
+# %%
+# check difference to extensions iam dataframe; these must be leftovers from the SCM workflow
+set(iam_df.index.get_level_values("sector").unique()) - reference_set
+
+# %%
+# filter to retain only the sectors we want going forward
+iam_df = iam_df[iam_df.index.get_level_values("sector").isin(reference_set)]
+
+# %%
+# make sure the "historical" scenario emissions have the correct sectors
+assert set(iam_df.index.get_level_values("sector")) == set(reference_set)
 
 # %% [markdown]
 # ## Add zero CDR history
 
 # %%
+expected_sectors_missing_cdr = {
+    'Enhanced Weathering', 'BECCS', 'Direct Air Capture', 'Ocean', 'Biochar', 'Soil Carbon Management', 'Other CDR'
+}
+
 co2_template = hist.loc[isin(sector="Energy Sector", gas="CO2")] # pull co2-like template
 # fill values with zero
 co2_template.loc[:] = 0
 
 # add to history with replaced sector names
 for s in expected_sectors_missing_cdr:
-    hist = pd.concat([
-        hist,
-        co2_template.pix.assign(sector=s)
-    ])
+    if s not in hist.index.get_level_values("sector"):
+        hist = pd.concat([hist, co2_template.pix.assign(sector=s)])
 
 
 # %% [markdown]
@@ -743,12 +669,29 @@ regionmapping = regionmappings[model_name]
 # %%
 # indexes for countries on a grid
 indexraster = IndexRaster.from_netcdf(
-    settings.gridding_path / "ssp_comb_indexraster.nc", # redo: notebooks\gridding_data\generate_ceds_proxy_netcdfs.py
+    settings.gridding_path / "ssp_comb_indexraster_splitsudankosovopalestine.nc", # redo: notebooks\gridding_data\generate_ceds_proxy_netcdfs.py
     chunks={},
 ).compute()
-indexraster_region = indexraster.dissolve(
-    regionmapping.filter(indexraster.index).data.rename("country")
-).compute()
+
+# Filter regionmapping and prepare for dissolve
+filtered_regionmapping = regionmapping.filter(indexraster.index).data.rename("country")
+
+# Check for duplicate index labels in the mapping
+if filtered_regionmapping.index.duplicated().any():
+    duplicates = filtered_regionmapping.index[filtered_regionmapping.index.duplicated(keep=False)]
+    print(f"⚠️  Found {len(duplicates.unique())} countries with duplicate region mappings:")
+    for dup in sorted(duplicates.unique()):
+        regions = list(filtered_regionmapping[filtered_regionmapping.index == dup].values)
+        print(f"  {dup}: {regions}")
+    print("  → Keeping first occurrence for dissolve()")
+    filtered_regionmapping = filtered_regionmapping[~filtered_regionmapping.index.duplicated(keep='first')]
+
+indexraster_region = indexraster.dissolve(filtered_regionmapping).compute()
+
+print(sorted(indexraster.index.tolist()))
+
+# 'kos' in regionmapping.index.tolist()
+# 'srb (kosovo)' in np.unique(indexraster.index)
 
 # %%
 iam_df.columns
@@ -765,12 +708,10 @@ iam_df.columns
 
 # Sulfur -> SO2 (CEDS+BB4CMIP7)
 iam_df = iam_df.rename(index=lambda v: v.replace("Sulfur", "SO2"))
-hist = hist.rename(index=lambda v: v.replace("Sulfur", "SO2"))
 
 # VOC -> NMVOC for anthro sectors (CEDS)
 openburning_sectors = cmip7_utils.SECTOR_ORDERING_DEFAULT['em_openburning']
 iam_df = iam_df.rename(index=lambda v: v.replace("VOC", "NMVOC"))
-hist = hist.rename(index=lambda v: v.replace("VOC", "NMVOC"))
 # Rename NMVOC to NMVOCbulk in iam_df for openburning sectors (BB4CMIP7)
 def rename_voc_to_nmvoc_iam(idx):
     gas_idx = iam_df.index.names.index("gas")
@@ -783,17 +724,62 @@ def rename_voc_to_nmvoc_iam(idx):
 
 iam_df.index = iam_df.index.map(rename_voc_to_nmvoc_iam)
 
-# Rename NMVOC to NMVOCbulk in hist for openburning sectors
-def rename_voc_to_nmvoc_hist(idx):
-    gas_idx = hist.index.names.index("gas")
-    sector_idx = hist.index.names.index("sector")
-    if idx[sector_idx] in openburning_sectors and idx[gas_idx] == "NMVOC":
-        idx_list = list(idx)
-        idx_list[gas_idx] = "NMVOCbulk"
-        return tuple(idx_list)
-    return idx
+# %%
+# Fill missing historical data with zeros for countries in the regionmapping
+# that don't have data for all (gas, sector, unit) combinations.
+# This prevents MissingHistoricalError in the aneris downscaler.
 
-hist.index = hist.index.map(rename_voc_to_nmvoc_hist) 
+# Get all countries that will be used in the workflow
+workflow_countries = countries_with_hist_and_gdp_and_regionmapping_data
+
+# Build the full set of (gas, sector, unit) from hist (excluding World)
+hist_gas_sector_unit = (
+    hist.loc[~isin(country="World")]
+    .index.droplevel("country")
+    .drop_duplicates()
+)
+
+# Build the expected full index: every workflow country × every (gas, sector, unit)
+full_index = pd.MultiIndex.from_tuples(
+    [(c, g, s, u) for c in workflow_countries for g, s, u in hist_gas_sector_unit],
+    names=["country", "gas", "sector", "unit"]
+)
+
+# Find which entries are missing from hist
+existing_hist_index = hist.index
+missing_from_hist = full_index.difference(existing_hist_index)
+
+if len(missing_from_hist) > 0:
+    # Create zero-filled rows for missing entries
+    zero_rows = pd.DataFrame(
+        0.0,
+        index=missing_from_hist,
+        columns=hist.columns
+    )
+    hist = pd.concat([hist, zero_rows]).sort_index()
+    
+    # Report
+    missing_report = missing_from_hist.to_frame(index=False)
+    report_dir = Path(version_path, "workflow_driver_data")
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_file = report_dir / f"missing_historical_filled_with_zeros_{settings.version}.csv"
+    missing_report.to_csv(report_file, index=False)
+    
+    # Summary
+    n_countries = missing_report["country"].nunique()
+    n_combos = len(missing_report)
+    print(f"⚠️  Filled {n_combos} missing historical entries with zeros ")
+    print(f"   ({n_countries} countries affected: {sorted(missing_report['country'].unique())})")
+    print(f"   Report saved to: {report_file}")
+    
+    # Show summary by country
+    print(f"\n   Missing entries per country:")
+    for country, group in missing_report.groupby("country"):
+        sectors = sorted(group["sector"].unique())
+        gases = sorted(group["gas"].unique())
+        print(f"     {country}: {len(group)} entries — gases: {gases}, sectors: {sectors}")
+else:
+    print("✅ No missing historical data — all countries have complete coverage")
 
 # %%
 workflow = WorkflowDriver(
@@ -805,7 +791,7 @@ workflow = WorkflowDriver(
     # gdp
     GDP_per_pathway, #select_only_countries_with_all_info(GDP_per_pathway),
     # regionmapping
-    regionmapping.filter(countries_with_hist_and_gdp_and_regionmapping_data[~countries_with_hist_and_gdp_and_regionmapping_data.isin(['myt','gum'])]), # mayotte and guam are missing some historical data for some sectors
+    regionmapping.filter(countries_with_hist_and_gdp_and_regionmapping_data), # missing historical data for any country (especially, ['myt', 'gum', 'kos', 'pse') is zero-filled above
     # indexraster_country
     indexraster,
     # indexraster_region
@@ -836,6 +822,192 @@ def assert_strings_covered(array1, array2):
     assert all(s in array2 for s in array1), "Not all regions are covered in the regionmapping"
 assert_strings_covered(reg_model, reg_mapped)
 
+# %%
+def check_harmonization_consistency(workflow, settings, version_path, atol=1e-6, rtol=1.0,
+                                     region=None, gas=None, sector=None):
+    """
+    Check whether the model data is already harmonized to the historical data.
+    
+    Compares model base-year values at regional level with aggregated country-level history.
+    Saves a mismatch table to CSV if any discrepancies found.
+    
+    Parameters
+    ----------
+    workflow : WorkflowDriver
+        Workflow object with model, hist, and regionmapping attributes
+    settings : Settings
+        Settings object with base_year attribute
+    version_path : Path
+        Output directory for saving mismatch CSV
+    atol : float, default 1e-6
+        Absolute tolerance for "exact match"
+    rtol : float, default 1.0
+        Relative tolerance in percent for "close match"
+    region : str or list of str, optional
+        Filter to specific region(s). If None, all regions included.
+    gas : str or list of str, optional
+        Filter to specific gas/species (e.g., "CO2", "CO"). If None, all gases included.
+    sector : str or list of str, optional
+        Filter to specific sector(s). If None, all sectors included.
+    """
+    base_year = settings.base_year
+    
+    print(f"\n{'='*80}")
+    print(f"HARMONIZATION CONSISTENCY CHECK (base year = {base_year})")
+    
+    # Describe filters if applied
+    filters_applied = []
+    if region is not None:
+        region_list = [region] if isinstance(region, str) else region
+        filters_applied.append(f"Region(s): {', '.join(region_list)}")
+    if gas is not None:
+        gas_list = [gas] if isinstance(gas, str) else gas
+        filters_applied.append(f"Gas/Species: {', '.join(gas_list)}")
+    if sector is not None:
+        sector_list = [sector] if isinstance(sector, str) else sector
+        filters_applied.append(f"Sector(s): {', '.join(sector_list)}")
+    
+    if filters_applied:
+        print(f"Filters: {' | '.join(filters_applied)}")
+    
+    print(f"{'='*80}\n")
+
+    # Aggregate country-level history to IAM regions
+    hist_agg = workflow.regionmapping.aggregate(workflow.hist.copy(), dropna=True)
+
+    # Get model data for non-World regions that exist in the regionmapping
+    model_regions = workflow.regionmapping.data.unique()
+    model_for_check = workflow.model.loc[isin(region=model_regions)].copy()
+
+    # Apply filters before comparison
+    if region is not None:
+        region_list = [region] if isinstance(region, str) else region
+        model_for_check = model_for_check.loc[isin(region=region_list)]
+        hist_agg = hist_agg.loc[isin(region=region_list)]
+    
+    if gas is not None:
+        gas_list = [gas] if isinstance(gas, str) else gas
+        model_for_check = model_for_check.loc[isin(gas=gas_list)]
+        hist_agg = hist_agg.loc[isin(gas=gas_list)]
+    
+    if sector is not None:
+        sector_list = [sector] if isinstance(sector, str) else sector
+        model_for_check = model_for_check.loc[isin(sector=sector_list)]
+        hist_agg = hist_agg.loc[isin(sector=sector_list)]
+
+    # Align on common (region, gas, sector, unit) index
+    model_by = model_for_check.droplevel(["model", "scenario"])[[base_year]].rename(columns={base_year: "model"})
+    hist_by = hist_agg[[base_year]].rename(columns={base_year: "hist"})
+
+    comparison = model_by.join(hist_by, how="inner")
+
+    if len(comparison) == 0:
+        print("⚠️  No matching data after applying filters. Check region/gas/sector names.")
+        return
+
+    # Compute absolute and relative differences
+    comparison["abs_diff"] = comparison["model"] - comparison["hist"]
+    # Avoid division by zero: relative diff only where hist != 0
+    comparison["rel_diff_pct"] = comparison.apply(
+        lambda row: (row["abs_diff"] / row["hist"] * 100) if abs(row["hist"]) > 1e-15 else (
+            0.0 if abs(row["model"]) < 1e-15 else float("inf")
+        ), axis=1
+    )
+
+    # Classify matches
+    exact_match = (comparison["abs_diff"].abs() < atol)
+    close_match = (comparison["rel_diff_pct"].abs() <= rtol) & ~exact_match
+    mismatch = ~exact_match & ~close_match
+
+    n_total = len(comparison)
+    n_exact = exact_match.sum()
+    n_close = close_match.sum()
+    n_mismatch = mismatch.sum()
+
+    print(f"Compared {n_total} (region, gas, sector, unit) combinations at base year {base_year}:")
+    print(f"  ✅ Exact match (|diff| < {atol}):         {n_exact} ({n_exact/n_total*100:.1f}%)")
+    print(f"  ≈  Close match (rel diff ≤ {rtol}%):       {n_close} ({n_close/n_total*100:.1f}%)")
+    print(f"  ❌ Mismatch (rel diff > {rtol}%):           {n_mismatch} ({n_mismatch/n_total*100:.1f}%)")
+
+    if n_mismatch > 0:
+        mismatched = comparison[mismatch].copy()
+        mismatched = mismatched.sort_values("rel_diff_pct", key=abs, ascending=False)
+        
+        print(f"\n⚠️  Top mismatches (model vs aggregated history):")
+        print(f"{'Region':<25} {'Gas':<12} {'Sector':<35} {'Model':>12} {'Hist':>12} {'Diff%':>10}")
+        print("-" * 110)
+        for idx, row in mismatched.head(30).iterrows():
+            region = idx[0] if isinstance(idx, tuple) else str(idx)
+            gas = idx[1] if isinstance(idx, tuple) and len(idx) > 1 else ""
+            sector = idx[2] if isinstance(idx, tuple) and len(idx) > 2 else ""
+            rdiff = f"{row['rel_diff_pct']:.2f}%" if not float("inf") == abs(row['rel_diff_pct']) else "inf"
+            print(f"{str(region):<25} {str(gas):<12} {str(sector):<35} {row['model']:>12.4f} {row['hist']:>12.4f} {rdiff:>10}")
+        
+        if len(mismatched) > 30:
+            print(f"  ... and {len(mismatched) - 30} more mismatches")
+        
+        # Save full comparison to CSV for inspection
+        mismatch_file = version_path / f"check_harmonization_consistency_{settings.version}.csv"
+        mismatched.to_csv(mismatch_file)
+        print(f"\n  Full mismatch table saved to: {mismatch_file}")
+        
+        print(f"\n📋 CONCLUSION: Model data does NOT perfectly match aggregated history at base year {base_year}.")
+        print(f"   The concordia harmonization step will adjust {n_mismatch} variable(s).")
+        print(f"   If input data is already harmonized upstream, consider skip_harmonization=True.")
+    else:
+        print(f"\n✅ CONCLUSION: Model base-year values match aggregated history for all variables.")
+        print(f"   The data appears to be already harmonized. Harmonization will be a near-pass-through.")
+        print(f"   Consider skip_harmonization=True to avoid potential artefacts from re-harmonization.")
+
+    # Also check variables in model but NOT in history
+    model_index = model_for_check.droplevel(["model", "scenario"]).index
+    hist_index = hist_agg.index
+    in_model_not_hist = model_index.difference(hist_index)
+
+    if len(in_model_not_hist) > 0:
+        unique_sectors = set(idx[2] if len(idx) > 2 else str(idx) for idx in in_model_not_hist)
+        print(f"\n⚠️  {len(in_model_not_hist)} model rows have no matching history (sectors: {sorted(unique_sectors)})")
+
+    # Save relevant regionmapping
+    filtered_regionmapping = workflow.regionmapping
+    if region is not None or gas is not None or sector is not None:
+        # Extract region names from the filtered comparison, then find the countries that map to those regions
+        filtered_regions = comparison.index.get_level_values('region').unique()
+        # regionmapping.data is a Series: country (index) -> region (values)
+        countries_in_filtered_regions = workflow.regionmapping.data[
+            workflow.regionmapping.data.isin(filtered_regions)
+        ].index.tolist()
+        filtered_regionmapping = workflow.regionmapping.filter(countries_in_filtered_regions)
+    
+    regionmapping_file = version_path / f"check_harmonization_consistency_regionmapping_{settings.version}.csv"
+    filtered_regionmapping.data.to_csv(regionmapping_file)
+    print(f"\nRegionmapping saved to: {regionmapping_file}")
+
+# %%
+check_harmonization_consistency(workflow, settings, version_path)
+
+# Check all regions (original behavior)
+check_harmonization_consistency(workflow, settings, version_path)
+
+# Check only one region
+check_harmonization_consistency(workflow, settings, version_path, region="Middle East and Central Asia")
+
+# Check multiple regions
+check_harmonization_consistency(workflow, settings, version_path, region=["Middle East and Central Asia", "Europe"])
+
+# Check only CO2
+check_harmonization_consistency(workflow, settings, version_path, gas="CO2")
+
+# Check only Agricultural Waste Burning sector
+check_harmonization_consistency(workflow, settings, version_path, sector="Agricultural Waste Burning")
+
+# Combine filters
+check_harmonization_consistency(workflow, settings, version_path, 
+                                region="REMIND-MAgPIE 3.5-4.11|Middle East and North Africa", 
+                                gas="CO", 
+                                sector="Agricultural Waste Burning")
+
+
 # %% [markdown]
 # # Harmonize, downscale and grid everything
 #
@@ -865,8 +1037,180 @@ assert_strings_covered(reg_model, reg_mapped)
 
 
 # %%
+# use hist_zero for all variables; this effectively switches off concordia harmonization
+
+# Get all variables that will be harmonized
+variables = workflow.variabledefs.index
+
+overrides = pd.Series(
+    "hist_zero",
+    index=variables,
+    name="method"
+)
+
+workflow.harm_overrides = overrides
+
+# Inject into workflow
+workflow.harm_overrides = overrides
+
+# %%
+from concordia.settings import Settings
+
+cdr_sectors = {
+    'Direct Air Capture', 'Other CDR', 'BECCS', 'Biochar',
+    'Enhanced Weathering', 'Ocean', 'Soil Carbon Management'
+}
+
+# Add CDR sectors to luc_sectors so they use the same downscaling path
+original_luc = set(workflow.settings.luc_sectors) if workflow.settings.luc_sectors else set()
+workflow.settings = workflow.settings(
+    update={"luc_sectors": list(original_luc | cdr_sectors)}
+)
+
+# %%
+workflow.settings.luc_sectors = ['Agricultural Waste Burning',
+ 'Grassland Burning',
+ 'Forest Burning',
+ 'Peat Burning',
+ 'Agriculture',
+ 'Direct Air Capture', 
+ 'Other CDR', 
+ 'BECCS', 
+ 'Biochar',
+ 'Enhanced Weathering', 
+ 'Ocean', 
+ 'Soil Carbon Management']
+
+# %%
 if run_main:
     downscaled = workflow.harmonize_and_downscale() # For a 1 scenario, this takes about 50 seconds on Jarmo's DELL laptop.
+    
+    # ─── Post-downscaling fixes ───────────────────────────────────────────
+    # These fixes are applied to BOTH the local `downscaled` DataFrame AND
+    # the workflow object's internal state (workflow.downscaled.*), so that
+    # they carry through to workflow.grid(), QC checks, and data exports.
+    
+    # Helper: apply an in-place zeroing fix to a DataFrame
+    def _apply_zero_fix(df, row_mask, cell_mask_fn, label):
+        """Zero out cells matching cell_mask_fn within rows matching row_mask. Returns count."""
+        if df is None or row_mask is None:
+            return 0
+        if not row_mask.any():
+            return 0
+        data = df.loc[row_mask]
+        cell_mask = cell_mask_fn(data)
+        n = cell_mask.sum().sum()
+        if n > 0:
+            df.loc[row_mask] = data.where(~cell_mask, 0.0)
+        return n
+    
+    # FIX 1: Zero out tiny negatives in Agricultural Waste Burning for REMIND-MAgPIE
+    # The harmonization/downscaling can produce very small negative values for AWB
+    # in certain countries. If the absolute value is < 1e-4, set to zero.
+    print("\n[FIX 1] Checking for small negatives in AWB (REMIND-MAgPIE)...")
+    def _awb_row_mask(df):
+        return (
+            (df.index.get_level_values("sector") == "Agricultural Waste Burning") &
+            (df.index.get_level_values("model") == "REMIND-MAgPIE 3.5-4.11")
+        )
+    def _awb_cell_mask(data):
+        return (data < 0) & (data.abs() < 1e-4)
+    
+    n_fixed_1 = _apply_zero_fix(downscaled, _awb_row_mask(downscaled), _awb_cell_mask, "downscaled")
+    # Also fix workflow internal countrylevel (has extra method/region index levels)
+    cl = workflow.downscaled.countrylevel
+    if cl is not None:
+        _apply_zero_fix(cl, _awb_row_mask(cl), _awb_cell_mask, "countrylevel")
+    
+    if n_fixed_1 > 0:
+        print(f"  Set {n_fixed_1} small negative AWB values to zero")
+    else:
+        print(f"  [OK] No small negative AWB values found")
+
+    # FIX 2: Zero out near-zero global (International Shipping / Aircraft) values
+    # These global-level sectors can end up with very small residual values (< 1e-6)
+    # from harmonization artifacts. Set them to zero.
+    print("\n[FIX 2] Checking for near-zero global Shipping/Aircraft values...")
+    def _global_row_mask(df):
+        if "country" not in df.index.names:
+            return None
+        return (
+            (df.index.get_level_values("country") == "World") &
+            (df.index.get_level_values("sector").isin(["International Shipping", "Aircraft"]))
+        )
+    def _global_cell_mask(data):
+        return (data.abs() < 1e-6)  # includes exact zeros, but where(~mask, 0.0) is no-op for those
+    
+    n_fixed_2 = _apply_zero_fix(downscaled, _global_row_mask(downscaled), _global_cell_mask, "downscaled")
+    # Also fix workflow internal globallevel
+    gl = workflow.downscaled.globallevel
+    if gl is not None:
+        _apply_zero_fix(gl, _global_row_mask(gl), _global_cell_mask, "globallevel")
+    
+    if n_fixed_2 > 0:
+        print(f"  Set {n_fixed_2} near-zero global Shipping/Aircraft values to zero")
+    else:
+        print(f"  [OK] No near-zero global Shipping/Aircraft values found")
+
+    # FIX 3: Handle remaining negative values for non-CO2 gases
+    # For non-CO2 gases: throw error if value < -1e-10, set to zero if >= -1e-10 and < 0
+    # For CO2: allow negatives (carbon capture is legitimate)
+    print("\n[FIX 3] Checking remaining negatives for non-CO2 gases...")
+    
+    # Get non-CO2 rows
+    if "gas" in downscaled.index.names:
+        non_co2_rows = downscaled.index.get_level_values("gas") != "CO2"
+        downscaled_non_co2 = downscaled.loc[non_co2_rows]
+        
+        # Check for significant negatives (< -1e-10) in non-CO2 gases
+        sig_neg_mask = downscaled_non_co2 < -1e-10
+        if sig_neg_mask.any().any():
+            sig_neg_values = downscaled_non_co2[sig_neg_mask]
+            print(f"  ERROR: Found significantly negative values (< -1e-10) in non-CO2 gases:")
+            # Show non-zero entries
+            for col in sig_neg_values.columns:
+                col_data = sig_neg_values[col]
+                if col_data.notna().any():
+                    print(f"    {col}:")
+                    print(col_data[col_data.notna()])
+            raise ValueError("Significant negative values (< -1e-10) found in non-CO2 gases after harmonization")
+        
+        # Set small negatives (>= -1e-10 and < 0) in non-CO2 gases to zero
+        small_neg_mask = (downscaled_non_co2 >= -1e-10) & (downscaled_non_co2 < 0)
+        n_small_fixed = small_neg_mask.sum().sum()
+        
+        if n_small_fixed > 0:
+            # Apply fix to main downscaled DataFrame
+            downscaled.loc[non_co2_rows] = downscaled.loc[non_co2_rows].where(
+                (downscaled.loc[non_co2_rows] >= 0) | (downscaled.loc[non_co2_rows].isna()),
+                0.0
+            )
+            
+            # Also fix workflow internal sub-levels
+            for _attr in ['globallevel', 'regionlevel', 'countrylevel']:
+                _df = getattr(workflow.downscaled, _attr)
+                if _df is not None and "gas" in _df.index.names:
+                    _non_co2_rows = _df.index.get_level_values("gas") != "CO2"
+                    _df.loc[_non_co2_rows] = _df.loc[_non_co2_rows].where(
+                        (_df.loc[_non_co2_rows] >= 0) | (_df.loc[_non_co2_rows].isna()),
+                        0.0
+                    )
+            
+            print(f"  Set {n_small_fixed} small negative values (>= -1e-10, < 0) to zero for non-CO2 gases")
+        else:
+            print(f"  [OK] No small negative values found in non-CO2 gases")
+    else:
+        print(f"  [SKIP] No 'gas' level in index - skipping non-CO2 check")
+    
+    # Cache the fixed downscaled data and monkey-patch harmonize_and_downscale
+    # so that workflow.grid() uses the fixed data instead of re-running from scratch.
+    _fixed_downscaled = downscaled
+    workflow.harmonize_and_downscale = lambda variabledefs=None: _fixed_downscaled
+    print("\n[OK] Fixed downscaled data cached — workflow.grid() will use the patched result")
+
+
+# %%
+workflow.harmonize_and_downscale()
 
 # %% [markdown]
 # ### Export harmonized scenarios
@@ -896,6 +1240,11 @@ if run_main:
     )
     print(workflow.downscaled.data.loc[~isin(region="World")].reset_index().country.unique())
 
+# %% [markdown]
+# #### Quality control tests on downscaled data
+
+# %%
+if run_main:
     # check for negative values where we don't expect them
     
     cdr_sectors = [
@@ -903,6 +1252,9 @@ if run_main:
         "Other CDR",
         "Enhanced Weathering",
         "BECCS",
+        "Ocean",
+        "Biochar",
+        "Soil Carbon Management"
     ]
     
     row_mins = workflow.downscaled.data.select_dtypes("number").min(axis=1)
@@ -988,6 +1340,59 @@ if run_main:
 
 # %%
 if run_main:
+    # Check for global totals that are suspiciously close to zero but not exactly zero
+    # This catches cases where harmonization/downscaling artifacts reduce meaningful
+    # emissions to near-zero values (e.g., order of 1e-6 or smaller)
+    
+    near_zero_threshold = 1e-6  # absolute value threshold
+    
+    # Sum across all countries to get global totals per (gas, sector, unit) for each year
+    downscaled_data = workflow.downscaled.data
+    global_totals = downscaled_data.groupby(["gas", "sector", "unit"]).sum()
+    
+    # For each (gas, sector, unit), check if any year has a value that is
+    # near-zero (|value| <= threshold) but not exactly zero
+    numeric_cols = global_totals.select_dtypes("number")
+    is_near_zero = (numeric_cols.abs() <= near_zero_threshold) & (numeric_cols.abs() > 0)
+    
+    # Flag rows where ANY year has a near-zero global total
+    rows_with_near_zero = is_near_zero.any(axis=1)
+    
+    if rows_with_near_zero.any():
+        near_zero_df = global_totals[rows_with_near_zero]
+        
+        # Count how many years are affected per row
+        n_years_affected = is_near_zero[rows_with_near_zero].sum(axis=1)
+        
+        # Get the minimum absolute non-zero value per row for context
+        abs_nonzero = numeric_cols[rows_with_near_zero].replace(0, float("nan")).abs()
+        min_abs_val = abs_nonzero.min(axis=1)
+        
+        problem_info = near_zero_df.index.to_frame(index=False)
+        problem_info["n_years_near_zero"] = n_years_affected.values
+        problem_info["min_abs_value"] = min_abs_val.values
+        
+        print(f"⚠️  Found {rows_with_near_zero.sum()} (gas, sector) combinations with near-zero "
+              f"global totals (0 < |total| ≤ {near_zero_threshold}):")
+        print(f"{'Gas':<12} {'Sector':<35} {'Unit':<20} {'# Years':>8} {'Min |value|':>14}")
+        print("-" * 95)
+        for _, row in problem_info.iterrows():
+            print(f"{str(row['gas']):<12} {str(row['sector']):<35} {str(row['unit']):<20} "
+                  f"{row['n_years_near_zero']:>8} {row['min_abs_value']:>14.2e}")
+        
+        # Save for inspection
+        near_zero_file = version_path / f"qc_near_zero_global_totals_{settings.version}.csv"
+        near_zero_df.to_csv(near_zero_file)
+        print(f"\n  Near-zero global totals saved to: {near_zero_file}")
+        print("  These may indicate harmonization/downscaling artifacts that should be investigated.")
+    else:
+        print("✅ No suspiciously near-zero global totals found")
+
+# END OF DOWNSCALING CHECK
+
+
+# %%
+if run_main:
     # Get unique countries from each dataframe
     # what countries do we have in each data set?
     countries_with_gdp_data = GDP_per_pathway.pix.unique("country") # as Index
@@ -1036,9 +1441,6 @@ if run_main:
 
 # %%
 cmip7_utils.DS_ATTRS
-
-# %%
-SKIP_EXISTING_MAIN_WORKFLOW_FILES = True
 
 # %%
 if run_main_gridding: # full run for all 10 species takes about ~1hour for 1 scenario
@@ -2952,7 +3354,7 @@ def plot_ceds_vs_scenario_comparison(ceds_da, scen_da, gas, sectors, time_slice,
     return fig
 
 # %%
-# NOTE: takes about ~mins per figure
+# NOTE: takes about ~1 min per figure
 
 folder_plots = settings.out_path / GRIDDING_VERSION / "plots"
 folder_plots.mkdir(parents=True, exist_ok=True)
@@ -3087,14 +3489,15 @@ LOCATIONS = {
     # 'Delhi': (28.6139, 77.2090),
     # 'Spain': (40.4637, 3.7492), # central spain, close to Madrid
     # 'New_York': (40.7128, -74.0060),
-    'London': (51.5074, -0.1278),
+    # 'London': (51.5074, -0.1278),
     # 'Tokyo': (35.6762, 139.6503),
     # 'São_Paulo': (-23.5505, -46.6333),
-    'Lagos': (6.5244, 3.3792),
+    # 'Lagos': (6.5244, 3.3792),
+    'South Sudan': (6.8770, 31.3070),
     # 'Mumbai': (19.0760, 72.8777),
     # 'Rural_Amazon': (-3.4653, -62.2159),  # Remote area in Amazon
     # 'North_Atlantic': (45.0, -30.0),     # Shipping route
-    'South_China_Sea': (12.0, 113.0)     # Shipping route
+    # 'South_China_Sea': (12.0, 113.0)     # Shipping route
 }
 
 # %%

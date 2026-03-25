@@ -27,7 +27,7 @@ from dask.utils import SerializableLock
 import seaborn as sns
 
 from concordia.settings import Settings
-from concordia.cmip7 import utils as cmip7_utils
+from concordia.cmip7 import utils_EXT as cmip7_utils
 from concordia.cmip7.CONSTANTS import PROXY_YEARS
 
 # %% [markdown]
@@ -37,7 +37,7 @@ from concordia.cmip7.CONSTANTS import PROXY_YEARS
 lock = SerializableLock()
 
 # %%
-SETTINGS_FILE: str = "config_cmip7_v0-4-0.yaml" # for second ESGF version
+SETTINGS_FILE: str = "config_cmip7_v0-4-0-EXT.yaml" # for second ESGF version
 VERSION_ESGF: str = "1-1-0" # for second ESGF version
 
 # Which scenario to run from the markers
@@ -75,7 +75,7 @@ sector_mapping = {0.0: 'AGR',
 # ## Anthro scenario-based version
 
 # %%
-EXT_PROXY_YEARS = np.arange(2105, 2501, 5)
+EXT_PROXY_YEARS = np.arange(2100, 2501, 5)
 
 # %%
 # ANTHRO proxies - Scenario-based version
@@ -375,11 +375,10 @@ for file in proxies_location.glob("*.nc"):
     if "anthro" in str(file):
         print(f"Processing {file}")
 
-        # Open dataset with fixed numeric chunks (safe for object dtypes)
         ds = xr.open_dataset(
             file,
             engine="netcdf4",
-            chunks={},  # adjust for your RAM / dataset
+            chunks={},
             lock=lock
         )
         
@@ -419,11 +418,10 @@ for file in proxies_location.glob("*.nc"):
     if "shipping" in str(file):
         print(f"Processing {file}")
 
-        # Open dataset with fixed numeric chunks (safe for object dtypes)
         ds = xr.open_dataset(
             file,
             engine="netcdf4",
-            chunks={},  # adjust for your RAM / dataset
+            chunks={},
             lock=lock
         )
         
@@ -462,11 +460,10 @@ for file in proxies_location.glob("*.nc"):
     if "aircraft" in str(file):
         print(f"Processing {file}")
 
-        # Open dataset with fixed numeric chunks (safe for object dtypes)
         ds = xr.open_dataset(
             file,
             engine="netcdf4",
-            chunks={},  # adjust for your RAM / dataset
+            chunks={},
             lock=lock
         )
         
@@ -474,7 +471,7 @@ for file in proxies_location.glob("*.nc"):
         ds = ds.sel(year=2100).expand_dims({"year": EXT_PROXY_YEARS})
         
         # Transpose to final dimension order and chunk lazily
-        ds_reordered = ds.transpose("lat", "lon", "gas", "sector", "year", "month").chunk({"month": 12})
+        ds_reordered = ds.transpose("lat", "lon", "level", "gas", "sector", "year", "month").chunk({"month": 12})
     
         # Output file
         outfile = new_proxies_location / f"{file.stem + ".nc"}"
@@ -508,11 +505,10 @@ for file in proxies_location.glob("*.nc"):
     if "openburning" in str(file):
         print(f"Processing {file}")
 
-        # Open dataset with fixed numeric chunks (safe for object dtypes)
         ds = xr.open_dataset(
             file,
             engine="netcdf4",
-            chunks={},  # adjust for your RAM / dataset
+            chunks={},
             lock=lock
         )
         
@@ -548,20 +544,19 @@ for file in proxies_location.glob("*.nc"):
 
 # %%
 nmvoc_proxy_location = Path(grid_file_location + "proxy_rasters" + "/NMVOC_speciation")
-new_proxies_location = Path(grid_file_location, "proxy_rasters_extensions" + "/NMVOC_speciation")
-new_proxies_location.mkdir(parents=True, exist_ok=True)
+nmvoc_proxies_location = Path(grid_file_location, "proxy_rasters_extensions" + "/NMVOC_speciation")
+nmvoc_proxies_location.mkdir(parents=True, exist_ok=True)
 
 # %%
 # Loop through all scenario files
 for file in nmvoc_proxy_location.glob("*.nc"):
 
     print(f"Processing {file}")
-
-    # Open dataset with fixed numeric chunks (safe for object dtypes)
+    
     ds = xr.open_dataset(
         file,
         engine="netcdf4",
-        chunks={},  # adjust for your RAM / dataset
+        chunks={},
         lock=lock
     )
     
@@ -572,7 +567,7 @@ for file in nmvoc_proxy_location.glob("*.nc"):
     ds_reordered = ds.transpose("lat", "lon", "gas", "sector", "year", "month").chunk({"month": 12})
 
     # Output file
-    outfile = new_proxies_location / f"{file.stem + ".nc"}"
+    outfile = nmvoc_proxies_location / f"{file.stem + ".nc"}"
     print(outfile)
     # Skip if already processed
     if outfile.exists():
@@ -598,8 +593,8 @@ for file in nmvoc_proxy_location.glob("*.nc"):
 
 # %%
 voc_proxy_location = Path(grid_file_location + "proxy_rasters" + "/VOC_speciation")
-new_proxies_location = Path(grid_file_location, "proxy_rasters_extensions" + "/VOC_speciation")
-new_proxies_location.mkdir(parents=True, exist_ok=True)
+voc_proxies_location = Path(grid_file_location, "proxy_rasters_extensions" + "/VOC_speciation")
+voc_proxies_location.mkdir(parents=True, exist_ok=True)
 
 # %%
 # Loop through all scenario files
@@ -607,11 +602,10 @@ for file in voc_proxy_location.glob("*.nc"):
 
     print(f"Processing {file}")
 
-    # Open dataset with fixed numeric chunks (safe for object dtypes)
     ds = xr.open_dataset(
         file,
         engine="netcdf4",
-        chunks={},  # adjust for your RAM / dataset
+        chunks={},
         lock=lock
     )
     
@@ -622,7 +616,7 @@ for file in voc_proxy_location.glob("*.nc"):
     ds_reordered = ds.transpose("lat", "lon", "gas", "sector", "year", "month").chunk({"month": 12})
 
     # Output file
-    outfile = new_proxies_location / f"{file.stem + ".nc"}"
+    outfile = voc_proxies_location / f"{file.stem + ".nc"}"
     print(outfile)
     # Skip if already processed
     if outfile.exists():
@@ -642,3 +636,132 @@ for file in voc_proxy_location.glob("*.nc"):
 
     # Free memory
     del ds, ds_reordered
+
+# %% [markdown]
+# ## CDR and H2
+
+# %%
+# CDR proxy
+
+# Loop through all proxy files
+for file in proxies_location.glob("*.nc"):
+    if "CDR_CO2" in str(file):
+        print(f"Processing {file}")
+
+        ds = xr.open_dataset(
+            file,
+            engine="netcdf4",
+            chunks={},
+            lock=lock
+        )
+        
+        # Project to future years
+        ds = ds.sel(year=2100).expand_dims({"year": EXT_PROXY_YEARS})
+        
+        # Transpose to final dimension order and chunk lazily
+        ds_reordered = ds.transpose("lat", "lon", "gas", "sector", "year", "month").chunk({"month": 12})
+    
+        # Output file
+        outfile = new_proxies_location / f"{file.stem + ".nc"}"
+        print(outfile)
+        # Skip if already processed
+        if outfile.exists():
+            print(f"Skipping {file} (already exists)")
+            continue
+            
+    # or, if we want to override
+    #            outfile.unlink()
+    
+        # Encoding for NetCDF compression
+        encoding = {var: {"zlib": True, "complevel": 4, "dtype": "float32"} for var in ds_reordered.data_vars}
+    
+        # Write lazily to NetCDF with progress bar
+        with ProgressBar():
+            ds_reordered.to_netcdf(outfile, mode="w", encoding=encoding, compute=True)
+    
+        # Free memory
+        del ds, ds_reordered
+
+# %%
+# EW proxy
+
+# Loop through all proxy files
+for file in proxies_location.glob("*.nc"):
+    if "EW_CO2" in str(file):
+        print(f"Processing {file}")
+
+        ds = xr.open_dataset(
+            file,
+            engine="netcdf4",
+            chunks={},
+            lock=lock
+        )
+        
+        # Project to future years
+        ds = ds.sel(year=2100).expand_dims({"year": EXT_PROXY_YEARS})
+        
+        # Transpose to final dimension order and chunk lazily
+        ds_reordered = ds.transpose("lat", "lon", "gas", "sector", "year", "month").chunk({"month": 12})
+    
+        # Output file
+        outfile = new_proxies_location / f"{file.stem + ".nc"}"
+        print(outfile)
+        # Skip if already processed
+        if outfile.exists():
+            print(f"Skipping {file} (already exists)")
+            continue
+            
+    # or, if we want to override
+    #            outfile.unlink()
+    
+        # Encoding for NetCDF compression
+        encoding = {var: {"zlib": True, "complevel": 4, "dtype": "float32"} for var in ds_reordered.data_vars}
+    
+        # Write lazily to NetCDF with progress bar
+        with ProgressBar():
+            ds_reordered.to_netcdf(outfile, mode="w", encoding=encoding, compute=True)
+    
+        # Free memory
+        del ds, ds_reordered
+
+# %%
+# H2 proxy
+
+# Loop through all proxy files
+for file in proxies_location.glob("*.nc"):
+    if "EF_h2" in str(file):
+        print(f"Processing {file}")
+
+        ds = xr.open_dataset(
+            file,
+            engine="netcdf4",
+            chunks={},
+            lock=lock
+        )
+        
+        # Project to future years
+        ds = ds.sel(year=2100).expand_dims({"year": EXT_PROXY_YEARS})
+        
+        # Transpose to final dimension order and chunk lazily
+        ds_reordered = ds.transpose("lat", "lon", "sector", "year", "month").chunk({"month": 12})
+    
+        # Output file
+        outfile = new_proxies_location / f"{file.stem + ".nc"}"
+        print(outfile)
+        # Skip if already processed
+        if outfile.exists():
+            print(f"Skipping {file} (already exists)")
+            continue
+            
+    # or, if we want to override
+    #            outfile.unlink()
+    
+        # Encoding for NetCDF compression
+        encoding = {var: {"zlib": True, "complevel": 4, "dtype": "float32"} for var in ds_reordered.data_vars}
+    
+        # Write lazily to NetCDF with progress bar
+        with ProgressBar():
+            ds_reordered.to_netcdf(outfile, mode="w", encoding=encoding, compute=True)
+    
+        # Free memory
+        del ds, ds_reordered
