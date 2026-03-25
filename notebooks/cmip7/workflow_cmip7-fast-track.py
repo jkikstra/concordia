@@ -2556,7 +2556,7 @@ def add_sector_bounds(ds, source_ds=None):
 # 1. load CO file
 # 2. load translation file
 # 3 apply translation file (logic: h2_openburning = co_openburning * h2_translation)
-experiment_name = cmip7_utils.scenario_name_prefix(m=marker_to_run)
+
 if run_openburning_h2:
     print('Generating H2 openburning emissions from CO openburning and H2/CO emission factor ratios')
     
