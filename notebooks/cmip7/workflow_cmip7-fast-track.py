@@ -1297,7 +1297,7 @@ if run_main:
 # %% [markdown]
 # #### Quality control tests on downscaled data
 
-# %% 
+# %%
 if run_main:
     # check for negative values where we don't expect them
     
@@ -2563,7 +2563,6 @@ if run_openburning_h2:
     # Load the CO openburning emissions
     co_openburning_file = settings.out_path / GRIDDING_VERSION / f"CO-em-openburning_{FILE_NAME_ENDING}"
     co_openburning = xr.open_dataset(co_openburning_file)
-    co_openburning.close()
     
     # Load the H2/CO emission factor translation file
     h2_translation_file = settings.proxy_path / "EF_h2_div_EF_co.nc"
@@ -2581,48 +2580,42 @@ if run_openburning_h2:
         co_openburning["CO_em_openburning"]
     )
 
-    h2_openburning = add_sector_bounds(h2_openburning, co_openburning)
-
-    # Perform multiplication for burning sectors
-    for openburning_sector in np.unique(co_openburning.sector):
-        # Select data from both datasets for matching sectors
-        co_sector = co_openburning["CO_em_openburning"].sel(sector=openburning_sector)
-
-        # Get translation factors for this sector and gas
-        translation_factor_sector = h2_translation["EF_h2_div_EF_co"].sel(
-            sector=openburning_sector
+    # Prepare translation as DataArray
+    translation = h2_translation["EF_h2_div_EF_co"]  # dims: year, month, sector
+    
+    # Convert year/month to cftime aligned with CO dataset
+    translation = translation.assign_coords(
+        time=(
+            ("year", "month"),
+            np.array([
+                cftime.DatetimeNoLeap(y, m, 15)  # use mid-month, same as CO
+                for y in translation.year.values
+                for m in translation.month.values
+            ]).reshape(len(translation.year), len(translation.month))
         )
+    )
+    
+    # Stack year/month into single time dimension
+    translation = translation.stack(time=("year", "month")).drop_vars(["year", "month"])
+    
+    # Reindex translation to CO time axis
+    translation = translation.reindex(time=co_openburning.time, method="nearest")
 
-        # Convert time coordinates to year/month for alignment
-        years = co_sector.time.dt.year
-        months = co_sector.time.dt.month
-
-        # Find the index of the sector in the coordinate array
-        sector_idx = list(co_openburning.sector.values).index(openburning_sector) # TODO: double-check that this sector_idx is correct, and not doing the wrong one
-
-        # Perform multiplication for each time step
-        for time_idx, time_val in enumerate(co_sector.time.values):
-            year = years[time_idx].values
-            month = months[time_idx].values
-
-            # Check if this year/month exists in h2_translation
-            if year in translation_factor_sector.year.values and month in translation_factor_sector.month.values:
-                # Get the share data for this specific year/month
-                translation_slice = translation_factor_sector.sel(year=year, month=month)
-
-                # Get the bulk VOC data for this time step
-                co_slice = co_sector.isel(time=time_idx)
-
-                # Multiply and assign to result
-                h2_openburning.isel(time=time_idx, sector=sector_idx)[gas_variable_name].values = (co_slice * translation_slice).values
-                
-                # Assert that the sectors all align, ignoring dtype
-                assert h2_openburning.isel(time=time_idx, sector=sector_idx).sector.values == co_slice.sector.values
-                assert h2_openburning.isel(time=time_idx, sector=sector_idx).sector.values == translation_slice.sector.values
-
+    
+    # Multiply vectorized
+    gas_variable_name = "H2_em_openburning"
+    h2_openburning = xr.Dataset(
+        {gas_variable_name: co_openburning["CO_em_openburning"] * translation},
+        coords=co_openburning.coords,
+        attrs=co_openburning.attrs.copy()
+    )
+    
+    # Preserve sector bounds
+    h2_openburning = add_sector_bounds(h2_openburning, co_openburning)
 
     # copy & update attributes
     h2_openburning.attrs.update(co_openburning.attrs)
+    
     # Update attributes
     handle = 'openburning'
     gas = 'H2'
@@ -2666,8 +2659,20 @@ if run_openburning_h2:
         }
     }
     h2_openburning.to_netcdf(outfile, mode="w", encoding=encoding, compute=True)
-    h2_openburning.close()
 
+    
+    ## OPTIONAL: plot to ensure file is not empty and emissions distribution looks reasonable
+    data_slice = h2_openburning["H2_em_openburning"].isel(sector=0, time=2)
+    vmax = np.percentile(data_slice.values, 99)
+
+    plt.figure(figsize=(10, 5))
+    im = data_slice.plot(vmin=vmin, vmax=vmax, cmap="viridis")
+    h2_plot_name = settings.out_path / GRIDDING_VERSION / "plots" / "H2-em-openburning_timeslice.png"
+    plt.savefig(h2_plot_name, dpi=300, bbox_inches='tight')
+    plt.close()
+
+    h2_openburning.close()
+    co_openburning.close()
 
 # %%
 # -----------------------------
