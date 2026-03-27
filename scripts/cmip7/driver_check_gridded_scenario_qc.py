@@ -72,6 +72,7 @@ def main() -> None:
     animation_mode = ["all-sectors", "total-per-file", "total-per-species"]
     run_doc_plots = True        # F: documentation plots 03 and 04
     run_place_timeseries = True  # G: per-location timeseries vs CEDS history — SLOW; enable manually
+    run_openburning_timeseries = False  # H: per-location timeseries vs BB4CMIP7 history — SLOW; enable manually
 
     # ── SPECIES FILTER ────────────────────────────────────────────────────────
     # Set to None to run all species, or a list for a faster test run.
@@ -142,6 +143,7 @@ def main() -> None:
             animation_mode=animation_mode,
             run_doc_plots=run_doc_plots,
             run_place_timeseries=run_place_timeseries,
+            run_openburning_place_timeseries=run_openburning_timeseries,
             species_filter=species_filter,
             skip_existing=skip_existing,
             here=NOTEBOOKS_CMIP7,

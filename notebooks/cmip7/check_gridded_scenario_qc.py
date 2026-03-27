@@ -68,6 +68,7 @@ from __future__ import annotations
 # - Module E: Animated grid maps (fast PIL-based GIFs)
 # - Module F: Documentation plots 03 and 04
 # - Module G: Per-location timeseries vs CEDS history (mirrors workflow §4.1; slow, off by default)
+# - Module H: Per-location timeseries vs BB4CMIP7 history for openburning (slow, off by default)
 
 # %% [markdown]
 # ## Parameters
@@ -1939,6 +1940,140 @@ def make_place_timeseries_plots(
     return saved
 
 
+# ── Module H: Openburning Place Timeseries Plots (alignment with BB4CMIP7 history) ──
+
+def make_openburning_place_timeseries_plots(
+    gridded_folder: Path,
+    qc_output_path: Path,
+    settings,
+    file_name_ending: str,
+    plot_gases: list[str] | None = None,
+    plot_sectors: list[str] | None = None,
+    locations: dict[str, tuple[float, float]] | None = None,
+    skip_existing: bool = True,
+    logger: logging.Logger | None = None,
+) -> list[Path]:
+    """
+    Module H: per-location timeseries plots comparing gridded openburning scenario
+    data against BB4CMIP7 historical data. Mirrors Module G but for openburning.
+
+    For each openburning .nc file, generates single-gridpoint and area-average
+    timeseries plots for each sector × location combination. Sector integers
+    (0–3) are resolved to human-readable names via SECTOR_DICT_OPENBURNING_DEFAULT.
+
+    Historical reference data is read from:
+        settings.postprocess_path / "bb4cmip7"   (i.e. <gridding_path>/esgf/ceds/bb4cmip7/)
+    Files there should follow the same naming convention as the CEDS anthro files:
+        {gas}-em-openburning_*.nc
+
+    CO2 openburning is skipped (zero by design).
+
+    Outputs
+    -------
+    qc_output/plots/openburning_timeseries/{place}_timeseries_{gas}_{sector}.png
+    qc_output/plots/openburning_timeseries/{place}_area_timeseries_{gas}_{sector}.png
+    """
+    log = logger or logging.getLogger(__name__)
+    t0 = time.time()
+
+    out_dir = qc_output_path / "plots" / "openburning_timeseries"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    if plot_gases is None:
+        plot_gases = [g for g in GASES_ESGF_BB4CMIP if g != "CO2"]
+    if plot_sectors is None:
+        plot_sectors = list(cmip7_utils.SECTOR_ORDERING_DEFAULT["em_openburning"])
+    if locations is None:
+        locations = {
+            "Laxenburg": (48.0689, 16.3555),
+            "South Sudan": (6.8770, 31.3070),
+            # 'Beijing': (39.9042, 116.4074),
+            # "Nuuk": (64.1743, -51.7373),
+            # 'Geneva': (46.2044, 6.1432),
+            # 'Delhi': (28.6139, 77.2090),
+            # 'Spain': (40.4637, 3.7492),
+            # 'New_York': (40.7128, -74.0060),
+            # 'London': (51.5074, -0.1278),
+            # 'Tokyo': (35.6762, 139.6503),
+            # 'São_Paulo': (-23.5505, -46.6333),
+            # 'Lagos': (6.5244, 3.3792),
+            # 'Mumbai': (19.0760, 72.8777),
+            # 'Rural_Amazon': (-3.4653, -62.2159),
+            # 'North_Atlantic': (45.0, -30.0),
+            # 'South_China_Sea': (12.0, 113.0)
+        }
+
+    bb4cmip_data_location = settings.postprocess_path / "bb4cmip7"
+    saved: list[Path] = []
+
+    for file in sorted(gridded_folder.glob(f"*-em-openburning_{file_name_ending}")):
+        gas_name, file_type = _parse_nc_filename(file.name)
+
+        if file_type != "openburning":
+            continue
+        if gas_name == "CO2":
+            log.info("[H] Skipping CO2 openburning (zero by design)")
+            continue
+        if gas_name not in plot_gases:
+            continue
+
+        bb4cmip_match = next(bb4cmip_data_location.glob(f"{gas_name}-*.nc"), None)
+        if bb4cmip_match is None:
+            log.warning(f"[H] No BB4CMIP7 file found for {gas_name} in {bb4cmip_data_location}")
+            continue
+
+        scen_ds = xr.open_dataset(file)
+        bb4cmip_ds = xr.open_dataset(bb4cmip_match)
+
+        available_sectors = [
+            k for k in scen_ds.sector.values
+            if cmip7_utils.SECTOR_DICT_OPENBURNING_DEFAULT.get(k) in plot_sectors
+        ]
+
+        for sec in available_sectors:
+            sector_name = cmip7_utils.SECTOR_DICT_OPENBURNING_DEFAULT[sec]
+
+            for place, (lat, lon) in locations.items():
+                out_ts   = out_dir / f"{place}_timeseries_{gas_name}_{sector_name}.png"
+                out_area = out_dir / f"{place}_area_timeseries_{gas_name}_{sector_name}.png"
+
+                if skip_existing and out_ts.exists() and out_area.exists():
+                    log.info(f"[H] Skipping {place} {gas_name} {sector_name} (already exists)")
+                    continue
+
+                log.info(f"[H] {place} {gas_name} {sector_name}")
+                try:
+                    fig1, _ = plot_place_timeseries(
+                        bb4cmip_ds, scen_ds,
+                        lat=lat, lon=lon, place=place,
+                        gas=gas_name, sector=sec, sector_name=sector_name,
+                        type="em_openburning",
+                    )
+                    fig1.savefig(out_ts, dpi=300, bbox_inches="tight")
+                    plt.close(fig1)
+                    saved.append(out_ts)
+
+                    fig2, _ = plot_place_area_average_timeseries(
+                        bb4cmip_ds, scen_ds,
+                        lat=lat, lon=lon, place=place,
+                        gas=gas_name, sector=sec, sector_name=sector_name,
+                        lat_range=2.0, lon_range=2.0,
+                        type="em_openburning",
+                    )
+                    fig2.savefig(out_area, dpi=300, bbox_inches="tight")
+                    plt.close(fig2)
+                    saved.append(out_area)
+
+                except Exception as e:
+                    log.warning(f"[H] Error for {place} {gas_name} {sector_name}: {e}")
+
+        scen_ds.close()
+        bb4cmip_ds.close()
+
+    log.info(f"[H] Done — {len(saved)} plots saved ({time.time()-t0:.1f}s)")
+    return saved
+
+
 # ── Orchestrator ──────────────────────────────────────────────────────────────
 
 def run_qc(
@@ -1956,6 +2091,7 @@ def run_qc(
     animation_mode: str | list[str] = "all-sectors",
     run_doc_plots: bool = True,
     run_place_timeseries: bool = False,
+    run_openburning_place_timeseries: bool = False,
     species_filter: list[str] | None = None,
     skip_existing: bool = True,
     here: Path | None = None,
@@ -2128,6 +2264,19 @@ def run_qc(
             logger=log,
         )
         results["place_timeseries"] = out_place_plots
+
+    # ── Module H ───────────────────────────────────────────────────────────
+    if run_openburning_place_timeseries:
+        out_ob_plots = make_openburning_place_timeseries_plots(
+            gridded_folder=gridded_folder,
+            qc_output_path=qc_output_path,
+            settings=settings,
+            file_name_ending=file_name_ending,
+            plot_gases=species_filter,
+            skip_existing=skip_existing,
+            logger=log,
+        )
+        results["openburning_place_timeseries"] = out_ob_plots
 
     log.info(f"=== QC COMPLETE in {time.time()-t_total:.1f}s ===")
     log.info(f"    Outputs in: {qc_output_path}")
