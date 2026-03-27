@@ -35,7 +35,7 @@ def main() -> None:
     # ── CONFIGURATION ─────────────────────────────────────────────────────────
 
     SETTINGS_FILE = "config_cmip7_v0-4-0.yaml"
-    VERSION_ESGF = "1-1-0"
+    VERSION_ESGF = "1-1-1"
     HISTORY_FILE = (
         "country-history_202511261223_202511040855_202512032146_"
         "202512021030_7e32405ade790677a6022ff498395bff00d9792d.csv"
@@ -44,8 +44,8 @@ def main() -> None:
     # Which scenario markers to QC.  Comment/uncomment as needed.
     markers = [
         # "h",
-        # "hl",
-        "m",
+        "hl",
+        # "m",
         # "ml",
         # "l",
         # "ln",
@@ -59,10 +59,10 @@ def main() -> None:
     # ── MODULE FLAGS ──────────────────────────────────────────────────────────
     # Set each flag to True/False to enable/disable individual QC modules.
 
-    run_file_inventory = True   # A: list files, check for missing
+    run_file_inventory = False   # A: list files, check for missing
     run_min_max = False          # B: per-file min/max statistics
     run_downscaled_qc = False    # C: workflow QC checks on downscaled CSV
-    run_annual_totals = True    # D: 3-way comparison of annual totals
+    run_annual_totals = False    # D: 3-way comparison of annual totals
     run_animations = False      # E: animated GIF maps — SLOW; enable manually
     # "all-sectors"       → one GIF per (gas, file_type, sector)  e.g. BC_anthro-Energy
     # "total-per-file"    → sectors summed within each file        e.g. BC_anthro-total
@@ -70,13 +70,13 @@ def main() -> None:
     # Can be a single string or a list to run multiple modes in one pass.
     # animation_mode = "all-sectors"
     animation_mode = ["all-sectors", "total-per-file", "total-per-species"]
-    run_doc_plots = False        # F: documentation plots 03 and 04
-    run_place_timeseries = False  # G: per-location timeseries vs CEDS history — SLOW; enable manually
+    run_doc_plots = True        # F: documentation plots 03 and 04
+    run_place_timeseries = True  # G: per-location timeseries vs CEDS history — SLOW; enable manually
 
     # ── SPECIES FILTER ────────────────────────────────────────────────────────
     # Set to None to run all species, or a list for a faster test run.
     species_filter = None
-    species_filter = ["CH4"]   # quick test
+    # species_filter = ["CH4"]   # quick test
 
     # ── PERFORMANCE ──────────────────────────────────────────────────────────
     # If True, skip a module if its output CSV/plots already exist.
@@ -92,9 +92,13 @@ def main() -> None:
     # FOLDER_WITH_GRIDDED_DATA = ""
     # FOLDER_WITH_GRIDDED_DATA = "C:/path/to/your/gridded/data"  # all markers
     FOLDER_WITH_GRIDDED_DATA = {
-        "m":  "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/m_1-1-0",
-        "ml": "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/ml_1-1-0",
-        "ln": "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/ln_1-1-0",
+        # "h": "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/h_1-1-0",
+        "hl": "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/hl_1-1-1",
+        "m":  "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/m_1-1-1",
+        # "ml": "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/ml_1-1-0",
+        # "l": "..."
+        # "ln": "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/ln_1-1-0",
+        # "vl": "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/vl_1-1-0"
     }
 
     # ── RUN ───────────────────────────────────────────────────────────────────

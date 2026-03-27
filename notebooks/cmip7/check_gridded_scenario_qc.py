@@ -509,15 +509,34 @@ def check_min_max_values(
         try:
             with xr.open_dataset(nc_path, engine="netcdf4") as ds:
                 var_name = list(ds.data_vars.keys())[0]
-                # Load entire array once — avoids 6 separate disk reads
-                data = ds[var_name].values.ravel()
+                da = ds[var_name]
+                nbytes = da.size * np.dtype(da.dtype).itemsize
 
-            global_min = float(data.min())
-            global_max = float(data.max())
-            p01 = float(np.percentile(data, 1))
-            p99 = float(np.percentile(data, 99))
-            frac_zeros = float((data == 0).mean())
-            frac_negatives = float((data < 0).mean())
+                if nbytes < 4 * 1024 ** 3:
+                    # Fast path: load entire array at once (most files are small)
+                    data = da.values.ravel()
+                    global_min = float(data.min())
+                    global_max = float(data.max())
+                    p01 = float(np.percentile(data, 1))
+                    p99 = float(np.percentile(data, 99))
+                    frac_zeros = float((data == 0).mean())
+                    frac_negatives = float((data < 0).mean())
+                else:
+                    # Large file: use dask for aggregate stats (avoids loading
+                    # everything into RAM) and a strided sample for percentiles.
+                    import dask
+                    da_c = da.chunk({"time": 12})
+                    global_min, global_max, frac_zeros, frac_negatives = (
+                        float(v) for v in dask.compute(
+                            da_c.min(), da_c.max(),
+                            (da_c == 0).mean(), (da_c < 0).mean(),
+                        )
+                    )
+                    n_time = da.sizes.get("time", 1)
+                    stride = max(1, n_time // 12)
+                    sample = da.isel(time=slice(0, None, stride)).values.ravel()
+                    p01 = float(np.percentile(sample, 1))
+                    p99 = float(np.percentile(sample, 99))
 
             is_co2 = gas.upper() == "CO2"
             flag_unexpected_negatives = (global_min < negative_threshold) and not is_co2
@@ -1022,7 +1041,7 @@ def check_annual_totals(
             continue
 
         try:
-            ds = xr.open_dataset(nc_path, engine="netcdf4", chunks={"time": 12})
+            ds = xr.open_dataset(nc_path, engine="netcdf4")
             var_name = list(ds.data_vars.keys())[0]
             result_da = ds_to_annual_emissions_total_faster(
                 ds, var_name, cell_area, keep_sectors=False
@@ -1247,7 +1266,7 @@ def make_animated_grids(
         for yr in frame_years:
             diffs = np.abs(times_years - yr)
             idx = int(np.argmin(diffs))
-            if diffs[idx] < 15 and idx not in selected:  # within ~2 weeks of target year
+            if diffs[idx] < 15 and idx not in selected:  # within 15 years of target year
                 selected.append(idx)
         return selected, times_years
 
@@ -1284,6 +1303,7 @@ def make_animated_grids(
             da_t = da_frames.isel(time=fi)
             fig, ax = plt.subplots(
                 1, 1, figsize=(6, 4),
+                dpi=dpi,
                 subplot_kw={"projection": ccrs.Robinson()},
             )
             try:
@@ -1392,11 +1412,23 @@ def make_animated_grids(
                     continue
 
                 if animation_mode == "total-per-file":
-                    da_sector = (
-                        da.sum(dim="sector") if "sector" in da.dims else da
-                    ).squeeze()
+                    if "sector" in da.dims:
+                        # Pre-select only the frames we need before summing sectors,
+                        # so each sector loads (n_frames, lat, lon) not (time, lat, lon).
+                        da_sector = None
+                        for i in range(da.sizes["sector"]):
+                            layer = da.isel(sector=i, time=selected_indices).load()
+                            da_sector = layer if da_sector is None else da_sector + layer
+                    else:
+                        da_sector = da.isel(time=selected_indices).load()
+                    da_sector = da_sector.squeeze()
+                    # Time axis is already pre-selected; pass sequential indices
+                    # and the corresponding subset of year labels so that
+                    # _render_gif's times_years[t_idx] gives the correct year.
+                    presel_indices = list(range(da_sector.sizes["time"]))
+                    presel_times_years = times_years[np.array(selected_indices)]
                     _render_gif(
-                        da_sector, times_years, selected_indices,
+                        da_sector, presel_times_years, presel_indices,
                         title=f"{gas} | {file_type} | total",
                         out_gif=anim_dir / f"{gas}_{file_type}-total_animation.gif",
                     )
@@ -1951,7 +1983,7 @@ def run_qc(
         gridding_version = f"{marker_to_run}_{version_esgf}"
 
     gridded_scenario_folder = Path(gridded_scenario_folder)
-    qc_output_path = gridded_scenario_folder / "qc_output"
+    qc_output_path = gridded_scenario_folder / "qc_output_v2"
     qc_output_path.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
