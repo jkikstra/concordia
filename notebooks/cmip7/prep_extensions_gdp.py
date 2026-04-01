@@ -79,8 +79,3 @@ gdp_new[EXT_PROXY_YEARS] = np.repeat(gdp_new[["2100"]].to_numpy(), len(EXT_PROXY
 
 # %%
 gdp_new.to_csv("/Users/hoegner/Projects/CMIP7/input/scenarios/ssp_basic_drivers_release_3.2.beta_full_gdp-extensions.csv")
-
-# %% [markdown]
-# ## population extension
-
-# %%

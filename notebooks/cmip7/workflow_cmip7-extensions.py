@@ -27,19 +27,20 @@
 # **Note:** these options below can also be changed and driven from a driver script. 
 
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
-HISTORY_FILE: str = "downscaled-only-vl_1-1-0.csv"
 # Settings
 # SETTINGS_FILE: str = "config_cmip7_esgf_v0_alpha.yaml" # was used for preparing for first upload to ESGF
 SETTINGS_FILE: str = "config_cmip7_v0-4-0-EXT.yaml" # for second ESGF version
-VERSION_ESGF: str = "1-1-0-EXT" # for extensions
+VERSION_ESGF: str = "1-1-1" # for extensions
 
 # Which scenario to run from the markers
 marker_to_run: str = "vl" # options: h, hl, m, ml, l, ln, vl
+marker_name: str = f"{marker_to_run}-ext"
+HISTORY_FILE: str = f"downscaled-only-{marker_to_run}_1-1-0.csv" # should update to 1-1-1 once we have them
 
 # What folder to save this run in
 GRIDDING_VERSION: str | None = None
-GRIDDING_VERSION: str | None = f"{marker_to_run}_{VERSION_ESGF}"
-GRIDDING_HISTORY: str | None = GRIDDING_VERSION.removesuffix("-EXT")
+GRIDDING_VERSION: str | None = f"{marker_name}_{VERSION_ESGF}"
+GRIDDING_HISTORY: str | None = f"{marker_to_run}_{VERSION_ESGF}"
 
 # Which parts to run
 run_main: bool = True # skips downscaling and the saving out of data of the main workflow; can still run supplemental workflows with this set to False
@@ -101,7 +102,7 @@ from concordia import (
     RegionMapping,
     VariableDefinitions,
 )
-from concordia.cmip7 import utils as cmip7_utils # update to cmip7 utils (e.g. for dressing up netcdf)
+from concordia.cmip7 import utils_EXT as cmip7_utils # update to cmip7 utils (e.g. for dressing up netcdf)
 from concordia.settings import Settings
 from concordia.utils import MultiLineFormatter
 from concordia.workflow import WorkflowDriver
@@ -134,7 +135,7 @@ SCENARIO_FILE = f"extensions_full_emissions_timeseries_2023_2500.csv"
 
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
 # filename template
-FILE_NAME_ENDING: str | None = cmip7_utils.filename_for_esgf(marker=marker_to_run, version=VERSION_ESGF)
+FILE_NAME_ENDING: str | None = cmip7_utils.filename_for_esgf(marker=marker_name, version=VERSION_ESGF)
 
 print(f"Producing experiment: {FILE_NAME_ENDING}")
 
@@ -343,10 +344,7 @@ scenario_hist = scenario_hist.sort_index()
 # Update column type and name
 scenario_hist.columns = scenario_hist.columns.astype(int)
 scenario_hist.columns.name = 'year'
-scenario_hist
-
-# %%
-scenario_hist.index.get_level_values("sector").unique()
+scenario_hist.loc[ismatch(sector="Solvents Production and Application", gas="N2O")]
 
 # %%
 cmip7_hist = (pd.read_csv(settings.history_path / "vl_1-1-0_hist.csv", index_col=0))
@@ -358,11 +356,17 @@ cmip7_hist.columns = cmip7_hist.columns.astype(int)
 cmip7_hist.columns.name = 'year'
 
 # %%
-missing_idx = cmip7_hist.index.difference(scenario_hist.index)
+missing_idx = cmip7_hist.loc[:,2023].index.difference(scenario_hist.loc[:,2023].index)
 missing_idx.to_frame(index=False).to_csv(settings.out_path / "rows_missing_from_downscaled_hist.csv")
 
 # %%
+missing_idx.to_frame(index=False)[missing_idx.to_frame(index=False)["gas"]=="N2O"]["country"].unique()
+
+# %%
 cmip7_hist.index.get_level_values("sector").unique()
+
+# %%
+cmip7_hist = cmip7_hist.loc[:,:2022]
 
 # %%
 hist = pd.concat([cmip7_hist, scenario_hist], axis=1).dropna()
@@ -395,6 +399,31 @@ HARMONIZED_YEAR_COLS = [col for col in iam_df.columns if col.isdigit() and setti
 # keep only relevant columns
 iam_df = iam_df[(IAMC_COLS + HARMONIZED_YEAR_COLS)]
 
+# %%
+reference_iam_df = pd.read_csv((settings.scenario_path.parent / "final-high-priority-20260205" / "harmonised-gridding_REMIND-MAgPIE 3.5-4.11.csv"))
+
+# %%
+reference_vars = reference_iam_df["variable"].unique()
+extensions_vars = iam_df["variable"].unique()
+
+print("number of regions in scenario:", len(reference_iam_df["region"].unique()), "\n"
+      "number of regions in extension:", len(iam_df["region"].unique()))
+
+print("number of variables in scenario:", len(reference_iam_df["variable"].unique()), "\n"
+      "number of variables in extension:", len(iam_df["variable"].unique()))
+
+print("\nvariables missing from extension:\n", set(reference_vars) - set(extensions_vars))
+
+print("\nvariables only in extension:\n", set(extensions_vars) - set(reference_vars))
+
+# %%
+# the missing variables are the AFOLU variables, which we don't grid, so I reckon we can just ignore those
+# the additional variables are either aggregates, additional diagnostic variables, or variables only needed for SCMs, so we can filter them out
+
+# filter dataframe by the intersection of the variables with the reference scenario
+shared_vars = np.intersect1d(extensions_vars, reference_vars)
+iam_df = iam_df[iam_df["variable"].isin(shared_vars)].reset_index(drop=True)
+
 # %% [markdown]
 # ### Process (using pix - formatting)
 
@@ -411,6 +440,9 @@ iam_df.columns = iam_df.columns.astype(int)
 iam_df.columns.name = 'year'
 iam_df = iam_df.dropna(axis=1)
 
+
+# %%
+iam_df
 
 # %% [markdown]
 # ## Save the processed IAM data
@@ -498,7 +530,7 @@ gdp = (
 gdp.columns = [int(float(col)) for col in gdp.columns]
 
 # full year range
-all_years = range(2100, 2501)
+all_years = range(2020, 2501)
 
 # reindex
 gdp = gdp.reindex(columns=all_years)
@@ -599,48 +631,16 @@ print(countries_with_hist_and_gdp_and_regionmapping_data)
 # # Sector coverage (check historical)
 
 # %%
-# expected sectors from reference data:
-reference_set = set(['Agricultural Waste Burning', 'Agriculture', 'Energy Sector',
-       'Forest Burning', 'Grassland Burning', 'Industrial Sector', 'Other CDR',
-       'Peat Burning', 'Residential Commercial Other',
-       'Solvents Production and Application', 'Transportation Sector', 'Waste',
-       'BECCS', 'Biochar', 'Direct Air Capture', 'Enhanced Weathering',
-       'Ocean', 'Soil Carbon Management', 'Aircraft',
-       'International Shipping'])
+hist_sectors = hist.index.get_level_values("sector").unique()
+iam_sectors = iam_df.index.get_level_values("sector").unique()
 
-# %%
-# make sure the "historical" scenario emissions have the correct sectors
-assert set(hist.index.get_level_values("sector")) == set(reference_set)
+missing = set(iam_sectors) - set(hist_sectors)
+print(f"Separately considering CDR sectors {missing}")  # CDR sectors
 
-# %%
-# check difference to extensions iam dataframe; these must be leftovers from the SCM workflow
-set(iam_df.index.get_level_values("sector").unique()) - reference_set
-
-# %%
-# filter to retain only the sectors we want going forward
-iam_df = iam_df[iam_df.index.get_level_values("sector").isin(reference_set)]
-
-# %%
-# make sure the "historical" scenario emissions have the correct sectors
-assert set(iam_df.index.get_level_values("sector")) == set(reference_set)
-
-# %% [markdown]
-# ## Add zero CDR history
-
-# %%
 expected_sectors_missing_cdr = {
     'Enhanced Weathering', 'BECCS', 'Direct Air Capture', 'Ocean', 'Biochar', 'Soil Carbon Management', 'Other CDR'
 }
-
-co2_template = hist.loc[isin(sector="Energy Sector", gas="CO2")] # pull co2-like template
-# fill values with zero
-co2_template.loc[:] = 0
-
-# add to history with replaced sector names
-for s in expected_sectors_missing_cdr:
-    if s not in hist.index.get_level_values("sector"):
-        hist = pd.concat([hist, co2_template.pix.assign(sector=s)])
-
+assert missing.issubset(expected_sectors_missing_cdr), f"Unexpected missing sectors found: {missing - expected_sectors_missing_cdr}"
 
 # %% [markdown]
 # # Set up technical bits for the workflow
@@ -695,13 +695,6 @@ print(sorted(indexraster.index.tolist()))
 
 # %%
 iam_df.columns
-
-# %%
-# TODO: find a better way to test whether all historical data is available for each country (it is known that Guam and Mayotte miss data for some sectors in the used CEDS release)
-# # check completeness of historical data
-# for c in countries_with_hist_and_gdp_and_regionmapping_data:
-#     if len(hist.loc[ismatch(country=c)]) < 120:
-#         print(c)
 
 # %%
 # do variable name replacements to align with CEDS and BB4CMIP7 historical products
@@ -1019,22 +1012,18 @@ check_harmonization_consistency(workflow, settings, version_path,
 #
 
 # %%
-# manual steps:
-# ...
-# skipnone(
-#                 self.harmdown_globallevel(variabledefs),
-#                 self.harmdown_regionlevel(variabledefs),
-#                 self.harmdown_countrylevel(variabledefs),
-#             )
+# For extensions: set downscaling methods in aneris to a later convergence year (default is 2100)
 
-# workflow.harmdown_globallevel(workflow.variabledefs) # first step, works fine
-# workflow.harmdown_regionlevel(workflow.variabledefs) # second step, looks to work fine and quick, too
-# workflow.harmdown_countrylevel(workflow.variabledefs) # third step, requires gdp to be available from the HARMONIZATION_YEAR onward
+from functools import partial
+from aneris.downscaling.core import Downscaler
+from aneris.downscaling.intensity_convergence import intensity_convergence
 
-# %%
-# hot-patch to deal with proxies that have NA values
-# see src/concordia/_patches_ptolemy.py
-
+Downscaler._methods["ipat_2100_gdp"] = partial(
+    intensity_convergence, convergence_year=2300, proxy_name="gdp"
+)
+Downscaler._methods["ipat_2150_pop"] = partial(
+    intensity_convergence, convergence_year=2300, proxy_name="pop"
+)
 
 # %%
 # use hist_zero for all variables; this effectively switches off concordia harmonization
@@ -1048,38 +1037,22 @@ overrides = pd.Series(
     name="method"
 )
 
-workflow.harm_overrides = overrides
-
 # Inject into workflow
 workflow.harm_overrides = overrides
 
 # %%
-from concordia.settings import Settings
-
-cdr_sectors = {
-    'Direct Air Capture', 'Other CDR', 'BECCS', 'Biochar',
-    'Enhanced Weathering', 'Ocean', 'Soil Carbon Management'
-}
-
-# Add CDR sectors to luc_sectors so they use the same downscaling path
-original_luc = set(workflow.settings.luc_sectors) if workflow.settings.luc_sectors else set()
-workflow.settings = workflow.settings(
-    update={"luc_sectors": list(original_luc | cdr_sectors)}
+base_year = workflow.settings.base_year
+hist_at_base = workflow.hist.loc[~isin(country="World"), base_year]
+zero_hist_combos = (
+    hist_at_base
+    .groupby(["gas", "sector"])
+    .sum()
+    .pipe(lambda s: s[s.abs() < 1e-10])
+    .index
 )
 
-# %%
-workflow.settings.luc_sectors = ['Agricultural Waste Burning',
- 'Grassland Burning',
- 'Forest Burning',
- 'Peat Burning',
- 'Agriculture',
- 'Direct Air Capture', 
- 'Other CDR', 
- 'BECCS', 
- 'Biochar',
- 'Enhanced Weathering', 
- 'Ocean', 
- 'Soil Carbon Management']
+zero_sectors = set(zero_hist_combos.get_level_values("sector"))
+print(f"Sectors with all-zero hist at base year: {zero_sectors}")
 
 # %%
 if run_main:
@@ -1208,9 +1181,6 @@ if run_main:
     workflow.harmonize_and_downscale = lambda variabledefs=None: _fixed_downscaled
     print("\n[OK] Fixed downscaled data cached — workflow.grid() will use the patched result")
 
-
-# %%
-workflow.harmonize_and_downscale()
 
 # %% [markdown]
 # ### Export harmonized scenarios
@@ -1459,6 +1429,12 @@ if run_main_gridding: # full run for all 10 species takes about ~1hour for 1 sce
         directory=version_path,
         skip_exists=SKIP_EXISTING_MAIN_WORKFLOW_FILES,
     )
+
+# %%
+ds = xr.open_dataset("/Users/hoegner/GitHub/concordia/results/vl-ext_1-1-1/CH4-em-anthro_input4MIPs_emissions_ScenarioMIP_IIASA-IAMC-vl-1-1-1_gn_210501-250012.nc")
+
+# %%
+ds["CH4_em_anthro"].isel(time=400, sector=3).plot(vmax=1e-12);
 
 
 # %% [markdown]
