@@ -1,0 +1,714 @@
+# ---
+# jupyter:
+#   jupytext:
+#     text_representation:
+#       extension: .py
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.16.7
+#   kernelspec:
+#     display_name: Python 3 (ipykernel)
+#     language: python
+#     name: python3
+# ---
+from __future__ import annotations
+
+# %% [markdown]
+# # Compare Two Gridded Scenario Versions
+#
+# Loads all `.nc` files from two user-configured folders and compares them
+# file-by-file.  For each matched `(gas, file_type)` pair the script checks
+# whether the data arrays are **exactly** equal (including NaN positions) and
+# produces a unified diff of the NetCDF attributes.
+#
+# Results are written file-by-file as processing proceeds, then combined into:
+# - `data_comparison.csv`  — one row per `(gas, file_type)` pair
+# - `metadata_diff.txt`    — all attribute diffs concatenated
+#
+# ## Usage
+# Run via the driver script:
+#
+#     python scripts/cmip7/driver_compare_gridded_versions.py
+#
+# or import `run_comparison()` directly into a notebook.
+
+# %% [markdown]
+# ## Parameters
+
+# %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
+FOLDER_A: str = ""        # path to version-A gridded data folder
+FOLDER_B: str = ""        # path to version-B gridded data folder
+LABEL_A: str = "version_a"
+LABEL_B: str = "version_b"
+OUTPUT_DIR: str = ""      # defaults to FOLDER_A / "qc_output_v2" / "version_comparison"
+
+species_filter: list[str] | None = None   # e.g. ["BC", "CO2"] for a quick test
+skip_existing: bool = False
+
+# %% [markdown]
+# ## Imports
+
+# %%
+import datetime
+import difflib
+import logging
+import sys
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import xarray as xr
+
+# %% [markdown]
+# ## Constants
+
+# %%
+DATA_CSV_COLS = [
+    "filename_a",
+    "filename_b",
+    "gas",
+    "file_type",
+    "exists_in_a",
+    "exists_in_b",
+    "data_identical",
+    "variables_compared",
+    "variables_differing",
+    "max_abs_diff",
+    "coords_identical",
+    "shape_a",
+    "shape_b",
+    "load_error_a",
+    "load_error_b",
+    "note",
+]
+
+# %% [markdown]
+# ## Helper utilities
+
+# %%
+
+def _find_here() -> Path:
+    """Robustly find the notebooks/cmip7 directory."""
+    try:
+        here = Path(__file__).parent
+        if here != Path("."):
+            return here
+    except NameError:
+        pass
+    current = Path.cwd()
+    for parent in [current] + list(current.parents):
+        if (parent / "pyproject.toml").exists() and (parent / "src" / "concordia").exists():
+            return parent / "notebooks" / "cmip7"
+    return Path.cwd()
+
+
+def setup_logging(output_dir: Path, timestamp: str) -> logging.Logger:
+    """Set up a logger that writes to both a timestamped file and stdout."""
+    log_dir = output_dir / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / f"compare_log_{timestamp}.txt"
+
+    logger = logging.getLogger(f"compare_gridded_{timestamp}")
+    logger.setLevel(logging.DEBUG)
+    logger.handlers.clear()  # avoid duplicate handlers when re-running interactively
+
+    fh = logging.FileHandler(log_file, mode="w", encoding="utf-8")
+    fh.setLevel(logging.DEBUG)
+    ch = logging.StreamHandler(sys.stdout)
+    ch.setLevel(logging.INFO)
+
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    fh.setFormatter(formatter)
+    ch.setFormatter(formatter)
+    logger.addHandler(fh)
+    logger.addHandler(ch)
+    return logger
+
+
+def _parse_nc_filename(filename: str) -> tuple[str, str]:
+    """
+    Parse gas and file_type from a gridded NC filename.
+
+    Naming convention: {gas}-em-{type}_{FILE_NAME_ENDING}.nc
+    Special case: AIR-anthro files contain '-em-AIR-' in the name.
+
+    Returns (gas, file_type) or raises ValueError.
+    """
+    stem = Path(filename).stem
+    # Strip everything from the first underscore onward (FILE_NAME_ENDING)
+    core = stem.split("_")[0] if "_" in stem else stem
+
+    if "-em-AIR-" in core:
+        # e.g. "CO2-em-AIR-anthro" → gas="CO2", type="AIR-anthro"
+        gas = core.split("-em-AIR-")[0]
+        return gas, "AIR-anthro"
+
+    if "-em-" in core:
+        parts = core.split("-em-", 1)
+        gas = parts[0]
+        file_type = parts[1]
+        return gas, file_type
+
+    raise ValueError(f"Cannot parse gas/type from filename: {filename}")
+
+
+# %% [markdown]
+# ## File discovery and matching
+
+# %%
+
+def scan_folder(
+    folder: Path,
+    species_filter: list[str] | None = None,
+    logger: logging.Logger | None = None,
+) -> dict[tuple[str, str], Path]:
+    """
+    Scan a folder for *.nc files and return a mapping (gas, file_type) -> Path.
+
+    Files whose names cannot be parsed are logged and skipped.
+    If two files resolve to the same (gas, file_type) key, the last one
+    (alphabetically) wins and a warning is logged.
+
+    Parameters
+    ----------
+    folder
+        Directory to scan.
+    species_filter
+        If not None, restrict to gases in this list (e.g. ["BC", "CH4"]).
+    logger
+        Optional logger; warnings are printed to stdout if None.
+
+    Returns
+    -------
+    dict mapping (gas, file_type) -> absolute Path
+    """
+    _warn = logger.warning if logger else print
+    _info = logger.info if logger else print
+
+    result: dict[tuple[str, str], Path] = {}
+    nc_files = sorted(folder.glob("*.nc"))
+    _info(f"  Scanning {folder}: found {len(nc_files)} .nc file(s)")
+
+    for path in nc_files:
+        try:
+            gas, file_type = _parse_nc_filename(path.name)
+        except ValueError as exc:
+            _warn(f"    [SKIP] Cannot parse filename: {path.name} — {exc}")
+            continue
+
+        if species_filter is not None and gas not in species_filter:
+            continue
+
+        key = (gas, file_type)
+        if key in result:
+            _warn(
+                f"    [WARN] Duplicate (gas, file_type)={key}; "
+                f"keeping {path.name}, replacing {result[key].name}"
+            )
+        result[key] = path
+
+    return result
+
+
+def build_match_table(
+    map_a: dict[tuple[str, str], Path],
+    map_b: dict[tuple[str, str], Path],
+) -> list[dict]:
+    """
+    Combine two folder scan results into a list of (gas, file_type) entries.
+
+    For each unique (gas, file_type) across both folders, produces a dict:
+        {
+          "gas": str,
+          "file_type": str,
+          "path_a": Path | None,
+          "path_b": Path | None,
+          "exists_in_a": bool,
+          "exists_in_b": bool,
+        }
+
+    Entries are sorted by (gas, file_type) for deterministic output.
+    """
+    all_keys = sorted(set(map_a) | set(map_b))
+    rows = []
+    for gas, file_type in all_keys:
+        rows.append(
+            {
+                "gas": gas,
+                "file_type": file_type,
+                "path_a": map_a.get((gas, file_type)),
+                "path_b": map_b.get((gas, file_type)),
+                "exists_in_a": (gas, file_type) in map_a,
+                "exists_in_b": (gas, file_type) in map_b,
+            }
+        )
+    return rows
+
+
+# %% [markdown]
+# ## Per-file comparison
+
+# %%
+
+def compare_data(ds_a: xr.Dataset, ds_b: xr.Dataset) -> dict:
+    """
+    Compare data variables between two xarray Datasets.
+
+    For each variable present in both datasets, uses
+    ``np.array_equal(a, b, equal_nan=True)`` for exact bitwise equality
+    (NaN == NaN).  Computes ``max_abs_diff`` over all differing variables.
+
+    Returns
+    -------
+    dict with keys:
+        data_identical (bool)
+        variables_compared (int)
+        variables_differing (int)
+        max_abs_diff (float | np.nan)
+        coords_identical (bool)
+        shape_a (str)
+        shape_b (str)
+        note (str)
+    """
+    notes = []
+    vars_a = set(ds_a.data_vars)
+    vars_b = set(ds_b.data_vars)
+    shared = vars_a & vars_b
+
+    only_in_a = vars_a - vars_b
+    only_in_b = vars_b - vars_a
+    if only_in_a:
+        notes.append(f"vars only in A: {sorted(only_in_a)}")
+    if only_in_b:
+        notes.append(f"vars only in B: {sorted(only_in_b)}")
+
+    # Coordinate comparison
+    try:
+        coords_identical = ds_a.coords.to_dataset().equals(ds_b.coords.to_dataset())
+    except Exception as exc:
+        coords_identical = False
+        notes.append(f"coord comparison error: {exc}")
+
+    shape_a = str(dict(ds_a.sizes))
+    shape_b = str(dict(ds_b.sizes))
+    if shape_a != shape_b:
+        notes.append(f"shape mismatch: {shape_a} vs {shape_b}")
+
+    variables_differing = len(only_in_a) + len(only_in_b)
+    max_abs_diff = np.nan
+    differing_vars = []
+
+    # Chunk large arrays by time to avoid OOM (mirrors check_gridded_scenario_qc.py Module B)
+    _SIZE_LIMIT = 200_000_000  # 200 M elements ≈ 1.6 GB float64
+
+    for var in sorted(shared):
+        a_da = ds_a[var]
+        b_da = ds_b[var]
+
+        if a_da.shape != b_da.shape:
+            notes.append(f"{var}: shape mismatch {a_da.shape} vs {b_da.shape}")
+            variables_differing += 1
+            differing_vars.append(var)
+            continue
+
+        if a_da.size > _SIZE_LIMIT and "time" in a_da.dims:
+            # Chunked path: iterate over time in slices to stay within RAM
+            n_time = a_da.sizes["time"]
+            spatial_size = a_da.size // n_time
+            time_chunk = max(1, _SIZE_LIMIT // spatial_size)
+            equal = True
+            local_max = np.nan
+            try:
+                for t0 in range(0, n_time, time_chunk):
+                    a_c = a_da.isel(time=slice(t0, t0 + time_chunk)).values
+                    b_c = b_da.isel(time=slice(t0, t0 + time_chunk)).values
+                    try:
+                        chunk_equal = np.array_equal(a_c, b_c, equal_nan=True)
+                    except TypeError:
+                        chunk_equal = np.array_equal(a_c, b_c)
+                    if not chunk_equal:
+                        equal = False
+                        try:
+                            d = float(np.nanmax(np.abs(a_c.astype(float) - b_c.astype(float))))
+                            if np.isnan(local_max) or d > local_max:
+                                local_max = d
+                        except Exception:
+                            pass
+            except Exception as exc:
+                notes.append(f"load error for {var}: {exc}")
+                variables_differing += 1
+                differing_vars.append(var)
+                continue
+        else:
+            # Fast path: load entire array at once
+            try:
+                a = a_da.values
+                b = b_da.values
+            except Exception as exc:
+                notes.append(f"load error for {var}: {exc}")
+                variables_differing += 1
+                differing_vars.append(var)
+                continue
+            try:
+                equal = np.array_equal(a, b, equal_nan=True)
+            except TypeError:
+                # non-float dtype (e.g. int, datetime, str) — isnan not applicable
+                equal = np.array_equal(a, b)
+            if not equal:
+                try:
+                    local_max = float(np.nanmax(np.abs(a.astype(float) - b.astype(float))))
+                except Exception:
+                    local_max = np.nan  # non-numeric vars
+            else:
+                local_max = np.nan
+
+        if not equal:
+            variables_differing += 1
+            differing_vars.append(var)
+            if not np.isnan(local_max) and (np.isnan(max_abs_diff) or local_max > max_abs_diff):
+                max_abs_diff = local_max
+
+    data_identical = (variables_differing == 0) and (shape_a == shape_b)
+
+    return {
+        "data_identical": data_identical,
+        "variables_compared": len(shared),
+        "variables_differing": variables_differing,
+        "max_abs_diff": max_abs_diff,
+        "coords_identical": coords_identical,
+        "shape_a": shape_a,
+        "shape_b": shape_b,
+        "note": "; ".join(notes),
+    }
+
+
+def _attrs_to_lines(ds: xr.Dataset) -> list[str]:
+    """Render dataset global and variable attrs as a sorted list of text lines."""
+    lines = ["=== global attrs ==="]
+    for k in sorted(ds.attrs):
+        lines.append(f"  {k}: {ds.attrs[k]!r}")
+    for var in sorted(ds.data_vars):
+        lines.append(f"=== variable: {var} ===")
+        for k in sorted(ds[var].attrs):
+            lines.append(f"  {k}: {ds[var].attrs[k]!r}")
+    return lines
+
+
+def compare_metadata(
+    ds_a: xr.Dataset,
+    ds_b: xr.Dataset,
+    label_a: str = "version_a",
+    label_b: str = "version_b",
+) -> str:
+    """
+    Produce a unified diff of global and per-variable attributes.
+
+    Returns the diff string, or "" if attributes are identical.
+    """
+    lines_a = _attrs_to_lines(ds_a)
+    lines_b = _attrs_to_lines(ds_b)
+    diff = list(
+        difflib.unified_diff(
+            lines_a,
+            lines_b,
+            fromfile=label_a,
+            tofile=label_b,
+            lineterm="",
+        )
+    )
+    return "\n".join(diff)
+
+
+def compare_one_pair(
+    match: dict,
+    per_file_dir: Path,
+    label_a: str = "version_a",
+    label_b: str = "version_b",
+    logger: logging.Logger | None = None,
+) -> dict:
+    """
+    Load and compare one matched (gas, file_type) pair.
+
+    Writes per-file results immediately:
+        per_file/{gas}_{file_type}_data.txt   — "IDENTICAL" or diff summary
+        per_file/{gas}_{file_type}_meta.diff  — unified diff of attrs
+
+    Parameters
+    ----------
+    match
+        One entry from build_match_table().
+    per_file_dir
+        Directory where per-file outputs are written.
+    label_a, label_b
+        Human-readable labels for diff headers.
+    logger
+        Optional logger.
+
+    Returns
+    -------
+    dict with all DATA_CSV_COLS values for this pair (one CSV row).
+    """
+    _info = logger.info if logger else print
+    _warn = logger.warning if logger else print
+    _err = logger.error if logger else print
+
+    gas = match["gas"]
+    file_type = match["file_type"]
+    path_a: Path | None = match["path_a"]
+    path_b: Path | None = match["path_b"]
+    exists_in_a: bool = match["exists_in_a"]
+    exists_in_b: bool = match["exists_in_b"]
+
+    safe_key = f"{gas}_{file_type}".replace("/", "-")
+    data_txt = per_file_dir / f"{safe_key}_data.txt"
+    meta_diff = per_file_dir / f"{safe_key}_meta.diff"
+
+    row: dict = {
+        "filename_a": path_a.name if path_a else "",
+        "filename_b": path_b.name if path_b else "",
+        "gas": gas,
+        "file_type": file_type,
+        "exists_in_a": exists_in_a,
+        "exists_in_b": exists_in_b,
+        "data_identical": False,
+        "variables_compared": 0,
+        "variables_differing": 0,
+        "max_abs_diff": np.nan,
+        "coords_identical": False,
+        "shape_a": "",
+        "shape_b": "",
+        "load_error_a": "",
+        "load_error_b": "",
+        "note": "",
+    }
+
+    # ── Handle missing files ──────────────────────────────────────────────────
+    if not exists_in_a or not exists_in_b:
+        missing = []
+        if not exists_in_a:
+            missing.append(label_a)
+        if not exists_in_b:
+            missing.append(label_b)
+        msg = f"MISSING in: {', '.join(missing)}"
+        _warn(f"  {gas}/{file_type}: {msg}")
+        data_txt.write_text(msg + "\n", encoding="utf-8")
+        meta_diff.write_text("(file missing in one version — no metadata diff)\n", encoding="utf-8")
+        row["note"] = msg
+        return row
+
+    # ── Load both datasets ────────────────────────────────────────────────────
+    ds_a = ds_b = None
+    try:
+        ds_a = xr.open_dataset(path_a, engine="netcdf4")
+    except Exception as exc:
+        row["load_error_a"] = str(exc)
+        _err(f"  {gas}/{file_type}: cannot open {label_a}: {exc}")
+
+    try:
+        ds_b = xr.open_dataset(path_b, engine="netcdf4")
+    except Exception as exc:
+        row["load_error_b"] = str(exc)
+        _err(f"  {gas}/{file_type}: cannot open {label_b}: {exc}")
+
+    if ds_a is None or ds_b is None:
+        note = "load error (see load_error_a/b)"
+        row["note"] = note
+        data_txt.write_text(f"LOAD ERROR\n{note}\n", encoding="utf-8")
+        meta_diff.write_text("(load error — no metadata diff)\n", encoding="utf-8")
+        if ds_a is not None:
+            ds_a.close()
+        if ds_b is not None:
+            ds_b.close()
+        return row
+
+    # ── Compare data ──────────────────────────────────────────────────────────
+    data_result = compare_data(ds_a, ds_b)
+    row.update(data_result)
+
+    # ── Compare metadata ──────────────────────────────────────────────────────
+    meta_str = compare_metadata(ds_a, ds_b, label_a=label_a, label_b=label_b)
+
+    ds_a.close()
+    ds_b.close()
+
+    # ── Write per-file results ────────────────────────────────────────────────
+    status = "IDENTICAL" if data_result["data_identical"] else "DIFFERS"
+    data_lines = [status]
+    if data_result["note"]:
+        data_lines.append(data_result["note"])
+    if not data_result["data_identical"]:
+        data_lines.append(
+            f"variables_differing: {data_result['variables_differing']} "
+            f"/ {data_result['variables_compared']} compared"
+        )
+        if not np.isnan(data_result["max_abs_diff"]):
+            data_lines.append(f"max_abs_diff: {data_result['max_abs_diff']:.6g}")
+    data_txt.write_text("\n".join(data_lines) + "\n", encoding="utf-8")
+
+    meta_diff.write_text(
+        meta_str if meta_str else "(no attribute differences)\n",
+        encoding="utf-8",
+    )
+
+    _info(f"  {gas}/{file_type}: {status}")
+    return row
+
+
+# %% [markdown]
+# ## Orchestrator
+
+# %%
+
+def run_comparison(
+    folder_a: Path,
+    folder_b: Path,
+    output_dir: Path,
+    label_a: str = "version_a",
+    label_b: str = "version_b",
+    species_filter: list[str] | None = None,
+    skip_existing: bool = False,
+) -> dict[str, Path]:
+    """
+    Compare all matched *.nc files between two gridded scenario version folders.
+
+    Writes:
+        {output_dir}/logs/compare_log_{timestamp}.txt
+        {output_dir}/per_file/{gas}_{file_type}_data.txt
+        {output_dir}/per_file/{gas}_{file_type}_meta.diff
+        {output_dir}/data_comparison.csv
+        {output_dir}/metadata_diff.txt
+
+    Parameters
+    ----------
+    folder_a
+        Path to version-A gridded data folder.
+    folder_b
+        Path to version-B gridded data folder.
+    output_dir
+        Root directory for all outputs.  Created if absent.
+    label_a, label_b
+        Human-readable labels used in log messages and diff headers.
+    species_filter
+        If not None, only compare files for these gas names.
+    skip_existing
+        If True, skip a pair whose per-file _data.txt already exists.
+
+    Returns
+    -------
+    dict with keys:
+        "data_comparison_csv"  -> Path
+        "metadata_diff_txt"    -> Path
+        "per_file_dir"         -> Path
+    """
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    per_file_dir = output_dir / "per_file"
+    per_file_dir.mkdir(parents=True, exist_ok=True)
+
+    log = setup_logging(output_dir, timestamp)
+    log.info(f"Version comparison started: {label_a}  vs  {label_b}")
+    log.info(f"  Folder A ({label_a}): {folder_a}")
+    log.info(f"  Folder B ({label_b}): {folder_b}")
+    log.info(f"  Output dir  : {output_dir}")
+    log.info(f"  species_filter: {species_filter}")
+
+    # ── Discover files ────────────────────────────────────────────────────────
+    map_a = scan_folder(folder_a, species_filter, log)
+    map_b = scan_folder(folder_b, species_filter, log)
+    matches = build_match_table(map_a, map_b)
+
+    only_in_a = sum(1 for m in matches if m["exists_in_a"] and not m["exists_in_b"])
+    only_in_b = sum(1 for m in matches if m["exists_in_b"] and not m["exists_in_a"])
+    both = sum(1 for m in matches if m["exists_in_a"] and m["exists_in_b"])
+    log.info(
+        f"  Matched pairs: {both} in both, "
+        f"{only_in_a} only in {label_a}, {only_in_b} only in {label_b}"
+    )
+
+    # ── Compare file by file ──────────────────────────────────────────────────
+    rows = []
+    for match in matches:
+        gas = match["gas"]
+        file_type = match["file_type"]
+        safe_key = f"{gas}_{file_type}".replace("/", "-")
+
+        if skip_existing and (per_file_dir / f"{safe_key}_data.txt").exists():
+            log.info(f"  {gas}/{file_type}: [SKIP] per-file result already exists")
+            # Read existing row back from CSV if available — otherwise skip row
+            continue
+
+        row = compare_one_pair(
+            match,
+            per_file_dir,
+            label_a=label_a,
+            label_b=label_b,
+            logger=log,
+        )
+        rows.append(row)
+
+    # ── Write combined data CSV ───────────────────────────────────────────────
+    csv_path = output_dir / "data_comparison.csv"
+    df = pd.DataFrame(rows, columns=DATA_CSV_COLS)
+    df.to_csv(csv_path, index=False)
+    log.info(f"  Written: {csv_path}")
+
+    # ── Write combined metadata diff ──────────────────────────────────────────
+    meta_txt_path = output_dir / "metadata_diff.txt"
+    meta_sections = []
+    for match in matches:
+        gas = match["gas"]
+        file_type = match["file_type"]
+        safe_key = f"{gas}_{file_type}".replace("/", "-")
+        diff_file = per_file_dir / f"{safe_key}_meta.diff"
+        header = f"{'='*60}\n{gas} / {file_type}\n{'='*60}"
+        if diff_file.exists():
+            body = diff_file.read_text(encoding="utf-8").rstrip()
+        else:
+            body = "(no per-file diff found)"
+        meta_sections.append(f"{header}\n{body}")
+    meta_txt_path.write_text("\n\n".join(meta_sections) + "\n", encoding="utf-8")
+    log.info(f"  Written: {meta_txt_path}")
+
+    # ── Summary ───────────────────────────────────────────────────────────────
+    n_identical = df["data_identical"].sum() if not df.empty else 0
+    n_differs = (~df["data_identical"]).sum() if not df.empty else 0
+    n_errors = ((df["load_error_a"] != "") | (df["load_error_b"] != "")).sum() if not df.empty else 0
+    log.info(
+        f"\n  Summary: {len(df)} pairs compared — "
+        f"{n_identical} identical, {n_differs} differ, {n_errors} load error(s)"
+    )
+
+    return {
+        "data_comparison_csv": csv_path,
+        "metadata_diff_txt": meta_txt_path,
+        "per_file_dir": per_file_dir,
+    }
+
+
+# %% [markdown]
+# ## Run (standalone)
+
+# %%
+if __name__ == "__main__":
+    _HERE = _find_here()
+
+    if not FOLDER_A or not FOLDER_B:
+        raise ValueError(
+            "Set FOLDER_A and FOLDER_B at the top of this file (or use the driver script)."
+        )
+
+    _output_dir = (
+        Path(OUTPUT_DIR)
+        if OUTPUT_DIR
+        else Path(FOLDER_A) / "qc_output_v2" / "version_comparison"
+    )
+
+    run_comparison(
+        folder_a=Path(FOLDER_A),
+        folder_b=Path(FOLDER_B),
+        output_dir=_output_dir,
+        label_a=LABEL_A,
+        label_b=LABEL_B,
+        species_filter=species_filter,
+        skip_existing=skip_existing,
+    )

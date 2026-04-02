@@ -44,10 +44,10 @@ def main() -> None:
     # Which scenario markers to QC.  Comment/uncomment as needed.
     markers = [
         # "h",
-        "hl",
+        # "hl",
         # "m",
         # "ml",
-        # "l",
+        "l",
         # "ln",
         # "vl",
     ]
@@ -59,10 +59,10 @@ def main() -> None:
     # ── MODULE FLAGS ──────────────────────────────────────────────────────────
     # Set each flag to True/False to enable/disable individual QC modules.
 
-    run_file_inventory = False   # A: list files, check for missing
-    run_min_max = False          # B: per-file min/max statistics
-    run_downscaled_qc = False    # C: workflow QC checks on downscaled CSV
-    run_annual_totals = False    # D: 3-way comparison of annual totals
+    run_file_inventory = True   # A: list files, check for missing
+    run_min_max = True          # B: per-file min/max statistics
+    run_downscaled_qc = True    # C: workflow QC checks on downscaled CSV
+    run_annual_totals = True    # D: 3-way comparison of annual totals
     run_animations = False      # E: animated GIF maps — SLOW; enable manually
     # "all-sectors"       → one GIF per (gas, file_type, sector)  e.g. BC_anthro-Energy
     # "total-per-file"    → sectors summed within each file        e.g. BC_anthro-total
@@ -93,13 +93,14 @@ def main() -> None:
     # FOLDER_WITH_GRIDDED_DATA = ""
     # FOLDER_WITH_GRIDDED_DATA = "C:/path/to/your/gridded/data"  # all markers
     FOLDER_WITH_GRIDDED_DATA = {
-        # "h": "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/h_1-1-0",
+        "h": "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/h_1-1-1",
         "hl": "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/hl_1-1-1",
         "m":  "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/m_1-1-1",
-        # "ml": "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/ml_1-1-0",
-        # "l": "..."
-        # "ln": "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/ln_1-1-0",
-        # "vl": "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/vl_1-1-0"
+        # "ml": "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/ml_1-1-1",
+        # "l": "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/l_1-1-1",
+        "l": "P:/ece-climate/results_concordia/l_1-1-1",
+        # "ln": "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/ln_1-1-1",
+        "vl": "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/vl_1-1-1"
     }
 
     # ── RUN ───────────────────────────────────────────────────────────────────
