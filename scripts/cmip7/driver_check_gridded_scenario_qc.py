@@ -63,11 +63,11 @@ def main() -> None:
     # Which scenario markers to QC.  Comment/uncomment as needed.
     markers = [
         "h",
-        # "hl",
-        # "m",
-        # "ml",
-        # "l",
-        # "ln",
+        "hl",
+        "m",
+        "ml",
+        "l",
+        "ln",
         "vl",
     ]
 
@@ -97,7 +97,7 @@ def main() -> None:
     # ── SPECIES FILTER ────────────────────────────────────────────────────────
     # Set to None to run all species, or a list for a faster test run.
     species_filter = None
-    species_filter = ["H2"]   # quick test
+    # species_filter = ["H2"]   # quick test
 
     # ── PERFORMANCE ──────────────────────────────────────────────────────────
     # If True, skip a module if its output CSV/plots already exist.
@@ -116,10 +116,10 @@ def main() -> None:
         "h": "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/h_1-1-1",
         "hl": "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/hl_1-1-1",
         "m":  "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/m_1-1-1",
-        # "ml": "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/ml_1-1-1",
-        # "l": "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/l_1-1-1",
-        "l": "P:/ece-climate/results_concordia/l_1-1-1",
-        # "ln": "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/ln_1-1-1",
+        "ml": "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/ml_1-1-1",
+        "l": "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/l_1-1-1",
+        # "l": "P:/ece-climate/results_concordia/l_1-1-1",
+        "ln": "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/ln_1-1-1",
         "vl": "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/vl_1-1-1"
     }
 

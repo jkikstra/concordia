@@ -161,38 +161,34 @@ CDR_SECTORS_MUST_BE_NEGATIVE = [
 
 FILE_TYPES = ["anthro", "openburning", "AIR-anthro"]
 
+# Derive the anthro sector list for SECTOR_FILE_DICT from utils constants:
+# - Standard sectors: apply inverse of SECTOR_RENAMES to get IAMC-style names
+#   (e.g. "Energy" → "Energy Sector") used in the input CSV data.
+# - CDR sectors: taken from SECTOR_ORDERING_GAS beyond the standard 8.
+_inverse_sector_renames = {v: k for k, v in cmip7_utils.SECTOR_RENAMES.items()}
+_anthro_standard_iamc = [
+    _inverse_sector_renames.get(s, s)
+    for s in cmip7_utils.SECTOR_DICT_ANTHRO_DEFAULT.values()
+]
+_anthro_cdr = [
+    s for s in cmip7_utils.SECTOR_ORDERING_GAS["CO2_em_anthro"]
+    if s not in cmip7_utils.SECTOR_DICT_ANTHRO_DEFAULT.values()
+]
 SECTOR_FILE_DICT = {
-    "openburning": [
-        "Agricultural Waste Burning",
-        "Forest Burning",
-        "Grassland Burning",
-        "Peat Burning",
-    ],
-    "anthro": [
-        "Agriculture",
-        "BECCS",
-        "Biochar",
-        "Direct Air Capture",
-        "Energy Sector",
-        "Enhanced Weathering",
-        "Industrial Sector",
-        "International Shipping",
-        "Ocean",
-        "Other CDR",
-        "Residential Commercial Other",
-        "Soil Carbon Management",
-        "Solvents Production and Application",
-        "Transportation Sector",
-        "Waste",
-    ],
+    "openburning": list(cmip7_utils.SECTOR_DICT_OPENBURNING_DEFAULT.values()),
+    "anthro": sorted(_anthro_standard_iamc + _anthro_cdr),
     "AIR-anthro": ["Aircraft"],
 }
 
-# Maps file_type → {sector_int: sector_name} using the positional order of each
-# list in SECTOR_FILE_DICT (index 0 = integer 0 in the NetCDF sector coordinate).
+# Maps file_type → {sector_int: sector_name} matching the integer sector
+# coordinate written to NetCDF files by sectors_as_integer_ids() in utils.py.
+# Use the CO2 superset (indices 0-9) for "anthro" so that CO2 files with BECCS
+# (index 8) and "Other Capture and Removal" (index 9) are mapped correctly.
+# Non-CO2 anthro files only have indices 0-7; the extra keys are never looked up.
 SECTOR_INT_TO_NAME: dict[str, dict[int, str]] = {
-    ft: {i: name for i, name in enumerate(sectors)}
-    for ft, sectors in SECTOR_FILE_DICT.items()
+    "anthro": cmip7_utils.SECTOR_DICT_ANTHRO_CO2_SCENARIO,
+    "openburning": cmip7_utils.SECTOR_DICT_OPENBURNING_DEFAULT,
+    "AIR-anthro": {0: "Aircraft"},
 }
 
 SECTOR_FILE_COLORS = {
