@@ -63,6 +63,8 @@ import xarray as xr
 # ## Constants
 
 # %%
+# Columns written to data_comparison.csv.  Each row represents one matched
+# (gas, file_type) pair; ordering here must match what compare_one_pair() returns.
 DATA_CSV_COLS = [
     "filename_a",
     "filename_b",
@@ -74,6 +76,7 @@ DATA_CSV_COLS = [
     "variables_compared",
     "variables_differing",
     "max_abs_diff",
+    "max_rel_diff",
     "coords_identical",
     "shape_a",
     "shape_b",
@@ -256,7 +259,10 @@ def compare_data(ds_a: xr.Dataset, ds_b: xr.Dataset) -> dict:
 
     For each variable present in both datasets, uses
     ``np.array_equal(a, b, equal_nan=True)`` for exact bitwise equality
-    (NaN == NaN).  Computes ``max_abs_diff`` over all differing variables.
+    (NaN == NaN).  For differing variables computes ``max_abs_diff``
+    (largest element-wise |a - b|) and ``max_rel_diff`` (largest
+    |a - b| / max(|a|, |b|), with 0 where both sides are zero).
+    Both metrics are the maximum observed across *all* differing variables.
 
     Returns
     -------
@@ -265,24 +271,27 @@ def compare_data(ds_a: xr.Dataset, ds_b: xr.Dataset) -> dict:
         variables_compared (int)
         variables_differing (int)
         max_abs_diff (float | np.nan)
+        max_rel_diff (float | np.nan)
         coords_identical (bool)
         shape_a (str)
         shape_b (str)
         note (str)
     """
     notes = []
+
+    # ── Step 1: partition variables into shared / exclusive sets ─────────────
     vars_a = set(ds_a.data_vars)
     vars_b = set(ds_b.data_vars)
-    shared = vars_a & vars_b
+    shared = vars_a & vars_b          # variables present in both → element-compared below
 
-    only_in_a = vars_a - vars_b
+    only_in_a = vars_a - vars_b       # exclusive variables count as "differing" immediately
     only_in_b = vars_b - vars_a
     if only_in_a:
         notes.append(f"vars only in A: {sorted(only_in_a)}")
     if only_in_b:
         notes.append(f"vars only in B: {sorted(only_in_b)}")
 
-    # Coordinate comparison
+    # ── Step 2: coordinate and shape comparison ───────────────────────────────
     try:
         coords_identical = ds_a.coords.to_dataset().equals(ds_b.coords.to_dataset())
     except Exception as exc:
@@ -294,13 +303,21 @@ def compare_data(ds_a: xr.Dataset, ds_b: xr.Dataset) -> dict:
     if shape_a != shape_b:
         notes.append(f"shape mismatch: {shape_a} vs {shape_b}")
 
+    # ── Step 3: initialise diff accumulators ──────────────────────────────────
+    # Prime the differing count with variables exclusive to one side; those
+    # variables are already logged in `notes` and cannot be element-compared.
     variables_differing = len(only_in_a) + len(only_in_b)
-    max_abs_diff = np.nan
+    max_abs_diff = np.nan   # largest |a - b| seen across all differing variables
+    max_rel_diff = np.nan   # largest |a - b| / max(|a|, |b|) across all differing variables
     differing_vars = []
 
-    # Chunk large arrays by time to avoid OOM (mirrors check_gridded_scenario_qc.py Module B)
+    # ── Step 4: element-wise comparison for each shared variable ──────────────
+    # Chunk large arrays by time to avoid OOM (mirrors check_gridded_scenario_qc.py Module B).
+    # At float64 (8 bytes/element) 200 M elements ≈ 1.6 GB; holding two such arrays
+    # plus intermediate diff buffers in parallel can push a single comparison above 5 GB.
     _SIZE_LIMIT = 200_000_000  # 200 M elements ≈ 1.6 GB float64
 
+    # Sort variable names so per-variable reporting order is deterministic across runs.
     for var in sorted(shared):
         a_da = ds_a[var]
         b_da = ds_b[var]
@@ -312,26 +329,44 @@ def compare_data(ds_a: xr.Dataset, ds_b: xr.Dataset) -> dict:
             continue
 
         if a_da.size > _SIZE_LIMIT and "time" in a_da.dims:
-            # Chunked path: iterate over time in slices to stay within RAM
+            # ── 4a. Chunked path: iterate over time slices to stay within RAM ─
             n_time = a_da.sizes["time"]
-            spatial_size = a_da.size // n_time
-            time_chunk = max(1, _SIZE_LIMIT // spatial_size)
+            spatial_size = a_da.size // n_time           # elements in a single time step
+            time_chunk = max(1, _SIZE_LIMIT // spatial_size)  # how many time steps fit in the budget
             equal = True
-            local_max = np.nan
+            local_max = np.nan   # per-variable running max abs diff (updated chunk by chunk)
+            local_rel = np.nan   # per-variable running max rel diff (updated chunk by chunk)
             try:
                 for t0 in range(0, n_time, time_chunk):
                     a_c = a_da.isel(time=slice(t0, t0 + time_chunk)).values
                     b_c = b_da.isel(time=slice(t0, t0 + time_chunk)).values
                     try:
+                        # equal_nan=True makes NaN == NaN; keyword added in NumPy 1.19.
                         chunk_equal = np.array_equal(a_c, b_c, equal_nan=True)
                     except TypeError:
+                        # Fallback for non-float dtypes (e.g. int, str) or older NumPy.
                         chunk_equal = np.array_equal(a_c, b_c)
                     if not chunk_equal:
                         equal = False
                         try:
-                            d = float(np.nanmax(np.abs(a_c.astype(float) - b_c.astype(float))))
+                            # Cast to float so integer/bool arrays support arithmetic.
+                            a_f = a_c.astype(float)
+                            b_f = b_c.astype(float)
+                            abs_diff = np.abs(a_f - b_f)  # element-wise |a - b|
+                            d = float(np.nanmax(abs_diff))
+                            # Running maximum across time chunks for this variable.
                             if np.isnan(local_max) or d > local_max:
                                 local_max = d
+                            # max(|a|, |b|) as reference magnitude: avoids division by a
+                            # near-zero value from one side while the other is large.
+                            denom = np.maximum(np.abs(a_f), np.abs(b_f))
+                            with np.errstate(divide="ignore", invalid="ignore"):
+                                # Where both sides are zero, define relative diff as 0 %.
+                                rel = np.where(denom > 0, abs_diff / denom, 0.0)
+                            r = float(np.nanmax(rel))
+                            # Running maximum across time chunks for this variable.
+                            if np.isnan(local_rel) or r > local_rel:
+                                local_rel = r
                         except Exception:
                             pass
             except Exception as exc:
@@ -340,7 +375,7 @@ def compare_data(ds_a: xr.Dataset, ds_b: xr.Dataset) -> dict:
                 differing_vars.append(var)
                 continue
         else:
-            # Fast path: load entire array at once
+            # ── 4b. Fast path: load entire array at once ──────────────────────
             try:
                 a = a_da.values
                 b = b_da.values
@@ -356,18 +391,36 @@ def compare_data(ds_a: xr.Dataset, ds_b: xr.Dataset) -> dict:
                 equal = np.array_equal(a, b)
             if not equal:
                 try:
-                    local_max = float(np.nanmax(np.abs(a.astype(float) - b.astype(float))))
+                    # Cast to float so integer/bool arrays support arithmetic.
+                    a_f = a.astype(float)
+                    b_f = b.astype(float)
+                    abs_diff = np.abs(a_f - b_f)          # element-wise |a - b|
+                    local_max = float(np.nanmax(abs_diff))
+                    # max(|a|, |b|) as reference magnitude: avoids division by a
+                    # near-zero value from one side while the other is large.
+                    denom = np.maximum(np.abs(a_f), np.abs(b_f))
+                    with np.errstate(divide="ignore", invalid="ignore"):
+                        # Where both sides are zero, define relative diff as 0 %.
+                        rel = np.where(denom > 0, abs_diff / denom, 0.0)
+                    local_rel = float(np.nanmax(rel))
                 except Exception:
-                    local_max = np.nan  # non-numeric vars
+                    local_max = np.nan  # non-numeric vars (e.g. string coords)
+                    local_rel = np.nan
             else:
                 local_max = np.nan
+                local_rel = np.nan
 
         if not equal:
             variables_differing += 1
             differing_vars.append(var)
+            # Aggregate per-variable maxima into the cross-variable running maximum.
             if not np.isnan(local_max) and (np.isnan(max_abs_diff) or local_max > max_abs_diff):
                 max_abs_diff = local_max
+            if not np.isnan(local_rel) and (np.isnan(max_rel_diff) or local_rel > max_rel_diff):
+                max_rel_diff = local_rel
 
+    # ── Step 5: final verdict ─────────────────────────────────────────────────
+    # Both conditions must hold: no variable-level differences AND matching shapes.
     data_identical = (variables_differing == 0) and (shape_a == shape_b)
 
     return {
@@ -375,6 +428,7 @@ def compare_data(ds_a: xr.Dataset, ds_b: xr.Dataset) -> dict:
         "variables_compared": len(shared),
         "variables_differing": variables_differing,
         "max_abs_diff": max_abs_diff,
+        "max_rel_diff": max_rel_diff,
         "coords_identical": coords_identical,
         "shape_a": shape_a,
         "shape_b": shape_b,
@@ -383,7 +437,15 @@ def compare_data(ds_a: xr.Dataset, ds_b: xr.Dataset) -> dict:
 
 
 def _attrs_to_lines(ds: xr.Dataset) -> list[str]:
-    """Render dataset global and variable attrs as a sorted list of text lines."""
+    """
+    Render dataset global and variable attrs as a sorted list of text lines.
+
+    Keys within each section are sorted so the output is stable across runs
+    and the resulting diff is not polluted by irrelevant ordering changes.
+    Global attributes are emitted first, followed by per-variable attributes
+    in alphabetical variable order.  The output can be fed directly to
+    ``difflib.unified_diff``.
+    """
     lines = ["=== global attrs ==="]
     for k in sorted(ds.attrs):
         lines.append(f"  {k}: {ds.attrs[k]!r}")
@@ -459,6 +521,8 @@ def compare_one_pair(
     exists_in_a: bool = match["exists_in_a"]
     exists_in_b: bool = match["exists_in_b"]
 
+    # Sanitise (gas, file_type) into a string safe for use as a filename stem;
+    # forward slashes (legal in gas names such as "VOC") are replaced with hyphens.
     safe_key = f"{gas}_{file_type}".replace("/", "-")
     data_txt = per_file_dir / f"{safe_key}_data.txt"
     meta_diff = per_file_dir / f"{safe_key}_meta.diff"
@@ -474,6 +538,7 @@ def compare_one_pair(
         "variables_compared": 0,
         "variables_differing": 0,
         "max_abs_diff": np.nan,
+        "max_rel_diff": np.nan,
         "coords_identical": False,
         "shape_a": "",
         "shape_b": "",
@@ -522,10 +587,14 @@ def compare_one_pair(
         return row
 
     # ── Compare data ──────────────────────────────────────────────────────────
+    # Returns a dict with data_identical, variables_differing, max_abs_diff,
+    # max_rel_diff, coords_identical, shape_a/b, and note (see compare_data()).
     data_result = compare_data(ds_a, ds_b)
-    row.update(data_result)
+    row.update(data_result)  # merge all compare_data keys into the CSV row dict
 
     # ── Compare metadata ──────────────────────────────────────────────────────
+    # Produces a unified diff of all global and per-variable NetCDF attributes;
+    # returns "" if attributes are identical (written to meta.diff regardless).
     meta_str = compare_metadata(ds_a, ds_b, label_a=label_a, label_b=label_b)
 
     ds_a.close()
@@ -543,6 +612,8 @@ def compare_one_pair(
         )
         if not np.isnan(data_result["max_abs_diff"]):
             data_lines.append(f"max_abs_diff: {data_result['max_abs_diff']:.6g}")
+        if not np.isnan(data_result["max_rel_diff"]):
+            data_lines.append(f"max_rel_diff: {data_result['max_rel_diff']:.6g}")
     data_txt.write_text("\n".join(data_lines) + "\n", encoding="utf-8")
 
     meta_diff.write_text(
@@ -630,6 +701,7 @@ def run_comparison(
     for match in matches:
         gas = match["gas"]
         file_type = match["file_type"]
+        # Same sanitisation as compare_one_pair() so paths stay consistent.
         safe_key = f"{gas}_{file_type}".replace("/", "-")
 
         if skip_existing and (per_file_dir / f"{safe_key}_data.txt").exists():
@@ -637,6 +709,8 @@ def run_comparison(
             # Read existing row back from CSV if available — otherwise skip row
             continue
 
+        # Load, compare, and write per-file outputs for this (gas, file_type) pair.
+        # Returns one dict whose keys match DATA_CSV_COLS, ready to append to `rows`.
         row = compare_one_pair(
             match,
             per_file_dir,

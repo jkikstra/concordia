@@ -36,9 +36,11 @@ def main() -> None:
     # Paths to the two gridded version folders.
     # Each folder should contain *.nc files named:
     #   {gas}-em-{type}_{FILE_NAME_ENDING}.nc
-    FOLDER_A = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/vl_1-1-0"
-    FOLDER_B = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/vl_1-1-1"
+    marker = "vl" # l
 
+    FOLDER_A = f"C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/{marker}_1-1-0"
+    FOLDER_B = f"C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/{marker}_1-1-1"
+    
     # Short labels used in log messages and metadata diff file headers.
     LABEL_A = "v1-1-0"
     LABEL_B = "v1-1-1"
@@ -47,7 +49,7 @@ def main() -> None:
     # Leave as "" to auto-derive as FOLDER_A / "qc_output_v2" / "version_comparison".
     # Can be any absolute path, e.g.:
     #   OUTPUT_DIR = "C:/path/to/my/comparison_output"
-    OUTPUT_DIR = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/vl_compare_1-1-1_to_1-1-0"
+    OUTPUT_DIR = f"C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/{marker}_compare_1-1-1_to_1-1-0"
 
     # Optional: restrict to a subset of species (None = all).
     species_filter = None
