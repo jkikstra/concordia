@@ -6,8 +6,35 @@ and runs it for the two configured folders.
 
 Does NOT use papermill — just plain Python imports.
 
-Usage:
-    python scripts/cmip7/driver_compare_gridded_versions.py
+Usage
+-----
+1. Activate the conda environment:
+       conda activate concordia
+
+2. Edit the CONFIGURATION block in main() below:
+   - Set FOLDER_A and FOLDER_B to the two gridded version folders to compare.
+   - Set LABEL_A and LABEL_B to short human-readable version labels (used in
+     output filenames and log messages).
+   - Set OUTPUT_DIR to where results should be written (or leave as "" to
+     auto-place results next to FOLDER_A).
+   - Optionally set species_filter = ["CO2", "BC"] to test on a subset.
+
+3. Run from the repo root:
+       python scripts/cmip7/driver_compare_gridded_versions.py
+
+Outputs (written to OUTPUT_DIR)
+--------------------------------
+   data_comparison.csv          — one row per (gas, file_type) pair with
+                                  max/mean abs and rel differences, the
+                                  coordinates of the worst gridpoint, and
+                                  sector/level name
+   metadata_diff.txt            — unified diff of NetCDF attributes
+   per_file/<gas>_<type>_data.txt  — per-file IDENTICAL / DIFFERS summary
+   per_file/<gas>_<type>_meta.diff — per-file attribute diff
+   per_file/<gas>_<type>_diffs.nc  — full spatial diff fields (only when
+                                      per_gridpoint=True is passed to
+                                      run_comparison)
+   logs/compare_log_<timestamp>.txt — full debug log
 """
 
 from __future__ import annotations
@@ -36,7 +63,7 @@ def main() -> None:
     # Paths to the two gridded version folders.
     # Each folder should contain *.nc files named:
     #   {gas}-em-{type}_{FILE_NAME_ENDING}.nc
-    marker = "vl" # l
+    marker = "h" # l
 
     FOLDER_A = f"C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/{marker}_1-1-0"
     FOLDER_B = f"C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/{marker}_1-1-1"
@@ -49,11 +76,11 @@ def main() -> None:
     # Leave as "" to auto-derive as FOLDER_A / "qc_output_v2" / "version_comparison".
     # Can be any absolute path, e.g.:
     #   OUTPUT_DIR = "C:/path/to/my/comparison_output"
-    OUTPUT_DIR = f"C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/{marker}_compare_1-1-1_to_1-1-0"
+    OUTPUT_DIR = f"C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/{marker}_compare_v3_all_1-1-1_to_1-1-0"
 
     # Optional: restrict to a subset of species (None = all).
     species_filter = None
-    # species_filter = ["CO2", "H2"]   # quick test
+    # species_filter = ["H2"]   # quick test
 
     # If True, skip a (gas, file_type) pair whose per-file _data.txt already exists.
     skip_existing = False
@@ -61,11 +88,16 @@ def main() -> None:
     # ── RESOLVE OUTPUT DIR ────────────────────────────────────────────────────
     folder_a_path = Path(FOLDER_A)
     folder_b_path = Path(FOLDER_B)
-    output_dir = (
-        Path(OUTPUT_DIR)
-        if OUTPUT_DIR
-        else folder_a_path / "qc_output_v2" / "version_comparison"
-    )
+    if OUTPUT_DIR:
+        # Use the explicitly configured output directory.
+        output_dir = Path(OUTPUT_DIR)
+    else:
+        # OUTPUT_DIR was left as "" — auto-derive next to FOLDER_A.
+        output_dir = folder_a_path / "qc_output_v2" / "version_comparison"
+        print(
+            f"  [INFO] OUTPUT_DIR not set; auto-deriving output directory:\n"
+            f"         {output_dir}"
+        )
 
     # ── RUN ───────────────────────────────────────────────────────────────────
     print(f"\n{'='*65}")
