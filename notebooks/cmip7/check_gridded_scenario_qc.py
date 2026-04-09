@@ -63,12 +63,13 @@ from __future__ import annotations
 # - Module A: File inventory
 # - Module B: Min/max value statistics per file
 # - Module C: Downscaled data QC (replicating workflow checks)
-# - Module D: Annual totals 3-way comparison (input / harmonized / gridded)
-#             NOTE: CSV output works; PNG plots are broken (TODO: fix or replace)
-# - Module E: Animated grid maps (fast PIL-based GIFs)
-# - Module F: Documentation plots 03 and 04
-# - Module G: Per-location timeseries vs CEDS history (mirrors workflow §4.1; slow, off by default)
-# - Module H: Per-location timeseries vs BB4CMIP7 history for openburning (slow, off by default)
+# - Module D:  Annual totals 3-way comparison (input / harmonized / gridded)
+#              NOTE: CSV output works; PNG plots are broken (TODO: fix or replace)
+# - Module D2: Annual totals per sector from gridded files only (no comparison)
+# - Module E:  Animated grid maps (fast PIL-based GIFs)
+# - Module F:  Documentation plots 03 and 04
+# - Module G:  Per-location timeseries vs CEDS history (mirrors workflow §4.1; slow, off by default)
+# - Module H:  Per-location timeseries vs BB4CMIP7 history for openburning (slow, off by default)
 
 # %% [markdown]
 # ## Parameters
@@ -86,6 +87,7 @@ run_file_inventory: bool = True
 run_min_max: bool = True
 run_downscaled_qc: bool = True
 run_annual_totals: bool = True
+run_sectoral_totals: bool = True
 run_animations: bool = False  # slow; enable manually when needed
 run_doc_plots: bool = True
 run_place_timeseries: bool = False  # slow; enable manually when needed
@@ -104,6 +106,7 @@ import concurrent.futures
 import datetime
 import json
 import logging
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -183,6 +186,13 @@ SECTOR_FILE_DICT = {
         "Waste",
     ],
     "AIR-anthro": ["Aircraft"],
+}
+
+# Maps file_type → {sector_int: sector_name} using the positional order of each
+# list in SECTOR_FILE_DICT (index 0 = integer 0 in the NetCDF sector coordinate).
+SECTOR_INT_TO_NAME: dict[str, dict[int, str]] = {
+    ft: {i: name for i, name in enumerate(sectors)}
+    for ft, sectors in SECTOR_FILE_DICT.items()
 }
 
 SECTOR_FILE_COLORS = {
@@ -1189,6 +1199,131 @@ def check_annual_totals(
     return comparison
 
 
+# ── Module D2: Sectoral Totals from Gridded Files ─────────────────────────────
+
+def check_sectoral_totals(
+    gridded_folder: Path,
+    qc_output_path: Path,
+    cell_area: xr.DataArray,
+    species_filter: list[str] | None = None,
+    skip_existing: bool = True,
+    logger: logging.Logger | None = None,
+) -> pd.DataFrame:
+    """
+    Compute annual global totals per sector from gridded NetCDF files.
+
+    No comparison with IAM or harmonized data — NetCDF only.
+
+    Outputs
+    -------
+    qc_output/tables/sectoral_totals.csv
+        Columns: gas, file_type, sector_int, sector_name, year, value, unit
+    """
+    log = logger or logging.getLogger(__name__)
+    out_csv = qc_output_path / "tables" / "sectoral_totals.csv"
+
+    if skip_existing and out_csv.exists():
+        log.info(f"[D2] Already exists, skipping: {out_csv}")
+        return pd.read_csv(out_csv)
+
+    log.info("[D2] Running sectoral totals from gridded files...")
+    t0 = time.time()
+
+    if not gridded_folder.exists():
+        log.warning(f"[D2] Gridded folder not found: {gridded_folder}")
+        return pd.DataFrame()
+
+    nc_files = sorted(gridded_folder.glob("*.nc"))
+    if species_filter:
+        nc_files = [
+            f for f in nc_files
+            if any(f.name.startswith(g + "-") for g in species_filter)
+        ]
+
+    tmp_dir = out_csv.parent / "sectoral_totals_tmp"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+
+    log.info(f"[D2]   Aggregating {len(nc_files)} gridded files (sector-resolved)...")
+    for nc_idx, nc_path in enumerate(nc_files):
+        if not nc_path.exists():
+            continue
+        try:
+            gas, file_type = _parse_nc_filename(nc_path.name)
+        except ValueError:
+            gas, file_type = "UNKNOWN", "UNKNOWN"
+
+        if species_filter and gas not in species_filter:
+            continue
+
+        # Use a short numeric name to avoid Windows MAX_PATH (260 char) limit
+        tmp_csv = tmp_dir / f"{nc_idx:04d}.csv"
+        if tmp_csv.exists() and skip_existing:
+            log.debug(f"[D2]   Skipping (already done): {nc_path.name}")
+            continue
+
+        try:
+            ds = xr.open_dataset(nc_path, engine="netcdf4")
+            var_name = list(ds.data_vars.keys())[0]
+            result_da = ds_to_annual_emissions_total_faster(
+                ds, var_name, cell_area, keep_sectors=True
+            )
+            ds.close()
+            reporting_unit = "Mt/yr"
+
+            # result_da has dims (sector, year) for anthro/openburning,
+            # or just (year,) for AIR-anthro (single-sector).
+            # Normalise to a DataFrame with explicit sector columns.
+            int_to_name = SECTOR_INT_TO_NAME.get(file_type, {})
+
+            if "sector" in result_da.dims:
+                df_sec = result_da.to_series().reset_index()
+                # to_series() preserves xarray's actual dim order (e.g. year, sector
+                # or sector, year) — rename by the real index column names so we don't
+                # rely on positional order.
+                value_col = df_sec.columns[-1]
+                df_sec = df_sec.rename(columns={"sector": "sector_int", value_col: "value"})
+                df_sec["sector_name"] = df_sec["sector_int"].map(int_to_name).fillna(df_sec["sector_int"].astype(str))
+            else:
+                # AIR-anthro: no sector dim — treat as a single "Aircraft" sector
+                df_sec = result_da.to_series().reset_index()
+                df_sec.columns = ["year", "value"]
+                df_sec["sector_int"] = 0
+                df_sec["sector_name"] = int_to_name.get(0, "Aircraft")
+
+            df_sec["gas"] = gas
+            df_sec["file_type"] = file_type
+            df_sec["unit"] = reporting_unit
+            df_sec["year"] = pd.to_numeric(df_sec["year"])
+
+            df_sec[
+                ["gas", "file_type", "sector_int", "sector_name", "year", "value", "unit"]
+            ].to_csv(tmp_csv, index=False)
+            log.info(f"[D2]   Wrote per-file sectoral totals: {tmp_csv.name}")
+
+        except Exception as e:
+            log.error(f"[D2]   Error processing {nc_path.name}: {e}")
+
+    # Collect all per-file CSVs
+    tmp_files = sorted(tmp_dir.glob("*.csv"))
+    if tmp_files:
+        result = pd.concat([pd.read_csv(f) for f in tmp_files], ignore_index=True)
+    else:
+        result = pd.DataFrame()
+
+    out_csv.parent.mkdir(parents=True, exist_ok=True)
+    result.to_csv(out_csv, index=False)
+    log.info(f"[D2]   Sectoral totals CSV saved → {out_csv}")
+
+    # Clean up per-file temp CSVs
+    for f in tmp_files:
+        f.unlink(missing_ok=True)
+    shutil.rmtree(tmp_dir, ignore_errors=True)
+    log.info(f"[D2]   Removed {len(tmp_files)} temporary per-file CSVs")
+
+    log.info(f"[D2] Done ({time.time()-t0:.1f}s) → {out_csv}")
+    return result
+
+
 # ── Module E: Fast Animated Grids ─────────────────────────────────────────────
 
 def make_animated_grids(
@@ -2087,6 +2222,7 @@ def run_qc(
     run_min_max: bool = True,
     run_downscaled_qc: bool = True,
     run_annual_totals: bool = True,
+    run_sectoral_totals: bool = True,
     run_animations: bool = False,
     animation_mode: str | list[str] = "all-sectors",
     run_doc_plots: bool = True,
@@ -2154,9 +2290,9 @@ def run_qc(
     log.info(f"    Scenario        : {scenario_selection}")
     log.info(f"    Gridded folder  : {gridded_folder}")
 
-    # ── Load cell area (needed for D and E) ────────────────────────────────
+    # ── Load cell area (needed for D, D2 and E) ──────────────────────────────
     cell_area = None
-    if run_annual_totals or run_animations:
+    if run_annual_totals or run_sectoral_totals or run_animations:
         try:
             cell_area = load_cell_area(settings)
             log.info("    Cell area loaded OK")
@@ -2219,6 +2355,18 @@ def run_qc(
             logger=log,
         )
         results["annual_totals"] = qc_output_path / "tables" / "annual_totals_comparison.csv"
+
+    # ── Module D2 ──────────────────────────────────────────────────────────
+    if run_sectoral_totals and cell_area is not None:
+        check_sectoral_totals(
+            gridded_folder=gridded_folder,
+            qc_output_path=qc_output_path,
+            cell_area=cell_area,
+            species_filter=species_filter,
+            skip_existing=skip_existing,
+            logger=log,
+        )
+        results["sectoral_totals"] = qc_output_path / "tables" / "sectoral_totals.csv"
 
     # ── Module E ───────────────────────────────────────────────────────────
     if run_animations and cell_area is not None:
@@ -2311,6 +2459,7 @@ if __name__ == "__main__":
         run_min_max=run_min_max,
         run_downscaled_qc=run_downscaled_qc,
         run_annual_totals=run_annual_totals,
+        run_sectoral_totals=run_sectoral_totals,
         run_animations=run_animations,
         run_doc_plots=run_doc_plots,
         run_place_timeseries=run_place_timeseries,

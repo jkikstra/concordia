@@ -6,8 +6,27 @@ and runs it for one or more scenario markers.
 
 Does NOT use papermill — just plain Python imports.
 
-Usage:
-    python scripts/cmip7/driver_check_gridded_scenario_qc.py
+HOW TO USE
+----------
+1. Activate the concordia environment:
+       conda activate concordia
+
+2. Edit the CONFIGURATION block in main() below:
+   - SETTINGS_FILE    : YAML config file in notebooks/cmip7/ (e.g. config_cmip7_v0-4-0.yaml)
+   - VERSION_ESGF     : ESGF version string (e.g. "1-1-1")
+   - HISTORY_FILE     : country-history CSV filename used during gridding
+   - markers          : list of scenario markers to QC (e.g. ["h", "m", "l"])
+   - FOLDER_WITH_GRIDDED_DATA : path(s) to the folder(s) containing gridded NetCDF output.
+       Can be a single string (same path for all markers) or a dict {marker: path}.
+       Leave as "" to use the default results/{marker}_{VERSION_ESGF}/ folder.
+
+3. Toggle QC modules on/off with the MODULE FLAGS (run_file_inventory, run_min_max, …).
+   Slow modules (run_animations, run_place_timeseries) are off by default.
+
+4. Run:
+       python scripts/cmip7/driver_check_gridded_scenario_qc.py
+
+   Output files are written to results/{gridding_version}/ (or the overridden path).
 """
 
 from __future__ import annotations
@@ -43,13 +62,13 @@ def main() -> None:
 
     # Which scenario markers to QC.  Comment/uncomment as needed.
     markers = [
-        # "h",
+        "h",
         # "hl",
         # "m",
         # "ml",
-        "l",
+        # "l",
         # "ln",
-        # "vl",
+        "vl",
     ]
 
     # Optional version prefix for the output folder name, e.g. "test_"
@@ -59,10 +78,11 @@ def main() -> None:
     # ── MODULE FLAGS ──────────────────────────────────────────────────────────
     # Set each flag to True/False to enable/disable individual QC modules.
 
-    run_file_inventory = True   # A: list files, check for missing
-    run_min_max = True          # B: per-file min/max statistics
-    run_downscaled_qc = True    # C: workflow QC checks on downscaled CSV
-    run_annual_totals = True    # D: 3-way comparison of annual totals
+    run_file_inventory = False   # A: list files, check for missing
+    run_min_max = False          # B: per-file min/max statistics
+    run_downscaled_qc = False    # C: workflow QC checks on downscaled CSV
+    run_annual_totals = False    # D: 3-way comparison of annual totals
+    run_sectoral_totals = True  # D2: annual totals per sector (NetCDF only, no comparison)
     run_animations = False      # E: animated GIF maps — SLOW; enable manually
     # "all-sectors"       → one GIF per (gas, file_type, sector)  e.g. BC_anthro-Energy
     # "total-per-file"    → sectors summed within each file        e.g. BC_anthro-total
@@ -70,14 +90,14 @@ def main() -> None:
     # Can be a single string or a list to run multiple modes in one pass.
     # animation_mode = "all-sectors"
     animation_mode = ["all-sectors", "total-per-file", "total-per-species"]
-    run_doc_plots = True        # F: documentation plots 03 and 04
-    run_place_timeseries = True  # G: per-location timeseries vs CEDS history — SLOW; enable manually
+    run_doc_plots = False        # F: documentation plots 03 and 04
+    run_place_timeseries = False  # G: per-location timeseries vs CEDS history — SLOW; enable manually
     run_openburning_timeseries = False  # H: per-location timeseries vs BB4CMIP7 history — SLOW; enable manually
 
     # ── SPECIES FILTER ────────────────────────────────────────────────────────
     # Set to None to run all species, or a list for a faster test run.
     species_filter = None
-    # species_filter = ["CH4"]   # quick test
+    species_filter = ["H2"]   # quick test
 
     # ── PERFORMANCE ──────────────────────────────────────────────────────────
     # If True, skip a module if its output CSV/plots already exist.
@@ -140,6 +160,7 @@ def main() -> None:
             run_min_max=run_min_max,
             run_downscaled_qc=run_downscaled_qc,
             run_annual_totals=run_annual_totals,
+            run_sectoral_totals=run_sectoral_totals,
             run_animations=run_animations,
             animation_mode=animation_mode,
             run_doc_plots=run_doc_plots,
