@@ -25,6 +25,10 @@ from __future__ import annotations
 # - `data_comparison.csv`  — one row per `(gas, file_type)` pair
 # - `metadata_diff.txt`    — all attribute diffs concatenated
 #
+# When ``per_gridpoint=True`` the script additionally writes per-variable
+# NetCDF files with spatial absolute- and relative-difference fields under
+# ``per_file/{gas}_{file_type}_diffs.nc``.
+#
 # ## Usage
 # Run via the driver script:
 #
@@ -44,6 +48,7 @@ OUTPUT_DIR: str = ""      # defaults to FOLDER_A / "qc_output_v2" / "version_com
 
 species_filter: list[str] | None = None   # e.g. ["BC", "CO2"] for a quick test
 skip_existing: bool = False
+per_gridpoint: bool = False   # write per-gridpoint diff fields to NetCDF
 
 # %% [markdown]
 # ## Imports
@@ -59,10 +64,38 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from concordia.cmip7.utils import (
+    SECTOR_DICT_ANTHRO_DEFAULT,
+    SECTOR_DICT_ANTHRO_CO2_SCENARIO,
+    SECTOR_DICT_OPENBURNING_DEFAULT,
+)
+
 # %% [markdown]
 # ## Constants
 
 # %%
+
+def _resolve_sector_dict(gas: str, file_type: str) -> dict[int, str] | None:
+    """Return the appropriate sector-index-to-name mapping, or None."""
+    if file_type == "anthro":
+        if gas == "CO2":
+            return SECTOR_DICT_ANTHRO_CO2_SCENARIO
+        return SECTOR_DICT_ANTHRO_DEFAULT
+    if file_type == "openburning":
+        return SECTOR_DICT_OPENBURNING_DEFAULT
+    return None  # AIR-anthro or unknown — no sector dict
+
+
+def _format_location(row: dict, prefix: str) -> str:
+    """Format a location from flattened row keys into a human-readable string."""
+    parts = []
+    for suffix in ("var", "time", "sector", "lat", "lon"):
+        val = row.get(f"{prefix}_{suffix}", "")
+        if val != "" and val is not None:
+            parts.append(f"{suffix}={val}")
+    return ", ".join(parts)
+
+
 # Columns written to data_comparison.csv.  Each row represents one matched
 # (gas, file_type) pair; ordering here must match what compare_one_pair() returns.
 DATA_CSV_COLS = [
@@ -76,7 +109,19 @@ DATA_CSV_COLS = [
     "variables_compared",
     "variables_differing",
     "max_abs_diff",
+    "max_abs_diff_var",
+    "max_abs_diff_time",
+    "max_abs_diff_sector",
+    "max_abs_diff_lat",
+    "max_abs_diff_lon",
     "max_rel_diff",
+    "max_rel_diff_var",
+    "max_rel_diff_time",
+    "max_rel_diff_sector",
+    "max_rel_diff_lat",
+    "max_rel_diff_lon",
+    "mean_abs_diff",
+    "mean_rel_diff",
     "coords_identical",
     "shape_a",
     "shape_b",
@@ -253,7 +298,28 @@ def build_match_table(
 
 # %%
 
-def compare_data(ds_a: xr.Dataset, ds_b: xr.Dataset) -> dict:
+def _argmax_location(arr: np.ndarray, da: xr.DataArray, var: str) -> dict:
+    """Map the flat argmax of *arr* back to coordinate values of *da*.
+
+    Returns a dict ``{"variable": var, dim_name: coord_value, ...}`` for
+    every dimension in *da*.  Non-numeric coordinate values (e.g. cftime
+    dates) are converted to strings so the result is always JSON-safe.
+    """
+    flat_idx = int(np.nanargmax(arr))
+    nd_idx = np.unravel_index(flat_idx, arr.shape)
+    loc: dict = {"variable": var}
+    for i, dim in enumerate(da.dims):
+        coord_val = da.coords[dim].values[nd_idx[i]]
+        # Convert numpy scalar / cftime to a Python-native type.
+        if hasattr(coord_val, "item"):
+            coord_val = coord_val.item()
+        if not isinstance(coord_val, (int, float, str)):
+            coord_val = str(coord_val)
+        loc[dim] = coord_val
+    return loc
+
+
+def compare_data(ds_a: xr.Dataset, ds_b: xr.Dataset, per_gridpoint: bool = False) -> dict:
     """
     Compare data variables between two xarray Datasets.
 
@@ -264,6 +330,18 @@ def compare_data(ds_a: xr.Dataset, ds_b: xr.Dataset) -> dict:
     |a - b| / max(|a|, |b|), with 0 where both sides are zero).
     Both metrics are the maximum observed across *all* differing variables.
 
+    ``data_identical`` is ``True`` only when data values, shapes, *and*
+    coordinates are all identical.
+
+    Parameters
+    ----------
+    ds_a, ds_b
+        Datasets to compare.
+    per_gridpoint
+        When True, include ``"abs_diff_fields"`` and ``"rel_diff_fields"``
+        dicts (keyed by variable name) of xarray DataArrays in the return
+        value.
+
     Returns
     -------
     dict with keys:
@@ -271,11 +349,17 @@ def compare_data(ds_a: xr.Dataset, ds_b: xr.Dataset) -> dict:
         variables_compared (int)
         variables_differing (int)
         max_abs_diff (float | np.nan)
+        max_abs_diff_loc (dict | None)
         max_rel_diff (float | np.nan)
+        max_rel_diff_loc (dict | None)
+        mean_abs_diff (float | np.nan)
+        mean_rel_diff (float | np.nan)
         coords_identical (bool)
         shape_a (str)
         shape_b (str)
         note (str)
+        abs_diff_fields (dict, only when per_gridpoint=True)
+        rel_diff_fields (dict, only when per_gridpoint=True)
     """
     notes = []
 
@@ -309,7 +393,17 @@ def compare_data(ds_a: xr.Dataset, ds_b: xr.Dataset) -> dict:
     variables_differing = len(only_in_a) + len(only_in_b)
     max_abs_diff = np.nan   # largest |a - b| seen across all differing variables
     max_rel_diff = np.nan   # largest |a - b| / max(|a|, |b|) across all differing variables
+    max_abs_diff_loc: dict | None = None  # coordinate location of max_abs_diff
+    max_rel_diff_loc: dict | None = None  # coordinate location of max_rel_diff
+    # Weighted-mean accumulators (sum / count across all differing variables).
+    _mean_abs_sum = 0.0
+    _mean_abs_count = 0
+    _mean_rel_sum = 0.0
+    _mean_rel_count = 0
     differing_vars = []
+    if per_gridpoint:
+        abs_diff_fields: dict[str, xr.DataArray] = {}
+        rel_diff_fields: dict[str, xr.DataArray] = {}
 
     # ── Step 4: element-wise comparison for each shared variable ──────────────
     # Chunk large arrays by time to avoid OOM (mirrors check_gridded_scenario_qc.py Module B).
@@ -336,6 +430,16 @@ def compare_data(ds_a: xr.Dataset, ds_b: xr.Dataset) -> dict:
             equal = True
             local_max = np.nan   # per-variable running max abs diff (updated chunk by chunk)
             local_rel = np.nan   # per-variable running max rel diff (updated chunk by chunk)
+            local_abs_loc: dict | None = None  # location of local_max within this variable
+            local_rel_loc: dict | None = None  # location of local_rel within this variable
+            # Mean accumulators for this variable (across chunks).
+            _var_abs_sum = 0.0
+            _var_abs_cnt = 0
+            _var_rel_sum = 0.0
+            _var_rel_cnt = 0
+            if per_gridpoint:
+                _abs_chunks: list[np.ndarray] = []
+                _rel_chunks: list[np.ndarray] = []
             try:
                 for t0 in range(0, n_time, time_chunk):
                     a_c = a_da.isel(time=slice(t0, t0 + time_chunk)).values
@@ -357,6 +461,9 @@ def compare_data(ds_a: xr.Dataset, ds_b: xr.Dataset) -> dict:
                             # Running maximum across time chunks for this variable.
                             if np.isnan(local_max) or d > local_max:
                                 local_max = d
+                                # Find argmax within this chunk, map to full-array coords.
+                                _chunk_da = a_da.isel(time=slice(t0, t0 + time_chunk))
+                                local_abs_loc = _argmax_location(abs_diff, _chunk_da, var)
                             # max(|a|, |b|) as reference magnitude: avoids division by a
                             # near-zero value from one side while the other is large.
                             denom = np.maximum(np.abs(a_f), np.abs(b_f))
@@ -367,8 +474,40 @@ def compare_data(ds_a: xr.Dataset, ds_b: xr.Dataset) -> dict:
                             # Running maximum across time chunks for this variable.
                             if np.isnan(local_rel) or r > local_rel:
                                 local_rel = r
+                                _chunk_da = a_da.isel(time=slice(t0, t0 + time_chunk))
+                                local_rel_loc = _argmax_location(rel, _chunk_da, var)
+                            # Mean accumulators (include zeros, exclude NaN).
+                            _nvalid = int(np.sum(~np.isnan(abs_diff)))
+                            _var_abs_sum += float(np.nansum(abs_diff))
+                            _var_abs_cnt += _nvalid
+                            _var_rel_sum += float(np.nansum(rel))
+                            _var_rel_cnt += _nvalid
+                            if per_gridpoint:
+                                _abs_chunks.append(abs_diff)
+                                _rel_chunks.append(rel)
                         except Exception:
-                            pass
+                            if per_gridpoint:
+                                _abs_chunks.append(np.full_like(a_c, np.nan, dtype=float))
+                                _rel_chunks.append(np.full_like(a_c, np.nan, dtype=float))
+                    else:
+                        # Chunk is identical — still contributes zeros to the mean.
+                        _nvalid = int(np.sum(~np.isnan(a_c.astype(float)))) if a_c.size else 0
+                        _var_abs_cnt += _nvalid
+                        _var_rel_cnt += _nvalid
+                        if per_gridpoint:
+                            _abs_chunks.append(np.zeros_like(a_c, dtype=float))
+                            _rel_chunks.append(np.zeros_like(a_c, dtype=float))
+                # Concatenate per-gridpoint chunks along the time axis
+                if per_gridpoint and _abs_chunks and not equal:
+                    _time_ax = list(a_da.dims).index("time")
+                    abs_diff_fields[var] = xr.DataArray(
+                        np.concatenate(_abs_chunks, axis=_time_ax),
+                        dims=a_da.dims, coords=a_da.coords,
+                    )
+                    rel_diff_fields[var] = xr.DataArray(
+                        np.concatenate(_rel_chunks, axis=_time_ax),
+                        dims=a_da.dims, coords=a_da.coords,
+                    )
             except Exception as exc:
                 notes.append(f"load error for {var}: {exc}")
                 variables_differing += 1
@@ -389,6 +528,12 @@ def compare_data(ds_a: xr.Dataset, ds_b: xr.Dataset) -> dict:
             except TypeError:
                 # non-float dtype (e.g. int, datetime, str) — isnan not applicable
                 equal = np.array_equal(a, b)
+            local_abs_loc = None
+            local_rel_loc = None
+            _var_abs_sum = 0.0
+            _var_abs_cnt = 0
+            _var_rel_sum = 0.0
+            _var_rel_cnt = 0
             if not equal:
                 try:
                     # Cast to float so integer/bool arrays support arithmetic.
@@ -396,6 +541,7 @@ def compare_data(ds_a: xr.Dataset, ds_b: xr.Dataset) -> dict:
                     b_f = b.astype(float)
                     abs_diff = np.abs(a_f - b_f)          # element-wise |a - b|
                     local_max = float(np.nanmax(abs_diff))
+                    local_abs_loc = _argmax_location(abs_diff, a_da, var)
                     # max(|a|, |b|) as reference magnitude: avoids division by a
                     # near-zero value from one side while the other is large.
                     denom = np.maximum(np.abs(a_f), np.abs(b_f))
@@ -403,6 +549,20 @@ def compare_data(ds_a: xr.Dataset, ds_b: xr.Dataset) -> dict:
                         # Where both sides are zero, define relative diff as 0 %.
                         rel = np.where(denom > 0, abs_diff / denom, 0.0)
                     local_rel = float(np.nanmax(rel))
+                    local_rel_loc = _argmax_location(rel, a_da, var)
+                    # Mean accumulators (include zeros, exclude NaN).
+                    _nvalid = int(np.sum(~np.isnan(abs_diff)))
+                    _var_abs_sum = float(np.nansum(abs_diff))
+                    _var_abs_cnt = _nvalid
+                    _var_rel_sum = float(np.nansum(rel))
+                    _var_rel_cnt = _nvalid
+                    if per_gridpoint:
+                        abs_diff_fields[var] = xr.DataArray(
+                            abs_diff, dims=a_da.dims, coords=a_da.coords,
+                        )
+                        rel_diff_fields[var] = xr.DataArray(
+                            rel, dims=a_da.dims, coords=a_da.coords,
+                        )
                 except Exception:
                     local_max = np.nan  # non-numeric vars (e.g. string coords)
                     local_rel = np.nan
@@ -416,24 +576,46 @@ def compare_data(ds_a: xr.Dataset, ds_b: xr.Dataset) -> dict:
             # Aggregate per-variable maxima into the cross-variable running maximum.
             if not np.isnan(local_max) and (np.isnan(max_abs_diff) or local_max > max_abs_diff):
                 max_abs_diff = local_max
+                max_abs_diff_loc = local_abs_loc
             if not np.isnan(local_rel) and (np.isnan(max_rel_diff) or local_rel > max_rel_diff):
                 max_rel_diff = local_rel
+                max_rel_diff_loc = local_rel_loc
+            # Accumulate into cross-variable mean.
+            _mean_abs_sum += _var_abs_sum
+            _mean_abs_count += _var_abs_cnt
+            _mean_rel_sum += _var_rel_sum
+            _mean_rel_count += _var_rel_cnt
 
     # ── Step 5: final verdict ─────────────────────────────────────────────────
-    # Both conditions must hold: no variable-level differences AND matching shapes.
-    data_identical = (variables_differing == 0) and (shape_a == shape_b)
+    # All three conditions must hold: no variable-level differences, matching
+    # shapes, AND identical coordinates.
+    data_identical = (variables_differing == 0) and (shape_a == shape_b) and coords_identical
 
-    return {
+    if differing_vars:
+        notes.append(f"differing vars: {differing_vars}")
+
+    mean_abs_diff = (_mean_abs_sum / _mean_abs_count) if _mean_abs_count > 0 else np.nan
+    mean_rel_diff = (_mean_rel_sum / _mean_rel_count) if _mean_rel_count > 0 else np.nan
+
+    result = {
         "data_identical": data_identical,
         "variables_compared": len(shared),
         "variables_differing": variables_differing,
         "max_abs_diff": max_abs_diff,
+        "max_abs_diff_loc": max_abs_diff_loc,
         "max_rel_diff": max_rel_diff,
+        "max_rel_diff_loc": max_rel_diff_loc,
+        "mean_abs_diff": mean_abs_diff,
+        "mean_rel_diff": mean_rel_diff,
         "coords_identical": coords_identical,
         "shape_a": shape_a,
         "shape_b": shape_b,
         "note": "; ".join(notes),
     }
+    if per_gridpoint:
+        result["abs_diff_fields"] = abs_diff_fields
+        result["rel_diff_fields"] = rel_diff_fields
+    return result
 
 
 def _attrs_to_lines(ds: xr.Dataset) -> list[str]:
@@ -487,6 +669,7 @@ def compare_one_pair(
     label_a: str = "version_a",
     label_b: str = "version_b",
     logger: logging.Logger | None = None,
+    per_gridpoint: bool = False,
 ) -> dict:
     """
     Load and compare one matched (gas, file_type) pair.
@@ -505,6 +688,8 @@ def compare_one_pair(
         Human-readable labels for diff headers.
     logger
         Optional logger.
+    per_gridpoint
+        When True, write per-gridpoint diff fields to a NetCDF file.
 
     Returns
     -------
@@ -538,7 +723,19 @@ def compare_one_pair(
         "variables_compared": 0,
         "variables_differing": 0,
         "max_abs_diff": np.nan,
+        "max_abs_diff_var": "",
+        "max_abs_diff_time": "",
+        "max_abs_diff_sector": "",
+        "max_abs_diff_lat": "",
+        "max_abs_diff_lon": "",
         "max_rel_diff": np.nan,
+        "max_rel_diff_var": "",
+        "max_rel_diff_time": "",
+        "max_rel_diff_sector": "",
+        "max_rel_diff_lat": "",
+        "max_rel_diff_lon": "",
+        "mean_abs_diff": np.nan,
+        "mean_rel_diff": np.nan,
         "coords_identical": False,
         "shape_a": "",
         "shape_b": "",
@@ -588,9 +785,51 @@ def compare_one_pair(
 
     # ── Compare data ──────────────────────────────────────────────────────────
     # Returns a dict with data_identical, variables_differing, max_abs_diff,
-    # max_rel_diff, coords_identical, shape_a/b, and note (see compare_data()).
-    data_result = compare_data(ds_a, ds_b)
+    # max_rel_diff, location dicts, mean diffs, coords_identical, shape_a/b,
+    # and note (see compare_data()).
+    data_result = compare_data(ds_a, ds_b, per_gridpoint=per_gridpoint)
+    # Extract per-gridpoint fields before merging into CSV row
+    _abs_fields = data_result.pop("abs_diff_fields", None)
+    _rel_fields = data_result.pop("rel_diff_fields", None)
+    # Extract location dicts (not CSV columns themselves).
+    _abs_loc = data_result.pop("max_abs_diff_loc", None)
+    _rel_loc = data_result.pop("max_rel_diff_loc", None)
+
     row.update(data_result)  # merge all compare_data keys into the CSV row dict
+
+    # ── Flatten location dicts into CSV row ───────────────────────────────────
+    _sector_dict = _resolve_sector_dict(gas, file_type)
+    for prefix, loc in [("max_abs_diff", _abs_loc), ("max_rel_diff", _rel_loc)]:
+        if loc is None:
+            continue
+        row[f"{prefix}_var"] = loc.get("variable", "")
+        row[f"{prefix}_time"] = loc.get("time", "")
+        row[f"{prefix}_lat"] = loc.get("lat", "")
+        row[f"{prefix}_lon"] = loc.get("lon", "")
+        # Sector or level — resolve integer sector to name when possible.
+        raw_sector = loc.get("sector", loc.get("level", ""))
+        if isinstance(raw_sector, (int, float)) and _sector_dict:
+            row[f"{prefix}_sector"] = _sector_dict.get(int(raw_sector), raw_sector)
+        elif "level" in loc:
+            row[f"{prefix}_sector"] = loc["level"]
+        else:
+            row[f"{prefix}_sector"] = raw_sector
+
+    if logger and data_result.get("variables_differing", 0) > 0:
+        logger.debug(f"  {gas}/{file_type}: differing vars detail: {data_result['note']}")
+
+    # ── Write per-gridpoint diff fields ───────────────────────────────────────
+    if _abs_fields:
+        diff_vars: dict[str, xr.DataArray] = {}
+        for v, da in _abs_fields.items():
+            diff_vars[f"{v}_abs_diff"] = da
+        for v, da in _rel_fields.items():
+            diff_vars[f"{v}_rel_diff"] = da
+        diff_ds = xr.Dataset(diff_vars)
+        diff_nc = per_file_dir / f"{safe_key}_diffs.nc"
+        diff_ds.to_netcdf(diff_nc)
+        if logger:
+            logger.info(f"  {gas}/{file_type}: wrote per-gridpoint diffs to {diff_nc.name}")
 
     # ── Compare metadata ──────────────────────────────────────────────────────
     # Produces a unified diff of all global and per-variable NetCDF attributes;
@@ -612,8 +851,20 @@ def compare_one_pair(
         )
         if not np.isnan(data_result["max_abs_diff"]):
             data_lines.append(f"max_abs_diff: {data_result['max_abs_diff']:.6g}")
+            if _abs_loc:
+                data_lines.append(
+                    f"  at: {_format_location(row, 'max_abs_diff')}"
+                )
         if not np.isnan(data_result["max_rel_diff"]):
             data_lines.append(f"max_rel_diff: {data_result['max_rel_diff']:.6g}")
+            if _rel_loc:
+                data_lines.append(
+                    f"  at: {_format_location(row, 'max_rel_diff')}"
+                )
+        if not np.isnan(data_result["mean_abs_diff"]):
+            data_lines.append(f"mean_abs_diff: {data_result['mean_abs_diff']:.6g}")
+        if not np.isnan(data_result["mean_rel_diff"]):
+            data_lines.append(f"mean_rel_diff: {data_result['mean_rel_diff']:.6g}")
     data_txt.write_text("\n".join(data_lines) + "\n", encoding="utf-8")
 
     meta_diff.write_text(
@@ -638,6 +889,7 @@ def run_comparison(
     label_b: str = "version_b",
     species_filter: list[str] | None = None,
     skip_existing: bool = False,
+    per_gridpoint: bool = False,
 ) -> dict[str, Path]:
     """
     Compare all matched *.nc files between two gridded scenario version folders.
@@ -646,8 +898,12 @@ def run_comparison(
         {output_dir}/logs/compare_log_{timestamp}.txt
         {output_dir}/per_file/{gas}_{file_type}_data.txt
         {output_dir}/per_file/{gas}_{file_type}_meta.diff
+        {output_dir}/per_file/{gas}_{file_type}_diffs.nc  (when per_gridpoint=True)
         {output_dir}/data_comparison.csv
         {output_dir}/metadata_diff.txt
+
+    When ``per_gridpoint=True`` the script additionally writes per-variable
+    NetCDF files with spatial absolute- and relative-difference fields.
 
     Parameters
     ----------
@@ -663,6 +919,8 @@ def run_comparison(
         If not None, only compare files for these gas names.
     skip_existing
         If True, skip a pair whose per-file _data.txt already exists.
+    per_gridpoint
+        When True, write per-variable per-gridpoint diff fields as NetCDF.
 
     Returns
     -------
@@ -705,8 +963,30 @@ def run_comparison(
         safe_key = f"{gas}_{file_type}".replace("/", "-")
 
         if skip_existing and (per_file_dir / f"{safe_key}_data.txt").exists():
-            log.info(f"  {gas}/{file_type}: [SKIP] per-file result already exists")
-            # Read existing row back from CSV if available — otherwise skip row
+            # Attempt to reload the row from an existing data_comparison.csv
+            existing_csv = output_dir / "data_comparison.csv"
+            reloaded = False
+            if existing_csv.exists():
+                try:
+                    existing_df = pd.read_csv(existing_csv)
+                    match_rows = existing_df[
+                        (existing_df["gas"] == gas)
+                        & (existing_df["file_type"] == file_type)
+                    ]
+                    if not match_rows.empty:
+                        rows.append(match_rows.iloc[0].to_dict())
+                        log.info(
+                            f"  {gas}/{file_type}: [SKIP] reloaded existing row from CSV"
+                        )
+                        reloaded = True
+                except Exception as exc:
+                    log.warning(
+                        f"  {gas}/{file_type}: [SKIP] could not read existing CSV: {exc}"
+                    )
+            if not reloaded:
+                log.warning(
+                    f"  {gas}/{file_type}: [SKIP] per-file result exists but no CSV row found"
+                )
             continue
 
         # Load, compare, and write per-file outputs for this (gas, file_type) pair.
@@ -717,6 +997,7 @@ def run_comparison(
             label_a=label_a,
             label_b=label_b,
             logger=log,
+            per_gridpoint=per_gridpoint,
         )
         rows.append(row)
 
@@ -785,4 +1066,5 @@ if __name__ == "__main__":
         label_b=LABEL_B,
         species_filter=species_filter,
         skip_existing=skip_existing,
+        per_gridpoint=per_gridpoint,
     )
