@@ -2,6 +2,7 @@ name: concordia
 channels:
 - conda-forge
 dependencies:
+# - python =3.12
 - typing-extensions
 - attrs
 - cattrs
@@ -28,6 +29,7 @@ dependencies:
 - colorlog
 - ipykernel
 - papermill
+# - input4mips-validation # used in checks
 
 # ptolemy dependencies
 - netcdf4
