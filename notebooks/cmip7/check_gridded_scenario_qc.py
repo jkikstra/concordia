@@ -505,7 +505,7 @@ def check_min_max_values(
             gas, file_type = "UNKNOWN", "UNKNOWN"
         if species_filter and gas not in species_filter:
             continue
-        tmp_csv = tmp_dir / f"{nc_path.stem}.csv"
+        tmp_csv = tmp_dir / f"{hash(nc_path.stem) & 0xFFFFFFFF:08x}.csv"
         if tmp_csv.exists():
             log.debug(f"[B]   Skipping (already done): {nc_path.name}")
             continue
@@ -590,7 +590,7 @@ def check_min_max_values(
     with concurrent.futures.ThreadPoolExecutor(max_workers=n_workers) as pool:
         for args, row in zip(pending, pool.map(_process_one, pending)):
             nc_path = args[0]
-            tmp_csv = tmp_dir / f"{nc_path.stem}.csv"
+            tmp_csv = tmp_dir / f"{hash(nc_path.stem) & 0xFFFFFFFF:08x}.csv"
             pd.DataFrame([row], columns=_STAT_COLS).to_csv(tmp_csv, index=False)
             log.info(f"[B]   {nc_path.name}: {row['status']}")
 
@@ -610,9 +610,9 @@ def check_min_max_values(
 
     # Clean up per-file temp CSVs
     for f in tmp_files:
-        f.unlink()
-    if tmp_dir.exists() and not any(tmp_dir.iterdir()):
-        tmp_dir.rmdir()
+        f.unlink(missing_ok=True)
+    if tmp_dir.exists():
+        shutil.rmtree(tmp_dir, ignore_errors=True)
     log.info(f"[B] Removed {len(tmp_files)} temporary per-file CSVs")
 
     n_warnings = (df["status"] != "OK").sum()
@@ -1042,7 +1042,7 @@ def check_annual_totals(
         if species_filter and gas not in species_filter:
             continue
 
-        tmp_csv = tmp_dir / f"{nc_path.stem}.csv"
+        tmp_csv = tmp_dir / f"{hash(nc_path.stem) & 0xFFFFFFFF:08x}.csv"
         if tmp_csv.exists() and skip_existing:
             log.debug(f"[D]   Skipping (already done): {nc_path.name}")
             continue
@@ -1065,7 +1065,7 @@ def check_annual_totals(
                 for year, value in result_series.items()
             ]
             pd.DataFrame(rows).to_csv(tmp_csv, index=False)
-            log.info(f"[D]   Wrote per-file totals: {tmp_csv.name}")
+            log.info(f"[D]   Wrote per-file totals: {tmp_csv.name} ({gas}, {file_type})")
 
         except Exception as e:
             log.error(f"[D]   Error processing {nc_path.name}: {e}")
@@ -1131,9 +1131,9 @@ def check_annual_totals(
 
     # Clean up per-file temp CSVs
     for f in tmp_files:
-        f.unlink()
-    if tmp_dir.exists() and not any(tmp_dir.iterdir()):
-        tmp_dir.rmdir()
+        f.unlink(missing_ok=True)
+    if tmp_dir.exists():
+        shutil.rmtree(tmp_dir, ignore_errors=True)
     log.info(f"[D]   Removed {len(tmp_files)} temporary per-file CSVs")
 
     # ── 4. Per-gas per-type comparison plots ─────────────────────────────
