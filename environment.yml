@@ -30,6 +30,7 @@ dependencies:
 - ipykernel
 - papermill
 # - input4mips-validation # used in checks
+- nc-time-axis # required for plotting cftime datetime axes with matplotlib
 
 # ptolemy dependencies
 - netcdf4

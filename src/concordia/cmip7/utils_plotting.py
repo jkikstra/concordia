@@ -6,6 +6,7 @@ import cartopy.feature as cfeature
 import numpy as np
 import xarray as xr
 from pathlib import Path
+import nc_time_axis  # noqa: F401 — registers cftime support for matplotlib
 
 # %%
 # functions
@@ -520,35 +521,35 @@ def plot_place_timeseries(ceds_ds, scen_ds,
     """
     
     # Select closest gridpoint to PLACE for both datasets
-    ceds_place = ceds_ds.sel(
-        lat=lat, 
-        lon=lon, 
-        method="nearest"
-    ).sel(sector=sector)
-    
     scen_place = scen_ds.sel(
         lat=lat,
         lon=lon, 
         method="nearest"
     ).sel(sector=sector)
-    
-    # Get the variable name
+
     var_name = f'{gas}_{type}'
-    
-    # Extract the timeseries data
-    ceds_ts = ceds_place[var_name]
     scen_ts = scen_place[var_name]
+
+    ceds_has_sector = sector in ceds_ds.sector.values
+    if ceds_has_sector:
+        ceds_place = ceds_ds.sel(
+            lat=lat, 
+            lon=lon, 
+            method="nearest"
+        ).sel(sector=sector)
+        ceds_ts = ceds_place[var_name]
     
     # Create the plot
     fig, ax = plt.subplots(figsize=(12, 6))
     
     # Plot both timeseries
-    ceds_ts.plot(ax=ax, label='CEDS Historical', marker='o', linewidth=2)
+    if ceds_has_sector:
+        ceds_ts.plot(ax=ax, label='CEDS Historical', marker='o', linewidth=2)
     scen_ts.plot(ax=ax, label='CMIP7 Scenario', marker='s', linewidth=2)
     
     # Get actual coordinates of selected gridpoint
-    actual_lat = float(ceds_place.lat.values)
-    actual_lon = float(ceds_place.lon.values)
+    actual_lat = float(scen_place.lat.values)
+    actual_lon = float(scen_place.lon.values)
     
     # Formatting
     ax.set_title(f'{gas} Emissions - {place} gridpoint\n'
@@ -589,11 +590,13 @@ def plot_place_area_average_timeseries(ceds_ds, scen_ds, gas='CO', sector=1, sec
     lon_max = lon + lon_range/2
     
     # Select area around PLACE
-    ceds_area = ceds_ds.sel(
-        lat=slice(lat_min, lat_max),
-        lon=slice(lon_min, lon_max),
-        sector=sector
-    )
+    ceds_has_sector = sector in ceds_ds.sector.values
+    if ceds_has_sector:
+        ceds_area = ceds_ds.sel(
+            lat=slice(lat_min, lat_max),
+            lon=slice(lon_min, lon_max),
+            sector=sector
+        )
     
     scen_area = scen_ds.sel(
         lat=slice(lat_min, lat_max),
@@ -605,14 +608,16 @@ def plot_place_area_average_timeseries(ceds_ds, scen_ds, gas='CO', sector=1, sec
     var_name = f'{gas}_{type}'
     
     # Average over the spatial area
-    ceds_ts = ceds_area[var_name].mean(dim=['lat', 'lon'])
     scen_ts = scen_area[var_name].mean(dim=['lat', 'lon'])
+    if ceds_has_sector:
+        ceds_ts = ceds_area[var_name].mean(dim=['lat', 'lon'])
     
     # Create the plot
     fig, ax = plt.subplots(figsize=(12, 6))
     
     # Plot both timeseries
-    ceds_ts.plot(ax=ax, label='CEDS Historical', marker='o', linewidth=2)
+    if ceds_has_sector:
+        ceds_ts.plot(ax=ax, label='CEDS Historical', marker='o', linewidth=2)
     scen_ts.plot(ax=ax, label='CMIP7 Scenario', marker='s', linewidth=2)
     
     # Formatting
@@ -628,7 +633,7 @@ def plot_place_area_average_timeseries(ceds_ds, scen_ds, gas='CO', sector=1, sec
     plt.tight_layout()
     
     # Print some info
-    n_gridpoints = len(ceds_area.lat) * len(ceds_area.lon)
+    n_gridpoints = len(scen_area.lat) * len(scen_area.lon)
     print(f"{place} area: {lat_range}° × {lon_range}°")
     print(f"Number of gridpoints averaged: {n_gridpoints}")
     
