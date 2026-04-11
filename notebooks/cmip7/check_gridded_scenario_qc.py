@@ -2443,9 +2443,9 @@ if __name__ == "__main__":
     run_qc(
         gridded_scenario_folder=_gridded_scenario_folder,
         # gridded_scenario_folder=HERE.parent.parent / "results" / GRIDDING_VERSION
-        # gridded_scenario_folder="C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/results_20260316_ln",
-        # gridded_scenario_folder="C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/results_20260316_ln",
-        # gridded_scenario_folder="C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1-testing-findmistakes/results_20260316_m",
+        # gridded_scenario_folder="C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1/results_20260316_ln",
+        # gridded_scenario_folder="C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1/results_20260316_ln",
+        # gridded_scenario_folder="C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1/results_20260316_m",
         marker_to_run=marker_to_run,
         settings_file=SETTINGS_FILE,
         gridding_version=GRIDDING_VERSION,

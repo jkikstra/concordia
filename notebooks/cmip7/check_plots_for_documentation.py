@@ -181,7 +181,7 @@ def load_result(var_name, FILE_NAME_ENDING=FILE_NAME_ENDING, settings=settings, 
 
 # %%
 # PATH_RESULTS = Path('D:\\concordia-results\\rc4')
-PATH_RESULTS = Path('C:\\Users\\kikstra\\IIASA\\ECE.prog - Documents\\Projects\\CMIP7\\IAM Data Processing\\Shared emission fields data\\v1_1-testing-findmistakes')
+PATH_RESULTS = Path('C:\\Users\\kikstra\\IIASA\\ECE.prog - Documents\\Projects\\CMIP7\\IAM Data Processing\\Shared emission fields data\\v1_1')
 
 
 scenario_h = PATH_RESULTS / f"h_{VERSION_ESGF}" / "scenarios_processed.csv"
@@ -782,7 +782,7 @@ location_scenario_vl_old = PATH_RESULTS_OLD / f"vl_{VERSION_ESGF_OLD}" / "check_
 
 
 # new
-PATH_RESULTS = Path('C:\\Users\\kikstra\\IIASA\\ECE.prog - Documents\\Projects\\CMIP7\\IAM Data Processing\\Shared emission fields data\\v1_1-testing-findmistakes')
+PATH_RESULTS = Path('C:\\Users\\kikstra\\IIASA\\ECE.prog - Documents\\Projects\\CMIP7\\IAM Data Processing\\Shared emission fields data\\v1_1')
 location_scenario_h = PATH_RESULTS / f"h_{VERSION_ESGF}" / "check_annual_totals"
 location_scenario_vl = PATH_RESULTS / f"vl_{VERSION_ESGF}" / "check_annual_totals"
 
@@ -1227,7 +1227,7 @@ file_scenario_vl_old = PATH_RESULTS_OLD / f"vl_{VERSION_ESGF_OLD}" / "BC-em-anth
 
 
 # new
-PATH_RESULTS = Path('C:\\Users\\kikstra\\IIASA\\ECE.prog - Documents\\Projects\\CMIP7\\IAM Data Processing\\Shared emission fields data\\v1_1-testing-findmistakes')
+PATH_RESULTS = Path('C:\\Users\\kikstra\\IIASA\\ECE.prog - Documents\\Projects\\CMIP7\\IAM Data Processing\\Shared emission fields data\\v1_1')
 file_scenario_h = PATH_RESULTS / f"h_{VERSION_ESGF}" / "BC-em-anthro_input4MIPs_emissions_ScenarioMIP_IIASA-IAMC-h-1-1-0_gn_202201-210012.nc"
 file_scenario_vl = PATH_RESULTS / f"vl_{VERSION_ESGF}" / "BC-em-anthro_input4MIPs_emissions_ScenarioMIP_IIASA-IAMC-vl-1-1-0_gn_202201-210012.nc"
 

@@ -23,7 +23,7 @@ import xarray as xr
 VERSION_ESGF = "1-1-0"
 PATH_RESULTS = Path(
     "C:\\Users\\kikstra\\IIASA\\ECE.prog - Documents\\Projects\\CMIP7"
-    "\\IAM Data Processing\\Shared emission fields data\\v1_1-testing-findmistakes"
+    "\\IAM Data Processing\\Shared emission fields data\\v1_1"
 )
 
 so2_h_file = (
