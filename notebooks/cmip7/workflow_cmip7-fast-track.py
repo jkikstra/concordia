@@ -31,7 +31,7 @@ HISTORY_FILE: str = "country-history_202511261223_202511040855_202512032146_2025
 # Settings
 # SETTINGS_FILE: str = "config_cmip7_esgf_v0_alpha.yaml" # was used for preparing for first upload to ESGF
 SETTINGS_FILE: str = "config_cmip7_v0-4-0.yaml" # CMIP7 version
-VERSION_ESGF: str = "1-1-0"
+VERSION_ESGF: str = "1-1-1"
 
 # Which scenario to run from the markers
 marker_to_run: str = "vl" # options: h, hl, m, ml, l, ln, vl
@@ -1889,8 +1889,6 @@ if run_spatial_harmonisation:
         # Close datasets to release file locks
         if 'ceds' in locals():
             ceds.close()
-        if 'gridded' in locals():
-            gridded.close()
         if 'weighted' in locals():
             weighted.close()
 
@@ -1922,6 +1920,9 @@ if run_spatial_harmonisation:
 
         # ensure the new file has the same variable attributes as the original gridded file
         emissions_harmonised[var].attrs = gridded[var].attrs.copy()
+        # close the connection to the file
+        if 'gridded' in locals():
+            gridded.close()
 
         # ensure each file gets its own tracking_id and creation_timestamp
         emissions_harmonised.attrs.update({
@@ -1945,7 +1946,8 @@ if run_spatial_harmonisation:
 
         # Save out the updated file
         emissions_harmonised.to_netcdf(outfile, encoding=encoding)
-        emissions_harmonised.close() # close the connection to the file
+        # close the connection to the file
+        emissions_harmonised.close()
 
 # %%
 # load files for timeseries corrections
@@ -2516,9 +2518,9 @@ def _to_sector_integers_and_reorder(ds, type_name='em_openburning'):
     sector_ordering = SECTOR_ORDERING_DEFAULT[type_name]
     sector_name_to_id = {name: idx for idx, name in enumerate(sector_ordering)}
     
-    # Rename sectors in h2_translation to use integer IDs
-    ds = h2_translation.assign_coords(
-        sector=([sector_name_to_id.get(s, s) for s in h2_translation.sector.values])
+    # Rename sectors to use integer IDs
+    ds = ds.assign_coords(
+        sector=([sector_name_to_id.get(s, s) for s in ds.sector.values])
     )
     
     return ds
@@ -2563,7 +2565,6 @@ if run_openburning_h2:
     # Load the CO openburning emissions
     co_openburning_file = settings.out_path / GRIDDING_VERSION / f"CO-em-openburning_{FILE_NAME_ENDING}"
     co_openburning = xr.open_dataset(co_openburning_file)
-    co_openburning.close()
     
     # Load the H2/CO emission factor translation file
     h2_translation_file = settings.proxy_path / "EF_h2_div_EF_co.nc"
@@ -2614,7 +2615,7 @@ if run_openburning_h2:
                 co_slice = co_sector.isel(time=time_idx)
 
                 # Multiply and assign to result
-                h2_openburning.isel(time=time_idx, sector=sector_idx)[gas_variable_name].values = (co_slice * translation_slice).values
+                h2_openburning[gas_variable_name].values[time_idx, sector_idx, :, :] = (co_slice * translation_slice).values
                 
                 # Assert that the sectors all align, ignoring dtype
                 assert h2_openburning.isel(time=time_idx, sector=sector_idx).sector.values == co_slice.sector.values
@@ -2667,6 +2668,7 @@ if run_openburning_h2:
     }
     h2_openburning.to_netcdf(outfile, mode="w", encoding=encoding, compute=True)
     h2_openburning.close()
+    co_openburning.close()
 
 
 # %%
@@ -3483,7 +3485,7 @@ for file in tqdm((settings.out_path / GRIDDING_VERSION).glob("*.nc"), "Plot maps
 # Total emissions (<1min per file)
 save_total_emissions_as_csv = True
 CALCULATE_TOTALS_GASES: list[str] | None = None # e.g. ["CO2", "SO2", "VOC01_alcohols", "VOC02_ethane", "NMVOC-C2H2", "NMVOC-C10H16"]; default is run all
-CALCULATE_TOTALS_GASES: list[str] | None = GASES_ESGF_CEDS # e.g. ["CO2", "SO2", "VOC01_alcohols", "VOC02_ethane", "NMVOC-C2H2", "NMVOC-C10H16"]; default is run all
+CALCULATE_TOTALS_GASES: list[str] | None = list(dict.fromkeys(GASES_ESGF_CEDS + GASES_ESGF_BB4CMIP)) # e.g. ["CO2", "SO2", "VOC01_alcohols", "VOC02_ethane", "NMVOC-C2H2", "NMVOC-C10H16"]; default is run all
 
 
 if save_total_emissions_as_csv:
