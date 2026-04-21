@@ -2,6 +2,7 @@ name: concordia
 channels:
 - conda-forge
 dependencies:
+# - python =3.12
 - typing-extensions
 - attrs
 - cattrs
@@ -28,6 +29,8 @@ dependencies:
 - colorlog
 - ipykernel
 - papermill
+# - input4mips-validation # used in checks
+- nc-time-axis # required for plotting cftime datetime axes with matplotlib
 
 # ptolemy dependencies
 - netcdf4

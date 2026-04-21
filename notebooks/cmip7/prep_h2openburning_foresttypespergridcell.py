@@ -196,7 +196,8 @@ np.unique(ds_shares.sum(dim='sector').emissions_share.values)
 EF_SOURCE = 'GFED4.1s'
 # Emission factors (divide EF_h2 by EF_co)
 EF_h2_div_EF_co = {
-    'GFED4.1s': { # from summary table for emissions calculation; Akagi2011
+    'GFED4.1s': { # from summary table for emissions calculation; Akagi2011-informed;
+        # These numbers are taken from Table C1 of Van Marle et al. (2017): Historic global biomass burning emissions (1750–2015)
         
         # forest sectors
         'BORF': 2.03 / 127,
