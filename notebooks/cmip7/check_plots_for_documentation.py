@@ -31,7 +31,7 @@ HISTORY_FILE: str = "country-history_202511261223_202511040855_202512032146_2025
 # Settings
 # SETTINGS_FILE: str = "config_cmip7_esgf_v0_alpha.yaml" # was used for preparing for first upload to ESGF
 SETTINGS_FILE: str = "config_cmip7_v0-4-0.yaml" # for second ESGF version
-VERSION_ESGF: str = "1-1-0" # for second ESGF version
+VERSION_ESGF: str = "1-1-1" # for second ESGF version
 
 # Which scenario to run from the markers
 marker_to_run: str = "h" # options: h, hl, m, ml, l, ln, vl
@@ -44,40 +44,20 @@ GRIDDING_VERSION: str | None = f"{marker_to_run}_{VERSION_ESGF}"
 # ## Importing packages
 
 # %%
-import aneris
-aneris.__file__
-import concordia
-concordia.__file__
-
 from pathlib import Path
 
-from dask.diagnostics import ProgressBar
+import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+import xarray as xr
 from pandas_indexing import isin, ismatch, assignlevel, extractlevel
 from pandas_indexing.units import set_openscm_registry_as_default
-import concordia._patches_ptolemy # seemingly not used, not used in this script, but sets fill_value for xarray_reduce to 0 
 
-from concordia.cmip7 import utils as cmip7_utils # update to cmip7 utils (e.g. for dressing up netcdf)
 from concordia.settings import Settings
-from concordia.cmip7.CONSTANTS import return_marker_information
-from concordia.cmip7.utils import SECTOR_DICT_ANTHRO_DEFAULT, SECTOR_DICT_ANTHRO_CO2_SCENARIO 
-from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total
-
-import xarray as xr
-import numpy as np
-import os
-
-import matplotlib.pyplot as plt
 
 # %%
-# Scenario information
-_, MODEL_SELECTION, SCENARIO_SELECTION, _ = return_marker_information(
-    v=SETTINGS_FILE,
-    m=marker_to_run
-)
 if GRIDDING_VERSION is None:
-    GRIDDING_VERSION = f"{marker_to_run}" # default to just the marker abbreviation if no versioning is provided
-SCENARIO_FILE = f"harmonised-gridding_{MODEL_SELECTION}.csv"
+    GRIDDING_VERSION = f"{marker_to_run}"
 
 # Group by scenario and year, sum across all numeric columns
 SECTOR_FILE_DICT = {
@@ -97,8 +77,7 @@ SECTOR_FILE_DICT = {
 
 
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
-# filename template
-FILE_NAME_ENDING: str | None = cmip7_utils.filename_for_esgf(marker=marker_to_run, version=VERSION_ESGF)
+FILE_NAME_ENDING: str = f"input4MIPs_emissions_ScenarioMIP_IIASA-IAMC-{marker_to_run.lower()}-{VERSION_ESGF}_gn_202201-210012.nc"
 
 print(f"Producing experiment: {FILE_NAME_ENDING}")
 
@@ -106,7 +85,7 @@ print(f"Producing experiment: {FILE_NAME_ENDING}")
 # Load unit registry from openSCM for translating units (e.g., to and from CO2eq)
 
 # %%
-ur = set_openscm_registry_as_default()
+set_openscm_registry_as_default()
 
 # %% [markdown]
 # # Read Settings
@@ -180,12 +159,8 @@ def load_result(var_name, FILE_NAME_ENDING=FILE_NAME_ENDING, settings=settings, 
 # ## PREP DATA
 
 # %%
-# PATH_RESULTS = Path('D:\\concordia-results\\rc4')
-PATH_RESULTS = Path('C:\\Users\\kikstra\\IIASA\\ECE.prog - Documents\\Projects\\CMIP7\\IAM Data Processing\\Shared emission fields data\\v1_1')
+PATH_RESULTS = Path.home() / "Library/CloudStorage/OneDrive-SharedLibraries-IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1"
 
-
-scenario_h = PATH_RESULTS / f"h_{VERSION_ESGF}" / "scenarios_processed.csv"
-scenario_vl = PATH_RESULTS / f"vl_{VERSION_ESGF}" / "scenarios_processed.csv"
 
 # Create output folder for plots
 output_folder = PATH_RESULTS / "plots_output"
@@ -208,16 +183,24 @@ def reformatting_names_units(ds):
     return ds
 
 # %%
-# Read the scenario files
-df_h = pd.read_csv(scenario_h)
-df_vl = pd.read_csv(scenario_vl)
+# Read all seven marker scenario files
+MARKERS = ['h', 'hl', 'm', 'ml', 'l', 'ln', 'vl']
+SCENARIO_LABELS = {
+    'h': 'H', 'hl': 'HL', 'm': 'M', 'ml': 'ML',
+    'l': 'L', 'ln': 'LN', 'vl': 'VL'
+}
 
-# Add scenario marker columns to identify which scenario each row came from
-df_h['scenario'] = 'H'
-df_vl['scenario'] = 'VL'
+dfs = []
+for m in MARKERS:
+    f = PATH_RESULTS / f"{m}_{VERSION_ESGF}" / "scenarios_processed.csv"
+    if f.exists():
+        df = pd.read_csv(f)
+        df['scenario'] = SCENARIO_LABELS[m]
+        dfs.append(df)
+    else:
+        print(f"WARNING: missing {f}")
 
-# Combine the dataframes
-df_combined = pd.concat([df_h, df_vl], ignore_index=True)
+df_combined = pd.concat(dfs, ignore_index=True)
 
 # Remove CO2 emissions from openburning sector
 openburning_sectors = SECTOR_FILE_DICT['openburning']
@@ -420,11 +403,17 @@ df_plot = df_melted[df_melted['gas'].isin(gases_to_plot)]
 # Define years to mark with dots: 2023, 2024, 2025, then every 5 years until 2100
 years_to_mark = [2023, 2024, 2025] + list(range(2030, 2105, 5))
 
-# Define colors for scenarios (colorblind-friendly, similar to originals)
+# Official ScenarioMIP-CMIP7 colours
 colors_map = {
-    'H': '#D55E00',    # dark orange-red (closer to original dark red)
-    'VL': '#2E5EAA'    # darker blue (similar tone to original)
+    'H':   '#800000',
+    'HL':  '#ff0000',
+    'M':   '#c87820',
+    'ML':  '#d3a640',
+    'L':   '#098740',
+    'LN':  '#0080d0',
+    'VL':  '#100060',
 }
+SCENARIO_ORDER = ['VL', 'LN', 'L', 'ML', 'M', 'HL', 'H']
 
 # Create 2x5 facet plot
 fig, axes = plt.subplots(2, 5, figsize=(20, 10))
@@ -438,7 +427,7 @@ for idx, gas in enumerate(gases_to_plot):
     gas_unit = gas_data['unit'].iloc[0] if len(gas_data) > 0 else ''
     
     # Plot a line for each scenario
-    for scenario in sorted(gas_data['scenario'].unique()):
+    for scenario in [s for s in SCENARIO_ORDER if s in gas_data['scenario'].unique()]:
         scenario_data = gas_data[gas_data['scenario'] == scenario].sort_values('years')
         color = colors_map[scenario]
         
@@ -479,7 +468,7 @@ sector_file_colors = {
 
 # %%
 # Create stacked area plots for each scenario
-for scenario in sorted(df_plot_sf['scenario'].unique()):
+for scenario in [s for s in SCENARIO_ORDER if s in df_plot_sf['scenario'].unique()]:
     fig, axes = plt.subplots(2, 5, figsize=(20, 10))
     axes = axes.flatten()
     
@@ -555,7 +544,7 @@ for idx, gas in enumerate(gases_to_plot):
     gas_unit = gas_data['unit'].iloc[0] if len(gas_data) > 0 else ''
     
     # Plot a line for each scenario
-    for scenario in sorted(gas_data['scenario'].unique()):
+    for scenario in [s for s in SCENARIO_ORDER if s in gas_data['scenario'].unique()]:
         scenario_data = gas_data[gas_data['scenario'] == scenario].sort_values('years')
         color = colors_map[scenario]
         
@@ -594,7 +583,7 @@ hist_plot_sf = hist_sector_files[(hist_sector_files['gas'].isin(gases_to_plot_sf
 hist_years = sorted(hist_plot_sf['years'].unique())
 
 # Create stacked area plots for each scenario, plus a historical plot
-for scenario in sorted(df_plot_sf['scenario'].unique()):
+for scenario in [s for s in SCENARIO_ORDER if s in df_plot_sf['scenario'].unique()]:
     fig, axes = plt.subplots(2, 5, figsize=(20, 10))
     axes = axes.flatten()
     
