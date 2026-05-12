@@ -19,28 +19,57 @@
 # %autoreload 2
 
 # %% [markdown]
-# # Workflow for CMIP7 ScenarioMIP emissions harmonization 
-# **Note:** currently built allowing for running only one scenario at a time.
+# # Workflow for CMIP7 ScenarioMIP emissions harmonization — post-2100 extensions
+#
+# End-to-end processing of long-term (2100–2500) emissions extensions for CMIP7
+# ScenarioMIP. Runs one scenario marker at a time; drive multiple markers from a
+# papermill/subprocess wrapper.
+#
+# **Processing stages:**
+#
+# | Step | Section | Notes |
+# |------|---------|-------|
+# | 1 | [Configuration](#step-1-configuration) | Marker, version, which sub-workflows to run |
+# | 2 | [Imports & settings](#step-2-imports) | Packages + settings YAML |
+# | 3 | [Read definitions](#step-4-read-definitions) | Variable defs, region mappings |
+# | 4 | [Read history](#step-5-history--read-and-process-historical-data) | Country-level CEDS/BB4CMIP history through 2022 |
+# | 5 | [Read IAM data](#step-6-iam--read-and-process-scenario-data) | Extended harmonized scenario trajectories |
+# | 6 | [GDP proxy](#step-6c-prepare-gdp-proxy) | SSP-based GDP for downscaling |
+# | 7 | [Coverage checks](#step-7-coverage-checks) | Country, sector, and harmonization consistency |
+# | 8 | [Harmonize & downscale](#step-9-harmonize-and-downscale) | aneris-based downscaling to country level |
+# | 9 | [Grid](#step-10-grid--create-netcdf-files) | concordia `workflow.grid()` → NetCDF per species/sector |
+# | 10 | [Post-processing](#step-11-post-processing--spatial-harmonization) | Spatial harmonization with CEDS 2023; area file |
+# | 11 | [H2 openburning](#step-12-h2-openburning) | Derived H2 from openburning CO |
+# | 12 | [Supplemental VOC](#step-13-supplemental-data--voc-speciation) | VOC speciation for anthro and openburning |
+# | 13 | [QC & diagnostics](#step-14-qc-diagnostics--plots-and-consistency-checks) | Maps, timeseries comparisons, NMVOC consistency |
+#
+# **Note:** currently built for running one scenario at a time.
 
 # %% [markdown]
-# ## Specify input scenario data and project settings
-# **Note:** these options below can also be changed and driven from a driver script. 
+# ## Step 1: Configuration
+# ### *Stage 1/13* · [↑ overview](#workflow-for-cmip7-scenariomip-emissions-harmonization--post-2100-extensions)
+# **Note:** these options below can also be changed and driven from a driver script.
 
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
 # Settings
 # SETTINGS_FILE: str = "config_cmip7_esgf_v0_alpha.yaml" # was used for preparing for first upload to ESGF
-SETTINGS_FILE: str = "config_cmip7_v0-4-0-EXT.yaml" # for second ESGF version
+SETTINGS_FILE: str = "config_cmip7_v0-4-0.yaml" # for second ESGF version
 VERSION_ESGF: str = "1-1-1" # for extensions
 
 # Which scenario to run from the markers
 marker_to_run: str = "vl" # options: h, hl, m, ml, l, ln, vl
 marker_name: str = f"{marker_to_run}-ext"
-HISTORY_FILE: str = f"downscaled-only-{marker_to_run}_1-1-0.csv" # should update to 1-1-1 once we have them
+HISTORY_FILE: str = f"downscaled-only-{marker_to_run}_{VERSION_ESGF}.csv" # should update to 1-1-1 once we have them
 
 # What folder to save this run in
 GRIDDING_VERSION: str | None = None
 GRIDDING_VERSION: str | None = f"{marker_name}_{VERSION_ESGF}"
 GRIDDING_HISTORY: str | None = f"{marker_to_run}_{VERSION_ESGF}"
+
+# Where the downscaled data is stored (used for reading the downscaled historical data, and also as input for the extensions gridding workflow)
+from pathlib import Path
+LOCATION_DOWNSCALED: Path = Path("/Users/jarmo/Library/CloudStorage/OneDrive-SharedLibraries-IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1/all_downscaled_markers_1-1-1")
+LOCATION_CMIP7_HISTORY: Path = Path("/Users/jarmo/Library/CloudStorage/OneDrive-SharedLibraries-IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1/workflow_history_files")
 
 # Which parts to run
 run_main: bool = True # skips downscaling and the saving out of data of the main workflow; can still run supplemental workflows with this set to False
@@ -70,13 +99,20 @@ DO_VOC_SPECIATION_OPENBURNING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # 
 DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES = ["VOC01_alcohols_em_speciated_VOC_anthro"]
 DO_VOC_SPECIATION_OPENBURNING_ONLY_FOR_THESE_SPECIES = ["C10H16"]
 
+
+# %%
+ceds_data_location = settings.postprocess_path / "CMIP7_anthro"
+ceds_data_location_voc = settings.postprocess_path / "CMIP7_anthro_VOC"
+ceds_data_location_AIR = settings.postprocess_path / "CMIP7_AIR"
+
 # %%
 # validate that we're receiving what we're expecting
 print(f"\n\nGRIDDING_VERSION received: {GRIDDING_VERSION}\n\n")
 print(f"\n\nDO_GRIDDING_ONLY_FOR_THESE_SPECIES received: {DO_GRIDDING_ONLY_FOR_THESE_SPECIES}\n\n")
 
 # %% [markdown]
-# ## Importing packages
+# ## Step 2: Imports
+# ### *Stage 2/13* · [↑ overview](#workflow-for-cmip7-scenariomip-emissions-harmonization--post-2100-extensions)
 
 # %%
 import aneris
@@ -146,7 +182,8 @@ print(f"Producing experiment: {FILE_NAME_ENDING}")
 ur = set_openscm_registry_as_default()
 
 # %% [markdown]
-# # Read Settings
+# # Step 3: Read Settings
+# ## *Stage 2/13 — Imports & settings* · [↑ overview](#workflow-for-cmip7-scenariomip-emissions-harmonization--post-2100-extensions)
 #
 # The key settings for this harmonization run are detailed in the file "config_cmip7_{VERSION}.yaml", which is located in this same folder.
 #
@@ -189,6 +226,10 @@ except NameError:
 settings = Settings.from_config(version=GRIDDING_VERSION,
                                 local_config_path=Path(HERE,
                                                        SETTINGS_FILE))
+
+# Extensions scenario: model starts in 2023, hist ends in 2100.
+# Harmonize at 2100 so hist covers 2023-2099 and downscaled covers 2100-2500 (no overlap).
+settings.base_year = 2100
 
 settings.base_year
 
@@ -242,7 +283,8 @@ version_path = settings.out_path / settings.version
 version_path.mkdir(parents=True, exist_ok=True)
 
 # %% [markdown]
-# # Read definitions
+# # Step 4: Read definitions
+# ## *Stage 3/13* · [↑ overview](#workflow-for-cmip7-scenariomip-emissions-harmonization--post-2100-extensions)
 
 # %% [markdown]
 # ## Read variable definitions
@@ -330,12 +372,13 @@ for m, kwargs in settings.regionmappings.items():
 
 
 # %% [markdown]
-# # History: Read and process historical data
+# # Step 5: History — read and process historical data
+# ## *Stage 4/13* · [↑ overview](#workflow-for-cmip7-scenariomip-emissions-harmonization--post-2100-extensions)
 #
 
 # %%
 scenario_hist = (
-    pd.read_csv(settings.out_path / GRIDDING_HISTORY / HISTORY_FILE) # like "cmip7_history_countrylevel_250721.csv" 
+    pd.read_csv(LOCATION_DOWNSCALED / HISTORY_FILE) # like "cmip7_history_countrylevel_250721.csv" 
     .drop(columns=['model', 'region', 'scenario', 'method'])
 )
 scenario_hist = scenario_hist.set_index(['country', 'gas', 'sector', 'unit'])
@@ -347,7 +390,7 @@ scenario_hist.columns.name = 'year'
 scenario_hist.loc[ismatch(sector="Solvents Production and Application", gas="N2O")]
 
 # %%
-cmip7_hist = (pd.read_csv(settings.history_path / "vl_1-1-0_hist.csv", index_col=0))
+cmip7_hist = (pd.read_csv(LOCATION_CMIP7_HISTORY / f"{marker_to_run}_{VERSION_ESGF}_hist.csv", index_col=0))
 cmip7_hist = cmip7_hist.set_index(['country', 'gas', 'sector', 'unit'])
 cmip7_hist = cmip7_hist.sort_index()
 
@@ -372,7 +415,8 @@ cmip7_hist = cmip7_hist.loc[:,:2022]
 hist = pd.concat([cmip7_hist, scenario_hist], axis=1).dropna()
 
 # %% [markdown]
-# # IAM: Read and process IAM data
+# # Step 6: IAM — read and process scenario data
+# ## *Stage 5/13* · [↑ overview](#workflow-for-cmip7-scenariomip-emissions-harmonization--post-2100-extensions)
 
 # %%
 Path(settings.scenario_path, SCENARIO_FILE)
@@ -417,7 +461,7 @@ print("\nvariables missing from extension:\n", set(reference_vars) - set(extensi
 print("\nvariables only in extension:\n", set(extensions_vars) - set(reference_vars))
 
 # %%
-# the missing variables are the AFOLU variables, which we don't grid, so I reckon we can just ignore those
+# the missing variables are the AFOLU variables, which we don't grid, so we do not need them here.
 # the additional variables are either aggregates, additional diagnostic variables, or variables only needed for SCMs, so we can filter them out
 
 # filter dataframe by the intersection of the variables with the reference scenario
@@ -461,7 +505,7 @@ cmip7_utils.save_data(df = iam_df.reset_index(),
                       output_path = str(Path(version_path, "scenarios_processed.csv" )))
 
 # %% [markdown]
-# # Read Harmonization Overrides
+# # Step 6b: Read harmonization overrides
 
 # %% [markdown]
 # NOTE: should be handled already before, as the emissions trajectories have already been harmonised
@@ -480,7 +524,8 @@ harm_overrides
 assert harm_overrides.empty
 
 # %% [markdown]
-# # Prepare GDP proxy
+# # Step 6c: Prepare GDP proxy
+# ## *Stage 6/13* · [↑ overview](#workflow-for-cmip7-scenariomip-emissions-harmonization--post-2100-extensions)
 #
 # Read in different GDP scenarios for SSP1 to SSP5 from SSP DB.
 #
@@ -523,7 +568,7 @@ gdp = (
     .rename(index=str.lower, level="country")
 #    .rename(columns=int)
     .pix.project(["ssp", "country"])
-    .pix.aggregate(country=settings.country_combinations)
+    .pipe(lambda df: df.pix.aggregate(country=settings.country_combinations) if settings.country_combinations is not None else df)
 )
 
 # ensure integer columns
@@ -588,7 +633,9 @@ GDP_per_pathway = cmip7_utils.join_gdp_based_on_ssp(
 )
 
 # %% [markdown]
-# # Country coverage
+# # Step 7: Coverage checks
+# ## *Stage 7/13* · [↑ overview](#workflow-for-cmip7-scenariomip-emissions-harmonization--post-2100-extensions)
+# ## Country coverage
 
 # %%
 # try to align with CEDS; but where necessary, aggregate to SSP coverage.
@@ -602,6 +649,9 @@ countries_with_regionmapping = pd.Index(sorted(
 countries_with_hist_and_gdp_and_regionmapping_data = pd.Index(sorted(( 
     set(countries_with_gdp_data) & set(countries_with_hist_data) & set(countries_with_regionmapping) # as set
 ))) # as Index
+countries_with_gdp_missing_from_regionmapping = pd.Index(sorted(
+    set(countries_with_gdp_data) - set(countries_with_regionmapping)
+)) # where is 'World'? It is missing, but we want it for Aircraft and International Shipping
 
 # show what we have
 print("Countries with GDP data (for downscaling):")
@@ -612,6 +662,8 @@ print("Countries in the IAM region mapping:")
 print(len(countries_with_regionmapping))
 print("Countries with data for all three above:")
 print(countries_with_hist_and_gdp_and_regionmapping_data)
+print(f"Countries with GDP data but missing from IAM region mapping ({len(countries_with_gdp_missing_from_regionmapping)}):")
+print(countries_with_gdp_missing_from_regionmapping.tolist())
 
 # def select_only_countries_with_all_info(df,
 #                                         countries=countries_with_hist_and_gdp_and_regionmapping_data):
@@ -628,7 +680,7 @@ print(countries_with_hist_and_gdp_and_regionmapping_data)
 
 
 # %% [markdown]
-# # Sector coverage (check historical)
+# ## Sector coverage (check historical)
 
 # %%
 hist_sectors = hist.index.get_level_values("sector").unique()
@@ -643,8 +695,8 @@ expected_sectors_missing_cdr = {
 assert missing.issubset(expected_sectors_missing_cdr), f"Unexpected missing sectors found: {missing - expected_sectors_missing_cdr}"
 
 # %% [markdown]
-# # Set up technical bits for the workflow
-# **NOTE:** Conditional setup for different environments - uses threaded scheduler for VS Code interactive window
+# # Step 8: Set up workflow infrastructure
+# **NOTE:** Conditional setup for different environments — uses threaded scheduler for VS Code interactive window.
 
 # %%
 # Import Dask setup function from separate module
@@ -658,7 +710,7 @@ else:
 
 
 # %% [markdown]
-# # Define workflow
+# ## Define workflow object
 
 # %%
 # TODO (in the future): allow doing multiple models at once in a notebook --> right now the below section only works for 1 model at a time
@@ -843,7 +895,7 @@ def check_harmonization_consistency(workflow, settings, version_path, atol=1e-6,
     sector : str or list of str, optional
         Filter to specific sector(s). If None, all sectors included.
     """
-    base_year = settings.base_year
+    base_year = 2100 # NOTE: should this be 2100?
     
     print(f"\n{'='*80}")
     print(f"HARMONIZATION CONSISTENCY CHECK (base year = {base_year})")
@@ -1002,13 +1054,15 @@ check_harmonization_consistency(workflow, settings, version_path,
 
 
 # %% [markdown]
-# # Harmonize, downscale and grid everything
+# # Step 9: Harmonize and downscale
+# ## *Stage 8/13* · [↑ overview](#workflow-for-cmip7-scenariomip-emissions-harmonization--post-2100-extensions)
 #
 
 # %% [markdown]
-# ## Harmonize and downscale everything, but do not grid
+# ## Run harmonization and downscaling
 #
-# If you also want grids, use the gridding interface directly - see below.
+# Downscaling uses aneris. For extensions, the convergence year is overridden to 2300.
+# Gridding is a separate step below (`workflow.grid()`).
 #
 
 # %%
@@ -1018,12 +1072,28 @@ from functools import partial
 from aneris.downscaling.core import Downscaler
 from aneris.downscaling.intensity_convergence import intensity_convergence
 
+# TODO: check if we need to keep this fix like that.
+
 Downscaler._methods["ipat_2100_gdp"] = partial(
-    intensity_convergence, convergence_year=2300, proxy_name="gdp"
+    intensity_convergence, convergence_year=2500, proxy_name="gdp"
 )
 Downscaler._methods["ipat_2150_pop"] = partial(
-    intensity_convergence, convergence_year=2300, proxy_name="pop"
+    intensity_convergence, convergence_year=2500, proxy_name="pop"
 )
+
+# additional bit for debugging
+import aneris.downscaling.intensity_convergence as _ic
+_orig = _ic.determine_scaling_parameter
+
+def _patched(alpha, intensity_hist, intensity, reference, intensity_projection_linear, index, context):
+    if len(alpha) != reference.shape[1] or len(alpha) != len(reference.columns):
+        print(f"MISMATCH at {index}:")
+        print(f"  alpha len={len(alpha)}, reference cols={reference.shape[1]}")
+        print(f"  reference.columns={reference.columns.tolist()}")
+    return _orig(alpha, intensity_hist, intensity, reference, intensity_projection_linear, index, context)
+
+_ic.determine_scaling_parameter = _patched
+
 
 # %%
 # use hist_zero for all variables; this effectively switches off concordia harmonization
@@ -1055,8 +1125,43 @@ zero_sectors = set(zero_hist_combos.get_level_values("sector"))
 print(f"Sectors with all-zero hist at base year: {zero_sectors}")
 
 # %%
+# Temporarily override downscaling to use 'constant_offset' for all variables.
+# Must patch concordia.workflow's local reference, not just concordia.downscale,
+# because workflow.py uses `from .downscale import downscale` (direct name binding).
+# import concordia.downscale as _ds
+# import concordia.workflow as _wf
+# from aneris.downscaling import Downscaler
+# from pandas_indexing import isin as _isin
+
+# _orig_downscale = _ds.downscale
+
+# def _constant_offset_downscale(harmonized, hist, gdp, regionmapping, settings):
+#     if harmonized.empty:
+#         return harmonized.pix.assign(country=[], method=[])
+#     downscaler = Downscaler(
+#         harmonized.loc[~_isin(region="World")],
+#         hist,
+#         settings.base_year,
+#         regionmapping.data,
+#         luc_sectors=settings.luc_sectors,
+#         gdp=gdp,
+#     )
+#     methods = downscaler.methods(overwrites="constant_offset")
+#     downscaled = downscaler.downscale(methods).sort_index()
+#     return downscaled.pix.assign(
+#         method=methods.pix.semijoin(downscaled.index, how="right")
+#     )
+
+# _ds.downscale = _constant_offset_downscale
+# _wf.downscale = _constant_offset_downscale  # patch the reference workflow.py holds
+
+# %%
 if run_main:
+    # try:
     downscaled = workflow.harmonize_and_downscale() # For a 1 scenario, this takes about 50 seconds on Jarmo's DELL laptop.
+    # finally:
+    #     _ds.downscale = _orig_downscale  # restore original regardless of success/failure
+    #     _wf.downscale = _orig_downscale
     
     # ─── Post-downscaling fixes ───────────────────────────────────────────
     # These fixes are applied to BOTH the local `downscaled` DataFrame AND
@@ -1175,6 +1280,18 @@ if run_main:
     else:
         print(f"  [SKIP] No 'gas' level in index - skipping non-CO2 check")
     
+    # Deduplicate index before caching — workflow.grid() requires a unique MultiIndex
+    # because it converts the DataFrame to xarray. Duplicates can arise from the concat
+    # of harmdown_globallevel / harmdown_regionlevel / harmdown_countrylevel when
+    # add_zeros_like produces rows that overlap with actual data rows.
+    _dupes = downscaled.index.duplicated(keep="last")
+    if _dupes.any():
+        print(f"\n[WARN] Dropping {_dupes.sum()} duplicate index rows from downscaled before gridding:")
+        print(downscaled[_dupes].index.to_frame(index=False).drop_duplicates().to_string(index=False))
+        downscaled = downscaled[~_dupes]
+    else:
+        print("\n[OK] No duplicate index rows in downscaled.")
+
     # Cache the fixed downscaled data and monkey-patch harmonize_and_downscale
     # so that workflow.grid() uses the fixed data instead of re-running from scratch.
     _fixed_downscaled = downscaled
@@ -1315,6 +1432,7 @@ if run_main:
     # emissions to near-zero values (e.g., order of 1e-6 or smaller)
     
     near_zero_threshold = 1e-6  # absolute value threshold
+    # TODO: CHECK NH3 Energy Sector for vl-marker scenario
     
     # Sum across all countries to get global totals per (gas, sector, unit) for each year
     downscaled_data = workflow.downscaled.data
@@ -1404,10 +1522,11 @@ if run_main:
     print(missing_emissions / global_emissions * 100) # percentage (%) of global emissions that would be missing through these countries
 
 # %% [markdown]
-# # Run full processing and create netcdf files
+# # Step 10: Grid — create NetCDF files
+# ## *Stage 9/13* · [↑ overview](#workflow-for-cmip7-scenariomip-emissions-harmonization--post-2100-extensions)
 #
-# Latest test with 1 scenario was 50 minutes on Jarmo's DELL laptop.
-# Output files are about 11.4GB for one scenario.
+# Runs `workflow.grid()` to produce one NetCDF per species/sector combination.
+# Latest test with 1 scenario was ~50 minutes on Jarmo's DELL laptop (~11.4 GB output).
 
 # %%
 cmip7_utils.DS_ATTRS
@@ -1431,10 +1550,10 @@ if run_main_gridding: # full run for all 10 species takes about ~1hour for 1 sce
     )
 
 # %%
-ds = xr.open_dataset("/Users/hoegner/GitHub/concordia/results/vl-ext_1-1-1/CH4-em-anthro_input4MIPs_emissions_ScenarioMIP_IIASA-IAMC-vl-1-1-1_gn_210501-250012.nc")
+# ds = xr.open_dataset("/Users/hoegner/GitHub/concordia/results/vl-ext_1-1-1/CH4-em-anthro_input4MIPs_emissions_ScenarioMIP_IIASA-IAMC-vl-1-1-1_gn_210501-250012.nc")
 
 # %%
-ds["CH4_em_anthro"].isel(time=400, sector=3).plot(vmax=1e-12);
+# ds["CH4_em_anthro"].isel(time=400, sector=3).plot(vmax=1e-12);
 
 
 # %% [markdown]
@@ -1481,13 +1600,10 @@ cmip7_areacella.to_netcdf(folder_areacella / f'areacella_input4MIPs_emissions_{c
 
 
 # %% [markdown]
-# # START OF POSTPROCESSING
-# ## 1. Spatial Harmonization
-# NOTE: runtime is about ~3 mins per file
-
-
-# %% [markdown]
-# # Start of Post-processing: pattern harmonisation
+# # Step 11: Post-processing — spatial harmonization
+# ## *Stage 10/13* · [↑ overview](#workflow-for-cmip7-scenariomip-emissions-harmonization--post-2100-extensions)
+# Harmonizes gridded output against CEDS 2023 anthro spatial patterns.
+# Runtime: ~3 minutes per file.
 
 # %%
 # helper functions for spatial harmonization
@@ -1587,6 +1703,34 @@ def ensure_data_var_attrs(ds):
     ds = clean_var(ds, name, gas, handle)
 
     return ds
+
+
+def enforce_first_gridded_year(output_dir: Path, start_year: int) -> None:
+    """Ensure all gridded NetCDF outputs start at start_year by dropping earlier time slices."""
+    files_trimmed = 0
+    for nc_file in sorted(output_dir.glob("*.nc")):
+        with xr.open_dataset(nc_file, engine="netcdf4") as ds:
+            if "time" not in ds.coords:
+                continue
+
+            years = ds.time.dt.year.values
+            if len(years) == 0 or int(np.min(years)) >= start_year:
+                continue
+
+            ds_trimmed = ds.sel(time=ds.time.dt.year >= start_year).load()
+
+        encoding = {
+            v: {"zlib": True, "complevel": 2}
+            for v in ds_trimmed.variables
+            if ds_trimmed[v].dtype.kind == "f"
+        }
+
+        nc_file.unlink(missing_ok=True)
+        ds_trimmed.to_netcdf(nc_file, encoding=encoding)
+        ds_trimmed.close()
+        files_trimmed += 1
+
+    print(f"Trimmed {files_trimmed} file(s) in {output_dir} to years >= {start_year}")
 
 # %%
 years = [year for year in PROXY_YEARS if year >= settings.base_year] # all years, but not 2022 (before 2023); which should come directly from CEDS anthro (and CEDS AIR)
@@ -2393,9 +2537,13 @@ if run_openburning_timeseries_correction:
         
         print(f"\nSaved corrected {gas_name} openburning emissions timeseries to {outfile}")
 
+    # Enforce that all gridded outputs start at the extension base year.
+    enforce_first_gridded_year(settings.out_path / GRIDDING_VERSION, settings.base_year)
+
 
 # %% [markdown]
-# # END OF MAIN CODE
+# ---
+# # END OF MAIN WORKFLOW (steps 1–11)
 
 # %%
 # -----------------------------
@@ -2428,10 +2576,12 @@ if run_openburning_timeseries_correction:
 # -----------------------------
 
 # %% [markdown]
-# # Start of H2 openburning data
+# # Step 12: H2 openburning
+# ## *Stage 11/13* · [↑ overview](#workflow-for-cmip7-scenariomip-emissions-harmonization--post-2100-extensions)
 # Usually takes <2mins for 1 scenario
 
 # %%
+# currently only used for h2_translation, but this function can be used more generally to translate/map sector names to integer indices based on SECTOR_ORDERING_DEFAULT, and reorder the dataset accordingly (if needed)
 def _to_sector_integers_and_reorder(ds, type_name='em_openburning'):
     # translate/map sectors
     # Map sector names to integer indices based on SECTOR_ORDERING_DEFAULT
@@ -2439,7 +2589,7 @@ def _to_sector_integers_and_reorder(ds, type_name='em_openburning'):
     sector_name_to_id = {name: idx for idx, name in enumerate(sector_ordering)}
     
     # Rename sectors in h2_translation to use integer IDs
-    ds = h2_translation.assign_coords(
+    ds = ds.assign_coords(
         sector=([sector_name_to_id.get(s, s) for s in h2_translation.sector.values])
     )
     
@@ -2623,10 +2773,11 @@ if run_openburning_h2:
 
 
 # %% [markdown]
-# # Start of SUPPLEMENTAL DATA
+# # Step 13: Supplemental data — VOC speciation
+# ## *Stage 12/13* · [↑ overview](#workflow-for-cmip7-scenariomip-emissions-harmonization--post-2100-extensions)
 
 # %% [markdown]
-# # VOC speciation
+# ## VOC speciation (openburning, BB4CMIP)
 
 
 # %%
@@ -2695,7 +2846,7 @@ def load_voc_bulk(type="anthro"):
 # -----------------------------
 
 # %% [markdown]
-# # VOC speciation (BB4CMIP, openburnig)
+# ## VOC speciation (openburning, BB4CMIP — continued)
 
 # %%
 # Calculate VOC-speciation data; keep the structure of the VOC (bulk) data
@@ -2880,7 +3031,7 @@ if run_openburning_supplemental_voc:
 
 
 # %% [markdown]
-# ## VOC speciation (CEDS, anthro)
+# ## VOC speciation (anthro, CEDS)
 # **NOTE: runtime down to 12 minutes for all 23 VOC species**
 
 
@@ -3008,8 +3159,12 @@ if run_anthro_supplemental_voc:
         with ProgressBar():
             voc_spec.to_netcdf(outfile, mode="w", encoding=encoding, compute=True,)
 
+# Re-apply trimming after supplemental files are produced.
+enforce_first_gridded_year(settings.out_path / GRIDDING_VERSION, settings.base_year)
+
 # %% [markdown]
-# # END OF SUPPLEMENTAL DATA CODE
+# ---
+# # END OF SUPPLEMENTAL DATA (step 13)
 
 
 # %%
@@ -3044,7 +3199,8 @@ if run_anthro_supplemental_voc:
 
 
 # %% [markdown]
-# # CONTINUED POSTPROCESSING
+# # Step 14: QC diagnostics — plots and consistency checks
+# ## *Stage 13/13* · [↑ overview](#workflow-for-cmip7-scenariomip-emissions-harmonization--post-2100-extensions)
 
 
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
@@ -3396,8 +3552,7 @@ for file in tqdm((settings.out_path / GRIDDING_VERSION).glob("*.nc"), "Plot maps
 
 
 # %% [markdown]
-# # CONTINUED POSTPROCESSING
-# ## 3. writing out some check files
+# ## Writing global total check files
 #
 #
 
@@ -3440,8 +3595,7 @@ if save_total_emissions_as_csv:
             scen_df.to_csv(folder_totals / f"{var.replace("_","-")}_{FILE_NAME_ENDING.rstrip('.nc')}_annual_totals.csv")
 
 # %% [markdown]
-# # CONTINUED POSTPROCESSING
-# ## 4. plotting
+# ## Timeseries and map plots
 
 # %% [markdown]
 # ## 4.1. alignment with historical; from 'notebooks\cmip7\check_gridded-scenarios-compare-to-ceds-esgf.py'
@@ -4113,5 +4267,8 @@ g.savefig(folder_totals / f"{gas}_{new_stem}_reaggregated-comparison.png")
 plt.show()
 
 # %% [markdown]
-# # END OF POSTPROCESSING
+# ---
+# # END OF POSTPROCESSING (step 14)
 
+
+# %%

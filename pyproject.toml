@@ -52,7 +52,7 @@ test = [
 ]
 cmip7 = [
   "iris", # for validation script
-  "input4mips_validation", # for validation script
+  "input4mips-validation", # for validation script; seems to currently need numpy<2.0, clashing with rasterio
   "input4mips-validation-locked" # for uploading
 ]
 
