@@ -12,42 +12,64 @@
 #     name: python3
 # ---
 
+# %% [markdown]
+# # Proxy raster generation for post-2100 extensions
+#
+# Generates spatial proxy rasters covering 2100–2500 (every 5 years) for use in
+# concordia gridding of extended CMIP7 ScenarioMIP emissions trajectories.
+#
+# Two proxy strategies are produced:
+#
+# **Scenario-based** (`proxy_rasters_extensions/<marker>/`) — spatial patterns taken
+# directly from the 2100 slice of the scenario's own gridded output files
+# (`em-anthro`, `em-AIR-anthro`). Produced for anthropogenic sectors, shipping,
+# and aircraft. Use these when the spatial pattern should reflect the scenario's
+# own end-of-century distribution.
+#
+# **Proxy-based** (`proxy_rasters_extensions/`) — spatial patterns taken from the
+# existing static proxy rasters at year 2100 and held constant. Produced for
+# anthro, shipping, aircraft, openburning, NMVOC speciation, VOC speciation,
+# CDR/EW CO2, and H2. Use these when no scenario-specific gridded output exists.
+#
+# Both strategies freeze the 2100 spatial pattern and repeat it across all
+# extension years — the assumption being that spatial distributions do not change
+# meaningfully beyond 2100. The resulting files are NetCDF4 with zlib compression.
+#
+# Key settings: `marker_to_run` (scenario marker), `VERSION_ESGF`, `SETTINGS_FILE`.
+
+# %% [markdown]
+# ## Imports
+
 # %%
 import xarray as xr
 from pathlib import Path
-import matplotlib.pyplot as plt
-import pandas_indexing as pix
-import pandas as pd
 import numpy as np
-import os
-import dask
-from dask import delayed, compute
 from dask.diagnostics import ProgressBar
 from dask.utils import SerializableLock
-import seaborn as sns
 
-from concordia.settings import Settings
-from concordia.cmip7 import utils_EXT as cmip7_utils
-from concordia.cmip7.CONSTANTS import PROXY_YEARS
 
 # %% [markdown]
-# # prepare setup
+# ## Configuration
 
 # %%
 lock = SerializableLock()
 
 # %%
-SETTINGS_FILE: str = "config_cmip7_v0-4-0-EXT.yaml" # for second ESGF version
-VERSION_ESGF: str = "1-1-0" # for second ESGF version
+SETTINGS_FILE: str = "config_cmip7_v0-4-0" # for second ESGF version
+VERSION_ESGF: str = "1-1-1" # for second ESGF version
 
 # Which scenario to run from the markers
 marker_to_run: str = "vl" # options: h, hl, m, ml, l, ln, vl
 
 GRIDDING_VERSION: str | None = f"{marker_to_run}_{VERSION_ESGF}"
 
+# %% [markdown]
+# ## Paths and output directories
+
 # %%
-grid_file_location = "/Users/hoegner/Projects/CMIP7/input/gridding/"
+# grid_file_location = "/Users/hoegner/Projects/CMIP7/input/gridding/"
 # grid_file_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_esgf_v0_alpha/input/gridding/"
+grid_file_location = "/Users/jarmo/Library/CloudStorage/OneDrive-SharedLibraries-IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0-4-0/input/gridding/"
 
 scenario_data_location = Path( "../../results", GRIDDING_VERSION)
 
@@ -59,23 +81,33 @@ new_proxies_location.mkdir(parents=True, exist_ok=True)
 new_proxies_scenario_based = Path(grid_file_location, "proxy_rasters_extensions", marker_to_run)
 new_proxies_scenario_based.mkdir(parents=True, exist_ok=True)
 
+# %% [markdown]
+# ## Sector mapping
+
 # %%
-sector_mapping = {0.0: 'AGR', 
-                  1.0: 'ENE', 
-                  2.0: 'IND', 
-                  3.0: 'TRA', 
-                  4.0: 'RCO', 
-                  5.0: 'SLV', 
+sector_mapping = {0.0: 'AGR',
+                  1.0: 'ENE',
+                  2.0: 'IND',
+                  3.0: 'TRA',
+                  4.0: 'RCO',
+                  5.0: 'SLV',
                   6.0: 'WST'}
+# Note: shipping sector (7.0) is handled separately and renamed to 'SHP'
 
 # %% [markdown]
-# # generate proxy rasters
+# # Generate proxy rasters
 
 # %% [markdown]
-# ## Anthro scenario-based version
+# ## Scenario-based proxies
+#
+# Spatial patterns derived from the 2100 slice of the scenario's own gridded output.
+# Output: `proxy_rasters_extensions/<marker>/`
 
 # %%
 EXT_PROXY_YEARS = np.arange(2100, 2501, 5)
+
+# %% [markdown]
+# ### Anthro (sectors AGR / ENE / IND / TRA / RCO / SLV / WST)
 
 # %%
 # ANTHRO proxies - Scenario-based version
@@ -175,8 +207,11 @@ for file in scenario_data_location.glob("*.nc"):
         # Free memory
         del ds, ds_reordered
 
+# %% [markdown]
+# ### Shipping (sector SHP)
+
 # %%
-# SHIPPING proxies
+# SHIPPING proxies - Scenario-based version
 
 # Loop through all scenario files
 for file in scenario_data_location.glob("*.nc"):
@@ -271,8 +306,11 @@ for file in scenario_data_location.glob("*.nc"):
         # Free memory
         del ds, ds_reordered
 
+# %% [markdown]
+# ### Aircraft
+
 # %%
-# AIRCRAFT proxies
+# AIRCRAFT proxies - Scenario-based version
 
 # loop through all CEDS em-AIR-anthro from input4MIP files
 for file in scenario_data_location.glob("*.nc"):
@@ -365,7 +403,13 @@ for file in scenario_data_location.glob("*.nc"):
         del ds, ds_reordered
 
 # %% [markdown]
-# ## Anthro proxy-based version
+# ## Proxy-based proxies
+#
+# Spatial patterns taken from the existing static proxy rasters at year 2100, held
+# constant across all extension years. Output: `proxy_rasters_extensions/`
+
+# %% [markdown]
+# ### Anthro
 
 # %%
 # ANTHRO proxies - proxy-based version
@@ -410,6 +454,9 @@ for file in proxies_location.glob("*.nc"):
         # Free memory
         del ds, ds_reordered
 
+# %% [markdown]
+# ### Shipping
+
 # %%
 # SHIPPING proxies - proxy-based version
 
@@ -451,6 +498,9 @@ for file in proxies_location.glob("*.nc"):
     
         # Free memory
         del ds, ds_reordered
+
+# %% [markdown]
+# ### Aircraft
 
 # %%
 # AIRCRAFT proxies - proxy-based version
@@ -638,7 +688,10 @@ for file in voc_proxy_location.glob("*.nc"):
     del ds, ds_reordered
 
 # %% [markdown]
-# ## CDR and H2
+# ## CDR, EW, and H2
+
+# %% [markdown]
+# ### CDR CO2
 
 # %%
 # CDR proxy
@@ -682,6 +735,9 @@ for file in proxies_location.glob("*.nc"):
         # Free memory
         del ds, ds_reordered
 
+# %% [markdown]
+# ### EW CO2
+
 # %%
 # EW proxy
 
@@ -724,6 +780,9 @@ for file in proxies_location.glob("*.nc"):
         # Free memory
         del ds, ds_reordered
 
+# %% [markdown]
+# ### H2
+
 # %%
 # H2 proxy
 
@@ -765,3 +824,5 @@ for file in proxies_location.glob("*.nc"):
     
         # Free memory
         del ds, ds_reordered
+
+# %%

@@ -59,11 +59,18 @@ from concordia import (
     VariableDefinitions,
 )
 
+# Authoritative gridded→annual aggregation lives in
+# `concordia.cmip7.utils_plotting.ds_to_annual_emissions_total_faster` and is
+# used by `workflow_cmip7-fast-track.py` and `check_gridded_scenario_qc.py`
+# (Modules D and D2). It cannot be called directly here because it sums over
+# lat/lon, whereas we need to keep the spatial dims so we can do a country-level
+# groupby. The aggregation logic below mirrors that function line-for-line
+# (calendar-aware days_in_month, kg→Mt conversion, integer-coord sector map)
+# and only diverges at the final spatial reduction.
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-
-SECONDS_PER_YEAR = 365.25 * 24 * 3600  # average
 
 # Sectors that are global (not distributed by country in the grid)
 GLOBAL_SECTORS = {"International Shipping", "Aircraft"}
@@ -87,25 +94,16 @@ def _parse_filename(path: Path) -> tuple[str, str] | None:
     return m.group("gas"), m.group("type")
 
 
-def get_sector_dict(gas: str, em_type: str):
-    em_type = em_type.lower()
-    
-    gas = gas.upper()
-
-    if "openburning" in em_type:
-        return SECTOR_DICT_OPENBURNING_DEFAULT
-
-    if "anthro" in em_type:
-        if gas == "CO2":
-            return SECTOR_DICT_ANTHRO_CO2_SCENARIO
-        return SECTOR_DICT_ANTHRO_DEFAULT
-
-    return None
-
-
-def _days_in_month_noleap(t) -> int:
-    days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    return days[t.month - 1]
+# Maps file_type → {sector_int: sector_name}. Mirrors `SECTOR_INT_TO_NAME`
+# in check_gridded_scenario_qc.py: the CO2 superset (0–9) is used for all
+# anthro files so that BECCS / Other Capture and Removal are mapped on CO2
+# files; non-CO2 anthro files only have indices 0–7, so the extra keys are
+# never looked up.
+SECTOR_INT_TO_NAME = {
+    "anthro": SECTOR_DICT_ANTHRO_CO2_SCENARIO,
+    "openburning": SECTOR_DICT_OPENBURNING_DEFAULT,
+    "air": {0: "Aircraft"},
+}
 
 
 def _aggregate_one_file(
@@ -114,7 +112,7 @@ def _aggregate_one_file(
     cell_area: xr.DataArray,
     target_years: list[int],
 ) -> pd.DataFrame | None:
-    
+
     parsed = _parse_filename(nc_path)
     if parsed is None:
         print(f"  [SKIP] Could not parse filename: {nc_path.name}")
@@ -122,14 +120,17 @@ def _aggregate_one_file(
 
     gas, em_type = parsed
 
-    if "air" in em_type.lower():
+    em_type_lower = em_type.lower()
+    if "air" in em_type_lower:
         sector_type = "air"
-    elif "openburning" in em_type.lower():
+    elif "openburning" in em_type_lower:
         sector_type = "openburning"
-    elif "anthro" in em_type.lower():
+    elif "anthro" in em_type_lower:
         sector_type = "anthro"
     else:
         sector_type = "unknown"
+
+    int_to_name = SECTOR_INT_TO_NAME.get(sector_type, {})
 
     ds = xr.open_dataset(nc_path)
 
@@ -143,43 +144,115 @@ def _aggregate_one_file(
         var_name = candidates[0]
         print(f"  [WARN] Using '{var_name}' as fallback variable name in {nc_path.name}")
 
-    da_full = ds[var_name]
+    da = ds[var_name]
 
-    # Get year for each time step
-    if not hasattr(da_full.time.values[0], 'year'):
-        times = pd.DatetimeIndex(da_full.time.values)
-        file_years = times.year.values
+    has_sector_dim = "sector" in da.dims
+    has_level_dim = "level" in da.dims
+
+    # ── Canonical aggregation (matches ds_to_annual_emissions_total_faster) ──
+    # Calendar-aware seconds per month — xarray reads days_in_month from the
+    # file's calendar attribute, so this works for standard/Gregorian, noleap,
+    # and 360_day files alike. Hard-coding [31, 28, 31, ...] would silently
+    # produce wrong totals on standard-calendar files (Feb=29 in leap years).
+    seconds_per_month = da.time.dt.days_in_month * 24 * 3600
+
+    # Chunk to keep memory bounded on large CO2 anthro files (mirrors the
+    # chunking in ds_to_annual_emissions_total_faster).
+    if has_sector_dim:
+        n_sectors = da.sizes["sector"]
+        time_chunk = 6 if n_sectors > 15 else (12 if n_sectors > 8 else 24)
+        da = da.chunk({"time": time_chunk, "sector": -1})
+    elif has_level_dim:
+        da = da.chunk({"time": 12, "level": -1})
     else:
-        file_years = np.array([t.year for t in da_full.time.values])
+        da = da.chunk({"time": 24})
 
-    year_to_time_indices = {}
-    for yr in target_years:
-        idx = np.where(file_years == yr)[0]
-        if len(idx) > 0:
-            year_to_time_indices[yr] = idx
+    # kg/m²/s × s/month × m² → kg/month per cell (per sector, per level if AIR)
+    kg_per_month = cell_area * seconds_per_month * da
+    if has_level_dim:
+        kg_per_month = kg_per_month.sum(dim="level")
 
-    if not year_to_time_indices:
+    # Sum across months within each year → kg/year per cell (per sector).
+    # Spatial dims are kept so we can do the country groupby afterwards.
+    kg_per_year = kg_per_month.groupby("time.year").sum().compute()
+
+    # Restrict to requested target years (silently drops anything outside).
+    target_years_set = set(int(y) for y in target_years)
+    available_years = [
+        int(y) for y in kg_per_year.year.values if int(y) in target_years_set
+    ]
+    if not available_years:
         print(f"  [SKIP] None of the target years found in {nc_path.name}")
         ds.close()
         return None
+    kg_per_year = kg_per_year.sel(year=available_years)
 
-    # Get sector names
-    try:
-        sector_dict = get_sector_dict(gas, em_type)
-        if sector_dict is None:
-            sector_names = [em_type]
-        else:
-            n_sectors = da_full.sizes.get("sector", 1)
-            sector_names = [sector_dict.get(i, f"unknown_{i}") for i in range(n_sectors)]
-    except ValueError as e:
-        print(f"  [WARN] {e} — treating file as single-sector.")
-        sector_names = [em_type]
+    # Unit conversion: N2O kept as kt N2O/yr to match the downscaled CSV and
+    # extensions_full_emissions_timeseries; all other gases as Mt {gas}/yr.
+    if gas == "N2O":
+        unit_out = "kt N2O/yr"
+        scale = 1e-6  # kg/yr → kt/yr
+    else:
+        unit_out = f"Mt {gas}/yr"
+        scale = 1e-9  # kg/yr → Mt/yr
 
-    has_sector_dim = "sector" in da_full.dims
-    has_level_dim = "level" in da_full.dims
-    sector_iterator = list(enumerate(sector_names)) if has_sector_dim else [(0, sector_names[0])]
+    # Sector iteration uses the actual integer sector coord (matches the
+    # NetCDF), not enumerate(range(n_sectors)). This is robust to sparse or
+    # reordered sector indices.
+    if has_sector_dim:
+        sector_iterator = [
+            (int(s_int), int_to_name.get(int(s_int), f"unknown_{int(s_int)}"))
+            for s_int in kg_per_year.sector.values
+        ]
+    else:
+        sector_iterator = [(None, int_to_name.get(0, em_type))]
 
-    # Sector ordering — include CDR sectors for CO2
+    idx_to_country = {i + 1: c for i, c in enumerate(indexraster.index)}
+
+    records = []
+    for yr in tqdm(available_years, desc=f"{nc_path.name}", leave=False):
+        kg_year = kg_per_year.sel(year=yr)
+
+        for sector_int, sector_name in sector_iterator:
+            if sector_int is not None:
+                kg_sector = kg_year.sel(sector=sector_int)
+            else:
+                kg_sector = kg_year
+
+            # Global sectors (Aircraft, International Shipping): no country
+            # breakdown — sum all cells and report under "World".
+            if sector_name in GLOBAL_SECTORS or sector_type == "air":
+                total_kg_yr = float(kg_sector.sum().values)
+                records.append({
+                    "country": "World", "gas": gas.replace("-", "_"),
+                    "sector": "Aircraft" if sector_type == "air" else sector_name,
+                    "unit": unit_out, "year": yr,
+                    "value": total_kg_yr * scale,
+                })
+                continue
+
+            # Country-level: groupby the indexraster's country indicator.
+            country_totals = kg_sector.groupby(indexraster.indicator).sum()
+            groupby_dim = country_totals.dims[0]
+            for pos, idx_val in enumerate(country_totals.coords[groupby_dim].values):
+                if int(idx_val) == 0:
+                    continue
+                country_code = idx_to_country.get(int(idx_val))
+                if country_code is None:
+                    continue
+                val_kg_yr = float(country_totals.isel({groupby_dim: pos}).values)
+                records.append({
+                    "country": country_code, "gas": gas.replace("-", "_"),
+                    "sector": sector_name, "unit": unit_out, "year": yr,
+                    "value": val_kg_yr * scale,
+                })
+
+    ds.close()
+
+    if not records:
+        return None
+
+    # Sector ordering for sorting the output (CDR sectors appended for CO2).
     if sector_type == "air":
         sector_order = ["Aircraft"]
     elif sector_type in {"anthro", "openburning"}:
@@ -189,7 +262,6 @@ def _aggregate_one_file(
             else f"em_{sector_type}"
         )
         sector_order = SECTOR_ORDERING_DEFAULT.get(ordering_key)
-        # For CO2 anthro, also include CDR sectors
         if gas == "CO2" and sector_type == "anthro":
             cdr_sectors = [
                 "BECCS", "Direct Air Capture", "Enhanced Weathering",
@@ -202,82 +274,7 @@ def _aggregate_one_file(
     else:
         sector_order = None
 
-    all_year_dfs = []
-
-    for yr, time_indices in tqdm(year_to_time_indices.items(), desc=f"{nc_path.name}", leave=False):
-        days_in_month = xr.DataArray(
-            [_days_in_month_noleap(t) for t in da_full.time.values[time_indices]],
-            dims="time"
-        )
-        seconds_per_month = days_in_month * 24 * 3600
-
-        # flux (kg/m²/s) × seconds/month → kg/m²/month, sum over months → kg/m²/year
-        da_year = (da_full.isel(time=time_indices) * seconds_per_month).sum(dim="time")
-
-        # For AIR files: sum over pressure levels first
-        if has_level_dim:
-            da_year = da_year.sum(dim="level")
-
-        records = []
-        for s_idx, sector in sector_iterator:
-            if has_sector_dim:
-                da_sector = da_year.isel(sector=s_idx).squeeze()
-            else:
-                da_sector = da_year.squeeze()
-
-            flux_mass = da_sector * cell_area  # kg/m²/year × m² → kg/year
-
-            # Aircraft and International Shipping: global total only
-            if sector in GLOBAL_SECTORS or sector_type == "air":
-                total_kg_yr = float(flux_mass.sum().values)
-                if gas == "N2O":
-                    unit_out = "kt N2O/yr"
-                    total_out_yr = total_kg_yr / 1e6
-                else:
-                    unit_out = f"Mt {gas}/yr"
-                    total_out_yr = total_kg_yr / 1e9
-                records.append({
-                    "country": "World", "gas": gas.replace("-", "_"),
-                    "sector": "Aircraft" if sector_type == "air" else sector,
-                    "unit": unit_out, "year": yr,
-                    "value": total_out_yr,
-                })
-                continue
-
-            # Country-level aggregation
-            country_totals = flux_mass.groupby(indexraster.indicator).sum()
-            idx_to_country = {i + 1: c for i, c in enumerate(indexraster.index)}
-            groupby_dim = country_totals.dims[0]
-
-            for pos, idx_val in enumerate(country_totals.coords[groupby_dim].values):
-                if int(idx_val) == 0:
-                    continue
-                country_code = idx_to_country.get(int(idx_val))
-                if country_code is None:
-                    continue
-                val_kg_yr = float(country_totals.isel({groupby_dim: pos}).values)
-                if gas == "N2O":
-                    unit_out = "kt N2O/yr"
-                    val_out_yr = val_kg_yr / 1e6
-                else:
-                    unit_out = f"Mt {gas}/yr"
-                    val_out_yr = val_kg_yr / 1e9
-                records.append({
-                    "country": country_code, "gas": gas.replace("-", "_"),
-                    "sector": sector, "unit": unit_out, "year": yr,
-                    "value": val_out_yr,
-                })
-
-        if records:
-            df_yr = pd.DataFrame(records)
-            all_year_dfs.append(df_yr)
-
-    ds.close()
-
-    if not all_year_dfs:
-        return None
-
-    df_long = pd.concat(all_year_dfs, ignore_index=True)
+    df_long = pd.DataFrame(records)
     df_wide = (
         df_long
         .pivot_table(index=["country", "gas", "sector", "unit"], columns="year", values="value")
@@ -303,6 +300,7 @@ def rederive_downscaled_from_gridded(
     target_years: list[int] | range = range(2022, 2100),  # changed
     file_pattern: str = "*.nc",
     exclude_patterns: list[str] | None = None,
+    species_filter: list[str] | str | None = None,
     save_path: Path | None = None,
 ) -> pd.DataFrame:
     """
@@ -329,6 +327,10 @@ def rederive_downscaled_from_gridded(
         Substrings; files whose names contain any of these are skipped.
         Useful for skipping e.g. areacella files.
         Defaults to ["areacella", "fx_"].
+    species_filter : list of str or str, optional
+        If given, only process files whose gas matches one of these (e.g.
+        "NH3" or ["NH3", "CO2"]). Match is on the gas prefix before "-em-",
+        same convention as check_gridded_scenario_qc.py.
     save_path : Path, optional
         If given, save the result as a CSV at this path.
 
@@ -347,10 +349,21 @@ def rederive_downscaled_from_gridded(
         if not any(pat in f.name for pat in exclude_patterns)
     ]
 
+    # Filter by species (gas prefix before "-em-"); accept a single string for
+    # convenience, e.g. species_filter="NH3".
+    if species_filter is not None:
+        if isinstance(species_filter, str):
+            species_filter = [species_filter]
+        nc_files = [
+            f for f in nc_files
+            if any(f.name.startswith(g + "-em-") for g in species_filter)
+        ]
+
     if not nc_files:
+        filt_msg = f", species_filter={species_filter}" if species_filter else ""
         raise FileNotFoundError(
             f"No netCDF files found in {gridded_path} matching '{file_pattern}' "
-            f"(after exclusions)."
+            f"(after exclusions{filt_msg})."
         )
 
     print(f"Found {len(nc_files)} netCDF files to process in {gridded_path}")
@@ -413,11 +426,15 @@ def rederive_downscaled_from_gridded(
 
 # %% tags=["parameters"]
 SETTINGS_FILE: str = "config_cmip7_v0-4-0-EXT.yaml"
-VERSION_ESGF: str = "1-1-0"          # version of the original run to rederive from
+VERSION_ESGF: str = "1-1-1"          # version of the original run to rederive from
 marker_to_run: str = "vl"
 TARGET_YEAR: int = 2100
+# Optional: limit processing to a single gas (e.g. "NH3") or a list of gases
+# (["NH3", "CO2"]). Set to None to process all species in the folder.
+SPECIES_FILTER: list[str] | str | None = None
+SPECIES_FILTER: list[str] | str | None = ["NH3", "CO2"]
 
-GRIDDING_VERSION: str = f"{marker_to_run}_{VERSION_ESGF}"   # folder name of original run
+GRIDDING_VERSION: str = f"{marker_to_run}-ext_{VERSION_ESGF}"   # folder name of original run
 
 # %% [markdown]
 # ## Imports
@@ -463,7 +480,15 @@ settings = Settings.from_config(
     local_config_path=Path(HERE, SETTINGS_FILE)
 )
 
+# `out_path` in the YAML is "../../results" (a path relative to the notebook).
+# Settings keeps it relative, so it would otherwise resolve against the kernel
+# CWD — which is wrong whenever Jupyter wasn't started from notebooks/cmip7/.
+# Anchor it to HERE so downstream paths work regardless of CWD.
+if not Path(settings.out_path).is_absolute():
+    settings.out_path = (HERE / settings.out_path).resolve()
+
 original_gridded_path = settings.out_path / GRIDDING_VERSION
+print(f"Reading gridded netCDFs from: {original_gridded_path}")
 
 # %% [markdown]
 # ## Load indexraster and cell area
@@ -521,19 +546,31 @@ cell_area = areacella["areacella"]
 # ## Rederive and save
 
 # %%
+# Output filename gets a species suffix when filtering, so partial rederives
+# don't clobber the full-species CSV.
+_species_suffix = ""
+if SPECIES_FILTER is not None:
+    _species_list = [SPECIES_FILTER] if isinstance(SPECIES_FILTER, str) else list(SPECIES_FILTER)
+    _species_suffix = "_" + "-".join(_species_list)
+
 rederived = rederive_downscaled_from_gridded(
     gridded_path=original_gridded_path,
     indexraster=indexraster,
     cell_area=cell_area,
     target_years=range(2023, 2101),
-    save_path=settings.out_path / f"rederived_downscaled_{marker_to_run}_{VERSION_ESGF}.csv",
+    species_filter=SPECIES_FILTER,
+    save_path=settings.out_path / f"rederived_downscaled_{marker_to_run}_{VERSION_ESGF}{_species_suffix}.csv",
 )
 
 # %%
-co2_filepath = Path("/Users/hoegner/GitHub/concordia/results/vl-ext_1-1-1/CO2-em-anthro_input4MIPs_emissions_ScenarioMIP_IIASA-IAMC-vl-ext-1-1-1_gn_210501-250012.nc")
+# Spot-check: open the CO2 anthro netCDF from the run we just re-aggregated.
+# Glob keeps this robust to FILE_NAME_ENDING variations across markers/versions.
+_co2_candidates = sorted(original_gridded_path.glob("CO2-em-anthro_*.nc"))
+co2_filepath = _co2_candidates[0] if _co2_candidates else None
 
 # %%
-xr.open_dataset(co2_filepath)["CO2_em_anthro"]
+if co2_filepath is not None:
+    xr.open_dataset(co2_filepath)["CO2_em_anthro"]
 
 # %%
 import pandas_indexing as pix
@@ -586,15 +623,17 @@ df_interp = (
 )
 
 # %%
-outpath = "../../results/rederived_downscaled_vl_1-1-0.csv"
+outpath = settings.out_path / f"rederived_downscaled_{marker_to_run}_{VERSION_ESGF}{_species_suffix}.csv"
 df_interp.to_csv(outpath, index=False)
 
 # %% [markdown]
 # ## compare to initial downscaled csv
 
 # %%
-# Load original downscaled
-original_downscaled_path = "/Users/hoegner/GitHub/concordia/results/vl_1-1-0/downscaled-only-vl_1-1-0.csv"
+# Load original downscaled CSV from the same run we're re-aggregating.
+# Concordia writes this as `downscaled-only-{GRIDDING_VERSION}.csv` next to the
+# gridded netCDFs.
+original_downscaled_path = original_gridded_path / f"downscaled-only-{GRIDDING_VERSION}.csv"
 
 original = pd.read_csv(original_downscaled_path)
 index_cols_orig = [c for c in original.columns if not str(c).isdigit()]
@@ -672,7 +711,7 @@ set(reder_2100.index.get_level_values("country").unique()) - set(orig_2100.index
 set(orig_2100.index.get_level_values("country").unique()) - set(reder_2100.index.get_level_values("country").unique())
 
 # %%
-outpath = "../../results/mismatch_downscaled_vl_1-1-0.csv"
+outpath = settings.out_path / f"mismatch_downscaled_{marker_to_run}_{VERSION_ESGF}{_species_suffix}.csv"
 
 # %%
 flagged.to_csv(outpath)

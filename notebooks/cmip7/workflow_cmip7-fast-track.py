@@ -2512,6 +2512,7 @@ if run_openburning_timeseries_correction:
 # Usually takes <2mins for 1 scenario
 
 # %%
+# currently only used for h2_translation, but this function can be used more generally to translate/map sector names to integer indices based on SECTOR_ORDERING_DEFAULT, and reorder the dataset accordingly (if needed)
 def _to_sector_integers_and_reorder(ds, type_name='em_openburning'):
     # translate/map sectors
     # Map sector names to integer indices based on SECTOR_ORDERING_DEFAULT
