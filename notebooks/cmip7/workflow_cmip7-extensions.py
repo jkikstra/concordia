@@ -55,13 +55,13 @@
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
 # Settings
 # SETTINGS_FILE: str = "config_cmip7_esgf_v0_alpha.yaml" # was used for preparing for first upload to ESGF
-SETTINGS_FILE: str = "config_cmip7_v0-4-0-EXT.yaml" 
+SETTINGS_FILE: str = "config_cmip7_v0-4-0-EXT.yaml"
 VERSION_ESGF: str = "1-1-1" # for extensions
 
 # Which scenario to run from the markers
-marker_to_run: str = "vl" # options: h, hl, m, ml, l, ln, vl
+marker_to_run: str = "h" # options: h, hl, m, ml, l, ln, vl
 marker_name: str = f"{marker_to_run}-ext"
-HISTORY_FILE: str = f"downscaled-only-{marker_to_run}_{VERSION_ESGF}.csv" 
+HISTORY_FILE: str = f"downscaled-only-{marker_to_run}_{VERSION_ESGF}.csv"
 
 # What folder to save this run in
 # GRIDDING_VERSION: str | None = None
@@ -237,8 +237,8 @@ except NameError:
     HERE = concordia_root / "notebooks" / "cmip7"
 
 settings = Settings.from_config(version=GRIDDING_VERSION,
-                                local_config_path=Path(HERE,
-                                                       SETTINGS_FILE))
+                                local_config_path=Path(HERE, SETTINGS_FILE),
+                                base_path=HERE)
 
 settings.base_year
 
@@ -271,6 +271,7 @@ def load_result(var_name, FILE_NAME_ENDING=FILE_NAME_ENDING, settings=settings, 
 # Set logger (uses setting)
 
 # %%
+settings.out_path.mkdir(parents=True, exist_ok=True)
 fh = logging.FileHandler(settings.out_path / f"debug_{settings.version}.log", mode="w")
 fh.setLevel(logging.DEBUG)
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -4257,8 +4258,7 @@ g = sns.relplot(
     hue="variant",
     col="sector",
     col_wrap=3,
-    kind="line",
-    height=4,
+    kind="line",    height=4,
     aspect=1.6,
     facet_kws={"sharey": False}
 )
@@ -4269,3 +4269,4 @@ plt.show()
 # %% [markdown]
 # # END OF POSTPROCESSING
 
+# %%
