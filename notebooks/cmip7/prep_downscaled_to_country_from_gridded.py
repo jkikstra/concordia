@@ -720,4 +720,7 @@ flagged.to_csv(outpath)
 flagged.sort_values(by="rel_diff_pct", )
 
 # %%
+comparison.loc[pix.ismatch(sector="BECCS")].sum()
+
+# %%
 reder_2100
