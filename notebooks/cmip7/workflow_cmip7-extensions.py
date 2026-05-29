@@ -59,7 +59,7 @@ SETTINGS_FILE: str = "config_cmip7_v0-4-0-EXT.yaml"
 VERSION_ESGF: str = "1-1-1" # for extensions
 
 # Which scenario to run from the markers
-marker_to_run: str = "h" # options: h, hl, m, ml, l, ln, vl
+marker_to_run: str = "vl" # options: h, hl, m, ml, l, ln, vl
 marker_name: str = f"{marker_to_run}-ext"
 HISTORY_FILE: str = f"downscaled-only-{marker_to_run}_{VERSION_ESGF}.csv"
 
@@ -70,11 +70,14 @@ GRIDDING_HISTORY: str | None = f"{marker_to_run}_{VERSION_ESGF}"
 
 # Where the downscaled data is stored (used for reading the downscaled historical data, and also as input for the extensions gridding workflow)
 from pathlib import Path
-LOCATION_DOWNSCALED: Path = Path("/Users/jarmo/Library/CloudStorage/OneDrive-SharedLibraries-IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1/all_downscaled_markers_1-1-1")
-LOCATION_CMIP7_HISTORY: Path = Path("/Users/jarmo/Library/CloudStorage/OneDrive-SharedLibraries-IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1/workflow_history_files")
+JARMO_PATH = "/Users/jarmo/Library/CloudStorage/OneDrive-SharedLibraries-IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/"
+ANNIKA_PATH = "/Users/hoegner/GitHub/concordia/results"
+USE_PATH = ANNIKA_PATH
+LOCATION_DOWNSCALED: Path = Path(USE_PATH + "/v1_1/all_downscaled_markers_1-1-1")
+LOCATION_CMIP7_HISTORY: Path = Path(USE_PATH + "/v1_1/workflow_history_files")
 # Fast-track gridded outputs (already-final v1_1 vl_1-1-1 files ending at 2100-12). Used to
 # anchor the extension at 2100 — see the `run_2100_alignment_to_fasttrack` block below.
-LOCATION_FASTTRACK_GRIDDED: Path = Path("/Users/jarmo/Library/CloudStorage/OneDrive-SharedLibraries-IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/v1_1")
+LOCATION_FASTTRACK_GRIDDED: Path = Path(USE_PATH + "/v1_1")
 
 # Which parts to run
 run_main: bool = True # skips downscaling and the saving out of data of the main workflow; can still run supplemental workflows with this set to False
@@ -401,6 +404,7 @@ scenario_hist = scenario_hist.sort_index()
 scenario_hist.columns = scenario_hist.columns.astype(int)
 scenario_hist.columns.name = 'year'
 scenario_hist.loc[ismatch(sector="Solvents Production and Application", gas="N2O")]
+scenario_hist.index.get_level_values("sector").unique()
 
 # %%
 cmip7_hist = (pd.read_csv(LOCATION_CMIP7_HISTORY / f"{marker_to_run}_{VERSION_ESGF}_hist.csv", index_col=0))
@@ -410,6 +414,9 @@ cmip7_hist = cmip7_hist.sort_index()
 # Update column type and name
 cmip7_hist.columns = cmip7_hist.columns.astype(int)
 cmip7_hist.columns.name = 'year'
+
+# %%
+cmip7_hist.index.get_level_values("sector").unique()
 
 # %%
 missing_idx = cmip7_hist.loc[:,2023].index.difference(scenario_hist.loc[:,2023].index)
@@ -763,14 +770,12 @@ iam_df.columns
 
 # %%
 # do variable name replacements to align with CEDS and BB4CMIP7 historical products
-
 # Sulfur -> SO2 (CEDS+BB4CMIP7)
-iam_df = iam_df.rename(index=lambda v: v.replace("Sulfur", "SO2"))
-
-# VOC -> NMVOC for anthro sectors (CEDS)
-openburning_sectors = cmip7_utils.SECTOR_ORDERING_DEFAULT['em_openburning']
-iam_df = iam_df.rename(index=lambda v: v.replace("VOC", "NMVOC"))
+iam_df = iam_df.rename(index=lambda v: v.replace("Sulfur", "SO2") if "Sulfur" in v else v)
+# VOC -> NMVOC for anthro sectors (CEDS) — only if not already NMVOC
+iam_df = iam_df.rename(index=lambda v: v.replace("VOC", "NMVOC") if "VOC" in v and "NMVOC" not in v else v)
 # Rename NMVOC to NMVOCbulk in iam_df for openburning sectors (BB4CMIP7)
+openburning_sectors = cmip7_utils.SECTOR_ORDERING_DEFAULT['em_openburning']
 def rename_voc_to_nmvoc_iam(idx):
     gas_idx = iam_df.index.names.index("gas")
     sector_idx = iam_df.index.names.index("sector")
@@ -779,8 +784,16 @@ def rename_voc_to_nmvoc_iam(idx):
         idx_list[gas_idx] = "NMVOCbulk"
         return tuple(idx_list)
     return idx
-
 iam_df.index = iam_df.index.map(rename_voc_to_nmvoc_iam)
+
+
+# drop CDR sector information for non-CO2 species from iam_df
+iam_df = iam_df[
+    ~(
+        (iam_df.index.get_level_values("sector") == "Other CDR") &
+        (iam_df.index.get_level_values("gas") != "CO2")
+    )
+]
 
 # %%
 # Fill missing historical data with zeros for countries in the regionmapping
@@ -1022,10 +1035,78 @@ def check_harmonization_consistency(workflow, settings, version_path, atol=1e-6,
     hist_index = hist_agg.index
     in_model_not_hist = model_index.difference(hist_index)
 
+    
     if len(in_model_not_hist) > 0:
         unique_sectors = set(idx[2] if len(idx) > 2 else str(idx) for idx in in_model_not_hist)
         print(f"\n⚠️  {len(in_model_not_hist)} model rows have no matching history (sectors: {sorted(unique_sectors)})")
 
+        # --- Add missing rows to workflow.hist filled with zeros ---
+        # regionmapping.data is a Series: country -> region
+        country_to_region = workflow.regionmapping.data  # index=country, values=region
+
+        rows_to_add = []
+        rows_skipped = []
+
+        for idx in in_model_not_hist:
+            # Unpack index levels (region, gas, sector, unit)
+            region = idx[0] if isinstance(idx, tuple) else str(idx)
+            gas    = idx[1] if isinstance(idx, tuple) and len(idx) > 1 else ""
+            sector = idx[2] if isinstance(idx, tuple) and len(idx) > 2 else ""
+            unit   = idx[3] if isinstance(idx, tuple) and len(idx) > 3 else ""
+
+            # Find all countries that map to this region
+            countries_in_region = country_to_region[country_to_region == region].index.tolist()
+
+            for country in countries_in_region:
+                # Check if this country already has data for this gas/sector combo
+                try:
+                    existing = workflow.hist.loc[isin(region=country, gas=gas, sector=sector)]
+                    if len(existing) > 0:
+                        rows_skipped.append((country, region, gas, sector))
+                        continue
+                except KeyError:
+                    pass
+
+                # Safe to add — build zero row with full index
+                new_idx = tuple(
+                    val for name, val in zip(
+                        workflow.hist.index.names,
+                        (country, gas, sector, unit)
+                    )
+                )
+                rows_to_add.append(new_idx)
+
+        if rows_skipped:
+            print(f"\n   ℹ️  Skipped {len(rows_skipped)} country/gas/sector combos that already have hist data:")
+            for country, region, gas, sector in rows_skipped:
+                print(f"      {country:<25} (region: {region:<20}) {gas:<12} {sector}")
+
+        if rows_to_add:
+            missing_hist_index = pd.MultiIndex.from_tuples(
+                rows_to_add,
+                names=workflow.hist.index.names
+            )
+            zero_rows = pd.DataFrame(
+                0.0,
+                index=missing_hist_index,
+                columns=workflow.hist.columns
+            )
+
+            # Safeguard: double-check none of these already exist in hist
+            already_exists = missing_hist_index.isin(workflow.hist.index)
+            if already_exists.any():
+                print(f"\n   ⚠️  Safeguard: {already_exists.sum()} rows already exist in hist, skipping those")
+                zero_rows = zero_rows[~already_exists]
+
+            workflow.hist = pd.concat([workflow.hist, zero_rows]).sort_index()
+
+            print(f"\n   ✅ Added {len(zero_rows)} missing country-level row(s) to workflow.hist filled with zeros:")
+            for idx in zero_rows.index:
+                print(f"      {str(idx[0]):<25} {str(idx[1]):<12} {str(idx[2])}")
+        else:
+            print(f"\n   ℹ️  No country-level rows needed — all countries already have hist data for missing combos.")
+            
+        
     # Save relevant regionmapping
     filtered_regionmapping = workflow.regionmapping
     if region is not None or gas is not None or sector is not None:
@@ -1663,9 +1744,6 @@ areacella = xr.open_dataset(Path(settings.gridding_path, "areacella_input4MIPs_e
 cell_area = areacella["areacella"]
 
 # %%
-# run the em_AIR_anthro timeseries correction (only em_AIR_anthro)
-# NOTE: should take <1min per file
-
 if run_AIR_anthro_timeseries_correction:
 
     # files that are produced above, that may need correction
