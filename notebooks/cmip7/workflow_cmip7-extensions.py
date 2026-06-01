@@ -59,7 +59,7 @@ SETTINGS_FILE: str = "config_cmip7_v0-4-0-EXT.yaml"
 VERSION_ESGF: str = "1-1-1" # for extensions
 
 # Which scenario to run from the markers
-marker_to_run: str = "vl" # options: h, hl, m, ml, l, ln, vl
+marker_to_run: str = "hl" # options: h, hl, m, ml, l, ln, vl
 marker_name: str = f"{marker_to_run}-ext"
 HISTORY_FILE: str = f"downscaled-only-{marker_to_run}_{VERSION_ESGF}.csv"
 
@@ -72,7 +72,7 @@ GRIDDING_HISTORY: str | None = f"{marker_to_run}_{VERSION_ESGF}"
 from pathlib import Path
 JARMO_PATH = "/Users/jarmo/Library/CloudStorage/OneDrive-SharedLibraries-IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/"
 ANNIKA_PATH = "/Users/hoegner/GitHub/concordia/results"
-USE_PATH = ANNIKA_PATH
+USE_PATH = JARMO_PATH
 LOCATION_DOWNSCALED: Path = Path(USE_PATH + "/v1_1/all_downscaled_markers_1-1-1")
 LOCATION_CMIP7_HISTORY: Path = Path(USE_PATH + "/v1_1/workflow_history_files")
 # Fast-track gridded outputs (already-final v1_1 vl_1-1-1 files ending at 2100-12). Used to
@@ -92,6 +92,7 @@ run_anthro_timeseries_correction: bool = True
 run_AIR_anthro_timeseries_correction: bool = True
 run_openburning_timeseries_correction: bool = True
 
+# EXTENSIONS:
 # 2100 alignment to fast-track: enforce that the extension's 2100 gridded values match the
 # fast-track 2100 gridded values via a per-cell, per-month additive offset that fades linearly
 # from year FADE_ANCHOR_YEAR (full correction) to FADE_CONVERGENCE_YEAR (zero correction).
@@ -100,9 +101,16 @@ run_2100_alignment_to_fasttrack: bool = True
 FADE_ANCHOR_YEAR: int = 2100        # year where extension is forced to equal fast-track
 FADE_CONVERGENCE_YEAR: int = 2150   # year at which the additive correction has decayed to zero
 DROP_ANCHOR_TIMESTEP: bool = True   # drop the FADE_ANCHOR_YEAR (=2100) timestep from output
+# Diagnostic: persist the RAW (pre-correction) extension-2100 grids alongside the
+# fast-track 2100 grids, so we can verify how well the extension naturally lines up with
+# the standard scenario projection at 2100 BEFORE the additive offset forces them equal
+# and BEFORE 2100 is dropped. Produces per-file: a diagnostic netCDF (ext_2100_raw,
+# ft_2100, diff), enriched spatial-agreement metrics in the step-0 CSV, and PNG plots.
+# Purely a verification artifact — does NOT change the main ESGF output.
+run_2100_alignment_diagnostic: bool = False
 
+# SUPPLEMENTAL WORKFLOWS
 run_openburning_h2: bool = True # produced based on openburning_co
-
 run_anthro_supplemental_voc: bool = True
 run_openburning_supplemental_voc: bool = True
 
@@ -110,7 +118,7 @@ run_openburning_supplemental_voc: bool = True
 
 # main: files to produce (species, sector)
 DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["CO2", "SO2"]
-DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = ["CO2", "NH3"] # e.g. ["CO2", "SO2"]
+DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = ["CO2", "NH3", "SO2"] # e.g. ["CO2", "SO2"]
 DO_GRIDDING_ONLY_FOR_THESE_SECTORS: list[str] | None = None # all: ['anthro', 'openburning', 'AIR_anthro']
 # supplemental: VOC files to produce
 # - anthro
@@ -2405,6 +2413,12 @@ if run_2100_alignment_to_fasttrack:
 
     print(f"    files to align: {[f.name for f in align_files]}")
 
+    # Diagnostic output directory (raw-2100 grids, plots). Only created if requested.
+    if run_2100_alignment_diagnostic:
+        diag2100_dir = version_path / "diagnostics_2100"
+        diag2100_dir.mkdir(parents=True, exist_ok=True)
+        print(f"    2100 diagnostic enabled -> {diag2100_dir}")
+
     # Step 0 diagnostic: compare global totals at 2100 between fast-track and extension.
     # Per user instruction, this is a precondition sanity check — if globals at 2100 are
     # very different, the alignment will absorb the difference (good) but the magnitude
@@ -2478,6 +2492,104 @@ if run_2100_alignment_to_fasttrack:
         # Build per-month offset: shape (12, lat, lon, [sector|level])
         offset_by_month_np = ft_2100_sorted.values - ext_2100_sorted.values
 
+        # ─── 2100 verification diagnostic, part 1/2 (RAW, pre-correction) ─────
+        # Capture ext_2100 (raw) vs ft_2100 and their diff BEFORE the additive offset is
+        # applied. The diagnostic netCDF is written later (part 2/2, after the correction)
+        # so it can ALSO carry the corrected 2100 slice for a zero-difference check. Here
+        # we compute the raw metrics + PNG plots and stash the raw arrays.
+        _diag2100_payload = None  # reset every file; set on success below
+        if run_2100_alignment_diagnostic:
+            try:
+                # Put all vars on a single, identical coordinate set (ext's), so differing
+                # cftime calendars between ext/ft don't trigger NaN alignment.
+                ext_da = ext_2100_sorted
+                ft_da = xr.DataArray(
+                    ft_2100_sorted.values, dims=ext_da.dims, coords=ext_da.coords,
+                    attrs=ext_da.attrs,
+                )
+                diff_da = xr.DataArray(
+                    offset_by_month_np, dims=ext_da.dims, coords=ext_da.coords,
+                    attrs={"long_name": "fast-track minus raw extension at 2100",
+                           "units": ext_da.attrs.get("units", "")},
+                )
+                diag_out = diag2100_dir / f"{gas_name}-em-{type_name}_2100diagnostic_{settings.version}.nc"
+
+                # Spatial-agreement metrics (appended to the step-0 CSV row).
+                ext_vals = ext_da.values
+                ft_vals = ft_da.values
+                diff_vals = offset_by_month_np
+                flat_e = ext_vals.ravel()
+                flat_f = ft_vals.ravel()
+                fin = np.isfinite(flat_e) & np.isfinite(flat_f)
+                spatial_corr = (
+                    float(np.corrcoef(flat_e[fin], flat_f[fin])[0, 1])
+                    if fin.sum() > 1 else float("nan")
+                )
+                # Area-weighted totals (cell_area broadcasts over lat/lon by name).
+                ext_area_tot = float((ext_da * cell_area).sum().values)
+                ft_area_tot = float((ft_da * cell_area).sum().values)
+                aw_rel_diff_pct = (
+                    100.0 * (ext_area_tot - ft_area_tot) / ft_area_tot
+                    if abs(ft_area_tot) > 0 else float("nan")
+                )
+                diagnostic_rows[-1].update({
+                    "max_abs_diff": float(np.nanmax(np.abs(diff_vals))),
+                    "mean_abs_diff": float(np.nanmean(np.abs(diff_vals))),
+                    "rmse": float(np.sqrt(np.nanmean(diff_vals ** 2))),
+                    "area_weighted_rel_diff_pct": aw_rel_diff_pct,
+                    "spatial_corr": spatial_corr,
+                    "n_cells_ext_zero_ft_nonzero": int(
+                        ((np.abs(ext_vals) < 1e-30) & (np.abs(ft_vals) > 1e-30)).sum()
+                    ),
+                })
+
+                # PNG plots: ext / ft / diff maps (sector-summed, annual-mean) + a
+                # per-sector area-weighted global-total bar comparison.
+                from concordia.cmip7.utils_plotting import plot_map
+
+                def _to_map(da):
+                    d = da
+                    for extra in ("sector", "level"):
+                        if extra in d.dims:
+                            d = d.sum(extra)
+                    return d.mean("time")
+
+                stub = str(diag2100_dir / f"{gas_name}-em-{type_name}_2100")
+                plot_map(_to_map(ext_da), title=f"{gas_name} {type_name} — raw extension 2100",
+                         save_as="png", filename=f"{stub}_ext_raw")
+                plot_map(_to_map(ft_da), title=f"{gas_name} {type_name} — fast-track 2100",
+                         save_as="png", filename=f"{stub}_ft")
+                plot_map(_to_map(diff_da), title=f"{gas_name} {type_name} — ft minus ext (2100)",
+                         save_as="png", filename=f"{stub}_diff", cmap="RdBu_r")
+                plt.close("all")
+
+                fig, ax = plt.subplots(figsize=(9, 5))
+                if "sector" in ext_da.dims:
+                    sectors = [str(s) for s in ext_da["sector"].values]
+                    ext_tot = (ext_da * cell_area).sum(("time", "lat", "lon")).values
+                    ft_tot = (ft_da * cell_area).sum(("time", "lat", "lon")).values
+                    x = np.arange(len(sectors)); w = 0.4
+                    ax.bar(x - w / 2, ext_tot, w, label="extension (raw 2100)")
+                    ax.bar(x + w / 2, ft_tot, w, label="fast-track 2100")
+                    ax.set_xticks(x); ax.set_xticklabels(sectors, rotation=45, ha="right")
+                else:
+                    ax.bar([0, 1], [ext_area_tot, ft_area_tot])
+                    ax.set_xticks([0, 1]); ax.set_xticklabels(["extension raw", "fast-track"])
+                ax.set_ylabel("area-weighted 2100 total (sum over 12 months)")
+                ax.set_title(f"{gas_name} {type_name} — 2100 totals: extension vs fast-track")
+                ax.legend()
+                fig.savefig(f"{stub}_globaltotals.png", dpi=150, bbox_inches="tight")
+                plt.close(fig)
+
+                # Stash raw arrays for part 2/2 (netCDF write after correction).
+                _diag2100_payload = {
+                    "ext_da": ext_da, "ft_da": ft_da, "diff_da": diff_da,
+                    "diag_out": diag_out,
+                }
+                print(f"     [diag] computed raw-2100 metrics + plots for {gas_name}-{type_name}")
+            except Exception as e:
+                print(f"     ! [diag] 2100 raw diagnostic failed ({e}); continuing")
+
         # Fast path: if the 2100 offset is below physical-emission noise (~1e-18 kg/m²/s,
         # ~10 orders of magnitude below realistic emission magnitudes), skip the heavy
         # correction and just (optionally) drop 2100 + rewrite metadata. Catches the
@@ -2530,7 +2642,65 @@ if run_2100_alignment_to_fasttrack:
         max_abs_diff_at_2100 = float(np.max(np.abs(
             verify_2100_sorted.values - ft_2100_sorted.values
         )))
-        print(f"     verify: max|ext_corr_2100 - ft_2100| = {max_abs_diff_at_2100:.3e} (expect ~0)")
+        print(f"     verify: max|ext_corr_2100 - ft_2100| = {max_abs_diff_at_2100:.3e} (expect ~0)") # should confirm that the correction has done its job at 2100
+
+        # ─── 2100 verification diagnostic, part 2/2 (write netCDF incl. CORRECTED) ─
+        # Now that the correction has been applied, persist BOTH the raw and the corrected
+        # 2100 slices (plus their diffs vs fast-track) to the diagnostic netCDF. This is the
+        # only place the corrected 2100 survives — the next step drops it from the output.
+        # Module K of check_gridded_scenario_junctions-ext.py reads this to confirm the
+        # post-correction difference is genuinely ~0 before 2100 is dropped.
+        if run_2100_alignment_diagnostic and _diag2100_payload is not None:
+            try:
+                ext_da = _diag2100_payload["ext_da"]
+                ft_da = _diag2100_payload["ft_da"]
+                diff_da = _diag2100_payload["diff_da"]
+                diag_out = _diag2100_payload["diag_out"]
+
+                # Corrected 2100 on ext's coordinate set (verify_2100_sorted comes from the
+                # real ext_corr that is written to disk, so this validates the actual pipeline).
+                corr_da = xr.DataArray(
+                    verify_2100_sorted.values, dims=ext_da.dims, coords=ext_da.coords,
+                    attrs=ext_da.attrs,
+                )
+                diff_corr_da = xr.DataArray(
+                    ft_da.values - verify_2100_sorted.values, dims=ext_da.dims,
+                    coords=ext_da.coords,
+                    attrs={"long_name": "fast-track minus CORRECTED extension at 2100 (expect ~0)",
+                           "units": ext_da.attrs.get("units", "")},
+                )
+
+                diag_ds = xr.Dataset({
+                    "ext_2100_raw": ext_da,
+                    "ext_2100_corrected": corr_da,
+                    "ft_2100": ft_da,
+                    "diff_ft_minus_ext": diff_da,
+                    "diff_ft_minus_ext_corrected": diff_corr_da,
+                })
+                diag_ds.attrs.update({
+                    "comment": (
+                        f"Extension 2100 vs fast-track 2100 ({ft_match.name}). "
+                        f"'ext_2100_raw' is pre-correction; 'ext_2100_corrected' is post "
+                        f"additive-offset (what is written to the output before 2100 is "
+                        f"dropped). 'diff_ft_minus_ext' = ft - raw (= the applied offset); "
+                        f"'diff_ft_minus_ext_corrected' = ft - corrected (expect ~0). "
+                        f"12 monthly slices."
+                    ),
+                    "source_extension_file": file.name,
+                    "source_fasttrack_file": ft_match.name,
+                    "max_abs_diff_corrected_at_2100": max_abs_diff_at_2100,
+                })
+                diag_ds = ensure_float_not_int(diag_ds)
+                diag_ds.to_netcdf(
+                    diag_out,
+                    encoding={v: {"zlib": True, "complevel": 2} for v in diag_ds.data_vars},
+                )
+                diag_ds.close()
+                # Record the post-correction zero-check in the step-0 CSV row too.
+                diagnostic_rows[-1]["max_abs_diff_corrected"] = max_abs_diff_at_2100
+                print(f"     [diag] saved 2100 diagnostic (raw + corrected) -> {diag_out.name}")
+            except Exception as e:
+                print(f"     ! [diag] 2100 corrected-diagnostic write failed ({e}); continuing")
 
         # Drop the anchor timestep so the output starts at FADE_ANCHOR_YEAR + 5 (i.e. 2105).
         # Note: `ext_corr` came from `ext_ds.copy(deep=True)`, so it already carries the
