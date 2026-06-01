@@ -125,9 +125,8 @@ DO_GRIDDING_ONLY_FOR_THESE_SECTORS: list[str] | None = None # all: ['anthro', 'o
 DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["VOC01_alcohols_em_speciated_VOC_anthro"]
 # - openburning
 DO_VOC_SPECIATION_OPENBURNING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["C10H16"]
-# %%
-DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES = ["VOC01_alcohols_em_speciated_VOC_anthro"]
-DO_VOC_SPECIATION_OPENBURNING_ONLY_FOR_THESE_SPECIES = ["C10H16"]
+# DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES = ["VOC01_alcohols_em_speciated_VOC_anthro"]
+# DO_VOC_SPECIATION_OPENBURNING_ONLY_FOR_THESE_SPECIES = ["C10H16"]
 
 # %%
 # validate that we're receiving what we're expecting
