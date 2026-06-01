@@ -118,7 +118,7 @@ run_openburning_supplemental_voc: bool = True
 
 # main: files to produce (species, sector)
 DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["CO2", "SO2"]
-DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = ["CO2", "NH3", "SO2"] # e.g. ["CO2", "SO2"]
+# DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = ["CO", "NMVOC", "NMVOCbulk"] # e.g. ["CO2", "SO2"]
 DO_GRIDDING_ONLY_FOR_THESE_SECTORS: list[str] | None = None # all: ['anthro', 'openburning', 'AIR_anthro']
 # supplemental: VOC files to produce
 # - anthro
