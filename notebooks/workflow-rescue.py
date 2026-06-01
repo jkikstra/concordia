@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.4
+#       jupytext_version: 1.19.3
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -73,9 +73,10 @@ ur = set_openscm_registry_as_default()
 
 # %%
 settings = Settings.from_config(
-    config_path="config-rescue.yaml",
-    local_config_path="local-config-rescue.yaml",
-    version="JSK-2025-10-14-only-downscaling-tier2",
+    # base_path="",
+    config_path="/Users/jarmo/Documents/GitHub/mozart/projects/mine/concordia/notebooks/config-rescue.yaml",
+    local_config_path="/Users/jarmo/Documents/GitHub/mozart/projects/mine/concordia/notebooks/local-config-rescue.yaml",
+    version="JSK-2026-06-01-gridding-tier2",
 )
 
 # %%
@@ -223,7 +224,7 @@ with ur.context("AR4GWP100"):
     model = (
         pd.read_csv(
             # settings.scenario_path / "REMIND-MAgPIE-CEDS-RESCUE-Tier1-2024-10-11.csv", # as run before
-            settings.scenario_path / "REMIND-MAgPIE-CEDS-RESCUE-Tier2-2025-09-15.csv", # Test run Jarmo 14.10.2025            
+            settings.scenario_path / "REMIND-MAgPIE-CEDS-RESCUE-Tier2-2025-09-15.csv", # Jarmo runs the gridding of Tier2 (after Jarmo already ran only the downscaling on 14.10.2025)            
             index_col=list(range(5)),
             sep=";",
         )
@@ -386,6 +387,7 @@ version_path.mkdir(parents=True, exist_ok=True)
 
 # %% [markdown]
 # ## Alternative 1) Run full processing and create netcdf files
+# If you also want grids, use the gridding interface directly
 
 # %%
 res = workflow.grid(
@@ -394,13 +396,11 @@ res = workflow.grid(
     ),
     callback=rescue_utils.DressUp(version=settings.version),
     directory=version_path,
-    skip_exists=True,
+    skip_exists=False,
 )
 
 # %% [markdown]
 # ## Alternative 2) Harmonize and downscale everything, but do not grid
-#
-# If you also want grids, use the gridding interface directly
 #
 
 # %%
@@ -528,6 +528,9 @@ data.to_csv(version_path / f"harmonization-{settings.version}-splithfc.csv")
 workflow.downscaled.data.to_csv(
     version_path / f"downscaled-only-{settings.version}.csv"
 )
+
+# %%
+version_path
 
 # %% [markdown]
 # # Upload to BSC FTP

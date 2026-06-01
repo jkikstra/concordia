@@ -2,7 +2,7 @@
 # - data_path: the local path to all needed datasets
 # - ftp (optional): the FTP login details for upload at the end of a workflow
 
-local_config_path: 'local-config-rescue.yaml'
+local_config_path: '/Users/jarmo/Documents/GitHub/mozart/projects/mine/concordia/notebooks/local-config-rescue.yaml'
 
 # ---- standard config for RESCUE ----
 variabledefs_path: "../data/variabledefs-rescue.csv"

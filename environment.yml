@@ -1,4 +1,4 @@
-name: concordia
+name: concordia_rescue
 channels:
 - conda-forge
 dependencies:
