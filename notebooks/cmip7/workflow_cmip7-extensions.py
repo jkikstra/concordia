@@ -59,7 +59,7 @@ SETTINGS_FILE: str = "config_cmip7_v0-4-0-EXT.yaml"
 VERSION_ESGF: str = "1-1-1" # for extensions
 
 # Which scenario to run from the markers
-marker_to_run: str = "hl" # options: h, hl, m, ml, l, ln, vl
+marker_to_run: str = "m" # options: h, hl, m, ml, l, ln, vl
 marker_name: str = f"{marker_to_run}-ext"
 HISTORY_FILE: str = f"downscaled-only-{marker_to_run}_{VERSION_ESGF}.csv"
 
@@ -107,7 +107,7 @@ DROP_ANCHOR_TIMESTEP: bool = True   # drop the FADE_ANCHOR_YEAR (=2100) timestep
 # and BEFORE 2100 is dropped. Produces per-file: a diagnostic netCDF (ext_2100_raw,
 # ft_2100, diff), enriched spatial-agreement metrics in the step-0 CSV, and PNG plots.
 # Purely a verification artifact — does NOT change the main ESGF output.
-run_2100_alignment_diagnostic: bool = False
+run_2100_alignment_diagnostic: bool = True
 
 # SUPPLEMENTAL WORKFLOWS
 run_openburning_h2: bool = True # produced based on openburning_co

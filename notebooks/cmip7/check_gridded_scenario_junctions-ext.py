@@ -55,8 +55,8 @@ from __future__ import annotations
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
 SETTINGS_FILE: str = "config_cmip7_v0-4-0-EXT.yaml"
 VERSION_ESGF: str = "1-1-1"
-marker_to_run: str = "hl"
-IAM_SCENARIO: str = "SSP5 - Medium-Low Emissions_a"  # scenario for marker_to_run="vl" is "SSP1 - Very Low Emissions"
+marker_to_run: str = "m"
+IAM_SCENARIO: str = "SSP2 - Medium Emissions"  # scenario for marker_to_run="vl" is "SSP1 - Very Low Emissions"
 
 GRIDDING_VERSION: str = f"{marker_to_run}-ext_{VERSION_ESGF}"
 # Set to an absolute path to override auto-detection from GRIDDING_VERSION
@@ -75,8 +75,8 @@ FADE_CONVERGENCE_YEAR: int = 2150
 DROP_ANCHOR_TIMESTEP: bool = True  # extension starts at FADE_ANCHOR_YEAR + 5 when True
 
 # Module flags
-run_global_continuity: bool = False
-run_gridpoint_continuity: bool = False
+run_global_continuity: bool = True
+run_gridpoint_continuity: bool = True
 # Module K — summarise the raw extension-2100 vs fast-track-2100 diagnostic netCDFs
 # (produced by workflow_cmip7-extensions.py when run_2100_alignment_diagnostic=True,
 # written to '<results>/<gridding_version>/diagnostics_2100/'). Off by default — only
@@ -85,7 +85,7 @@ run_2100_diagnostic_summary: bool = True
 
 # Optional: restrict to a subset of species (None = all found in extension folder)
 species_filter: list[str] | None = None  # e.g. ["CO2", "NH3"]
-species_filter: list[str] | None = ["CO2","NH3","SO2"]
+# species_filter: list[str] | None = ["CO2","NH3","SO2"]
 
 # Optional: restrict to a subset of file type / sector files (None = all found in extension folder)
 FILE_TYPE_FILTER: list[str] | None = None  # e.g. ["anthro", "AIR-anthro", "openburning"]
