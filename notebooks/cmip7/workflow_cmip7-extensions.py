@@ -88,6 +88,7 @@ SKIP_EXISTING_MAIN_WORKFLOW_FILES: bool = False # if True, it won't reproduce fi
 # and the fade-to-zero-by-2050 made the correction identically zero for all extension years
 # anyway. Spatial alignment is now handled by the 2100-anchor block at the bottom of the
 # file, which inherits fast-track's already-CEDS-2023-harmonised spatial pattern at 2100.
+SKIP_TIMESERIES_CORRECTION_COMPUTATION: bool = True
 run_anthro_timeseries_correction: bool = True
 run_AIR_anthro_timeseries_correction: bool = True
 run_openburning_timeseries_correction: bool = True
@@ -110,8 +111,8 @@ run_openburning_supplemental_voc: bool = True
 
 # main: files to produce (species, sector)
 DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["CO2", "SO2"]
-DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = ["CO2", "NH3"] # e.g. ["CO2", "SO2"]
-DO_GRIDDING_ONLY_FOR_THESE_SECTORS: list[str] | None = None # all: ['anthro', 'openburning', 'AIR_anthro']
+DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = ["NMVOC"] # e.g. ["CO2", "SO2"]
+DO_GRIDDING_ONLY_FOR_THESE_SECTORS: list[str] | None = ['anthro'] #, 'openburning', 'AIR_anthro']
 # supplemental: VOC files to produce
 # - anthro
 DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["VOC01_alcohols_em_speciated_VOC_anthro"]
@@ -1736,6 +1737,41 @@ def ensure_data_var_attrs(ds):
 
     return ds
 
+# helper function to fix time and time_bnds
+def fix_time_metadata(ds: xr.Dataset) -> xr.Dataset:
+    # Fix time encoding: float64, correct units/calendar, add bounds attribute
+    # Remove units/calendar from attrs — xarray requires these only in encoding
+    ds["time"].attrs["bounds"] = "time_bnds"
+    ds["time"].attrs.pop("units", None)
+    ds["time"].attrs.pop("calendar", None)
+    # Set encoding
+    ds["time"].encoding["dtype"] = "float64"
+    ds["time"].encoding["units"] = "days since 2022-01-01"
+    ds["time"].encoding["calendar"] = "365_day"
+    # Add bounds pointer as attr (this one is fine in attrs)
+
+    # Fix time_bnds: strip all attributes and prevent xarray from
+    # re-encoding it as a time variable by storing raw numeric values
+    if "time_bnds" in ds:
+        # Decode to numeric values using the same reference units
+        import cftime
+        ref = cftime.date2num(
+            ds["time_bnds"].values,
+            units="days since 2022-01-01",
+            calendar="365_day",
+        )
+        ds["time_bnds"] = xr.DataArray(
+            ref,
+            dims=ds["time_bnds"].dims,
+        )
+        ds["time_bnds"].attrs = {}
+        ds["time_bnds"].encoding = {
+            "dtype": "float64",
+            "_FillValue": None,
+        }
+
+    return ds
+
 # %%
 # load files for timeseries corrections
 
@@ -1762,107 +1798,116 @@ if run_AIR_anthro_timeseries_correction:
 
         # Open dataset with explicit engine settings to avoid caching issues
         scen_ds = xr.open_dataset(file, engine='netcdf4')
-        gridded_emisssions_annual_totals = ds_to_annual_emissions_total( # takes about 10-30 seconds
-                gridded_data=scen_ds,
-                var_name=var,
-                cell_area=cell_area,
-                keep_sectors=True
+
+        if not SKIP_TIMESERIES_CORRECTION_COMPUTATION:
+            gridded_emisssions_annual_totals = ds_to_annual_emissions_total( # takes about 10-30 seconds
+                    gridded_data=scen_ds,
+                    var_name=var,
+                    cell_area=cell_area,
+                    keep_sectors=True
+                )
+            
+            # Get input IAM emissions (already harmonised)
+            input_emissions = (
+                iam_df.loc[ # assumes that this is already harmonised
+                    ismatch(gas=gas_name)
+                ].loc[
+                    isin(sector="Aircraft")
+                ]
             )
-        
-        # Get input IAM emissions (already harmonised)
-        input_emissions = (
-            iam_df.loc[ # assumes that this is already harmonised
-                ismatch(gas=gas_name)
-            ].loc[
-                isin(sector="Aircraft")
-            ]
-        )
-        
-        # Note: if N2O, divide by 1000 (from kt to Mt)
-        if gas_name == "N2O":
-            input_emissions = input_emissions / 1000
+            
+            # Note: if N2O, divide by 1000 (from kt to Mt)
+            if gas_name == "N2O":
+                input_emissions = input_emissions / 1000
+    
+            # Calculate annual global totals by sector
+            # Step 1: Ensure only one model-scenario combination
+            unique_model = input_emissions.index.get_level_values('model').unique()
+            unique_scenario = input_emissions.index.get_level_values('scenario').unique()
+            assert len(unique_model) == 1, f"Expected 1 model, got {len(unique_model)}: {unique_model.tolist()}"
+            assert len(unique_scenario) == 1, f"Expected 1 scenario, got {len(unique_scenario)}: {unique_scenario.tolist()}"
+            
+            # Step 2: Sum across regions, keeping sector and year information
+            # Group by gas, sector, unit and sum (this sums across all regions)
+            input_global = input_emissions.groupby(level=['gas', 'sector', 'unit']).sum()
+            
+            # Convert to DataFrame format with years as columns for easier viewing
+            input_global_by_sector = input_global.reset_index()
+            # Replace sector integer indices with full sector names
+            input_global_by_sector['sector'] = input_global_by_sector['sector'].map({"Aircraft":0})
+            
+            # Convert to match gridded_emisssions_annual_totals format
+            # Pivot so we have (gas, sector, unit) as index and years as columns
+            input_global_by_sector = input_global_by_sector.set_index(['gas', 'sector', 'unit'])
+            
+            # Sort the index for consistency
+            input_global_by_sector = input_global_by_sector.sort_index()
+            
+            # Transform from pandas DataFrame to xarray DataArray format
+            # Extract sector values (although not necessary for aircraft)
+            sectors = input_global_by_sector.index.get_level_values('sector').unique()
+            
+            # Extract year columns (all columns that are integers)
+            year_columns = sorted([int(col) for col in input_global_by_sector.columns if isinstance(col, int)])
+            
+            # Create 2D numpy array: rows = sectors, columns = years
+            data_array = np.array([
+                input_global_by_sector.loc[(gas_name, sector, input_global_by_sector.index.get_level_values('unit')[0]), year_columns].values
+                for sector in sectors
+            ]).T  # Transpose so years are rows, sectors are columns
+            
+            # Create xarray DataArray matching gridded_emisssions_annual_totals structure
+            input_iam_annual_totals = xr.DataArray(
+                data_array[:,0],
+                coords={
+                    'year': year_columns
+                },
+                dims=['year'],
+                name=f'{gas_name}_em_AIR_anthro'
+            )
+    
+            # Precondition: the extension gridded file must cover 2105-2500 at 5-year steps
+            # (2100 is owned by fast-track and aligned separately in the 2100 alignment step).
+            # The IAM proxy data must cover 2100-2500 at 5-year steps (including 2100, which
+            # is used as the anchor for the alignment step). A gap in the gridded file means
+            # there is no spatial distribution to scale; a gap in the proxy means the
+            # correction ratio cannot be computed for that year.
+            _expected_gridded_years = set(range(2105, 2501, 5))
+            _expected_proxy_years = set(range(2100, 2501, 5))
+            _gridded_years = set(gridded_emisssions_annual_totals.year.values.tolist())
+            _iam_years = set(input_iam_annual_totals.year.values.tolist())
+            missing_in_gridded = _expected_gridded_years - _gridded_years
+            assert not missing_in_gridded, (
+                f"Extension gridded file is missing expected 2105-2500 (5-year) years: "
+                f"{sorted(missing_in_gridded)}. Check the gridding step's time coverage."
+            )
+            missing_in_proxy = _expected_proxy_years - _iam_years
+            assert not missing_in_proxy, (
+                f"IAM proxy data is missing expected 2100-2500 (5-year) years: "
+                f"{sorted(missing_in_proxy)}. Check the extension IAM CSV."
+            )
+    
+            # Calculate ratios (for each sector, for one emissions species)
+            # Compare input IAM vs gridded emissions for each sector and year.
+            # Align on inner join before xr.where (xr.where uses join='exact' internally,
+            # which fails when sector or year coordinates don't match exactly).
+           
+            
+            
+            gridded_aligned, iam_aligned = xr.align(
+                gridded_emisssions_annual_totals, input_iam_annual_totals, join='inner'
+            )
+            print(f"  AIR aligned: gridded {gridded_aligned.shape}, iam {iam_aligned.shape}")
+            ratio_per_sector = xr.where(
+                gridded_aligned != 0,
+                iam_aligned / gridded_aligned,
+                1.0  # No correction where gridded is zero
+            )
 
-        # Calculate annual global totals by sector
-        # Step 1: Ensure only one model-scenario combination
-        unique_model = input_emissions.index.get_level_values('model').unique()
-        unique_scenario = input_emissions.index.get_level_values('scenario').unique()
-        assert len(unique_model) == 1, f"Expected 1 model, got {len(unique_model)}: {unique_model.tolist()}"
-        assert len(unique_scenario) == 1, f"Expected 1 scenario, got {len(unique_scenario)}: {unique_scenario.tolist()}"
-        
-        # Step 2: Sum across regions, keeping sector and year information
-        # Group by gas, sector, unit and sum (this sums across all regions)
-        input_global = input_emissions.groupby(level=['gas', 'sector', 'unit']).sum()
-        
-        # Convert to DataFrame format with years as columns for easier viewing
-        input_global_by_sector = input_global.reset_index()
-        # Replace sector integer indices with full sector names
-        input_global_by_sector['sector'] = input_global_by_sector['sector'].map({"Aircraft":0})
-        
-        # Convert to match gridded_emisssions_annual_totals format
-        # Pivot so we have (gas, sector, unit) as index and years as columns
-        input_global_by_sector = input_global_by_sector.set_index(['gas', 'sector', 'unit'])
-        
-        # Sort the index for consistency
-        input_global_by_sector = input_global_by_sector.sort_index()
-        
-        # Transform from pandas DataFrame to xarray DataArray format
-        # Extract sector values (although not necessary for aircraft)
-        sectors = input_global_by_sector.index.get_level_values('sector').unique()
-        
-        # Extract year columns (all columns that are integers)
-        year_columns = sorted([int(col) for col in input_global_by_sector.columns if isinstance(col, int)])
-        
-        # Create 2D numpy array: rows = sectors, columns = years
-        data_array = np.array([
-            input_global_by_sector.loc[(gas_name, sector, input_global_by_sector.index.get_level_values('unit')[0]), year_columns].values
-            for sector in sectors
-        ]).T  # Transpose so years are rows, sectors are columns
-        
-        # Create xarray DataArray matching gridded_emisssions_annual_totals structure
-        input_iam_annual_totals = xr.DataArray(
-            data_array[:,0],
-            coords={
-                'year': year_columns
-            },
-            dims=['year'],
-            name=f'{gas_name}_em_AIR_anthro'
-        )
-
-        # Precondition: the extension gridded file must cover 2105-2500 at 5-year steps
-        # (2100 is owned by fast-track and aligned separately in the 2100 alignment step).
-        # The IAM proxy data must cover 2100-2500 at 5-year steps (including 2100, which
-        # is used as the anchor for the alignment step). A gap in the gridded file means
-        # there is no spatial distribution to scale; a gap in the proxy means the
-        # correction ratio cannot be computed for that year.
-        _expected_gridded_years = set(range(2105, 2501, 5))
-        _expected_proxy_years = set(range(2100, 2501, 5))
-        _gridded_years = set(gridded_emisssions_annual_totals.year.values.tolist())
-        _iam_years = set(input_iam_annual_totals.year.values.tolist())
-        missing_in_gridded = _expected_gridded_years - _gridded_years
-        assert not missing_in_gridded, (
-            f"Extension gridded file is missing expected 2105-2500 (5-year) years: "
-            f"{sorted(missing_in_gridded)}. Check the gridding step's time coverage."
-        )
-        missing_in_proxy = _expected_proxy_years - _iam_years
-        assert not missing_in_proxy, (
-            f"IAM proxy data is missing expected 2100-2500 (5-year) years: "
-            f"{sorted(missing_in_proxy)}. Check the extension IAM CSV."
-        )
-
-        # Calculate ratios (for each sector, for one emissions species)
-        # Compare input IAM vs gridded emissions for each sector and year.
-        # Align on inner join before xr.where (xr.where uses join='exact' internally,
-        # which fails when sector or year coordinates don't match exactly).
-        gridded_aligned, iam_aligned = xr.align(
-            gridded_emisssions_annual_totals, input_iam_annual_totals, join='inner'
-        )
-        print(f"  AIR aligned: gridded {gridded_aligned.shape}, iam {iam_aligned.shape}")
-        ratio_per_sector = xr.where(
-            gridded_aligned != 0,
-            iam_aligned / gridded_aligned,
-            1.0  # No correction where gridded is zero
-        )
-
+        else:
+            # identity ratio with correct shape — no data loaded into memory
+            ratio_per_sector = xr.ones_like(scen_ds[var].isel(time=0))
+    
         # Apply this global scalar to `scen_ds`
         # Multiply the gridded data by the global scalar to match input emissions
         scen_ds_corrected = scen_ds.copy(deep=True)
@@ -1886,17 +1931,6 @@ if run_AIR_anthro_timeseries_correction:
         
         # Reorder dimensions if necessary
         scen_ds_corrected = scen_ds_corrected.pipe(reorder_dimensions, bound_var_name="bound")
-        
-        # Add global sums to metadata — pass the file's actual first/last years explicitly,
-        # otherwise add_file_global_sum_totals_attrs defaults to first_year='2022' which
-        # doesn't exist in the extension file (it spans 2100..2500) and raises KeyError.
-        _file_years = sorted(set(int(t.year) for t in scen_ds_corrected.time.values))
-        scen_ds_corrected = scen_ds_corrected.pipe(
-            add_file_global_sum_totals_attrs,
-            name=var,
-            first_year=str(_file_years[0]),
-            last_year=str(_file_years[-1]),
-        )
         
         # Copy bounds variables from original dataset to ensure they exist
         copy_bounds_data_variables(source=scen_ds, target=scen_ds_corrected)
@@ -1953,129 +1987,142 @@ if run_anthro_timeseries_correction:
 
         # Open dataset with explicit engine settings to avoid caching issues
         scen_ds = xr.open_dataset(file, engine='netcdf4')
-        gridded_emisssions_annual_totals = ds_to_annual_emissions_total( # takes about 10-30 seconds
-                gridded_data=scen_ds,
-                var_name=var,
-                cell_area=cell_area,
-                keep_sectors=True
+        
+        if not SKIP_TIMESERIES_CORRECTION_COMPUTATION:
+            gridded_emisssions_annual_totals = ds_to_annual_emissions_total( # takes about 10-30 seconds
+                    gridded_data=scen_ds,
+                    var_name=var,
+                    cell_area=cell_area,
+                    keep_sectors=True
+                )
+            
+            # Get input IAM emissions (already harmonised)
+            input_emissions = iam_df.loc[ # assumes that this is already harmonised
+                    ismatch(gas=gas_name)
+                ]
+            SECTOR_RENAME_DOWNSCALED = {
+                "Energy Sector": "Energy",
+                "Industrial Sector": "Industrial",
+                "Residential Commercial Other": "Residential, Commercial, Other",
+                "Transportation Sector": "Transportation",
+                "Biochar": "Other Capture and Removal", 
+                "Direct Air Capture": "Other Capture and Removal", 
+                "Enhanced Weathering": "Other Capture and Removal", 
+                "Ocean": "Other Capture and Removal", 
+                "Other CDR": "Other Capture and Removal", 
+                "Soil Carbon Management": "Other Capture and Removal"
+            }
+            # rename and reaggregate (for Other Capture and Removal)
+            input_emissions = input_emissions.rename(
+                index=SECTOR_RENAME_DOWNSCALED,
+                level="sector"
+            ).groupby(level=['model', 'scenario', 'region', 'gas', 'sector', 'unit']).sum()
+            if gas_name == "CO2":
+                input_emissions = input_emissions.loc[
+                        isin(sector=SECTOR_ORDERING_DEFAULT['CO2_em_anthro'])
+                    ]
+            else:
+                input_emissions = input_emissions.loc[
+                        isin(sector=SECTOR_ORDERING_DEFAULT['em_anthro'])
+                    ]
+            
+            # Note: if N2O, divide by 1000 (from kt to Mt)
+            if gas_name == "N2O":
+                input_emissions = input_emissions / 1000
+            
+            # Calculate annual global totals by sector
+            # Step 1: Ensure only one model-scenario combination
+            unique_model = input_emissions.index.get_level_values('model').unique()
+            unique_scenario = input_emissions.index.get_level_values('scenario').unique()
+            assert len(unique_model) == 1, f"Expected 1 model, got {len(unique_model)}: {unique_model.tolist()}"
+            assert len(unique_scenario) == 1, f"Expected 1 scenario, got {len(unique_scenario)}: {unique_scenario.tolist()}"
+            
+            # Step 2: Sum across regions, keeping sector and year information
+            # Group by gas, sector, unit and sum (this sums across all regions)
+            input_global = input_emissions.groupby(level=['gas', 'sector', 'unit']).sum()
+            
+            # Convert to DataFrame format with years as columns for easier viewing
+            input_global_by_sector = input_global.reset_index()
+            # Replace sector integer indices with full sector names
+            input_global_by_sector['sector'] = input_global_by_sector['sector'].map(SECTOR_DICT_ANTHRO_CO2_SCENARIO_FLIPPED)
+            
+            # Convert to match gridded_emisssions_annual_totals format
+            # Pivot so we have (gas, sector, unit) as index and years as columns
+            input_global_by_sector = input_global_by_sector.set_index(['gas', 'sector', 'unit'])
+            
+            # Sort the index for consistency
+            input_global_by_sector = input_global_by_sector.sort_index()
+            
+            # Transform from pandas DataFrame to xarray DataArray format
+            # Extract sector values (should be 0, 1, ..., 7 for em_anthro and 0, 1, ..., 9 for CO2_em_anthro)
+            sectors = input_global_by_sector.index.get_level_values('sector').unique()
+            
+            # Extract year columns (all columns that are integers)
+            year_columns = sorted([int(col) for col in input_global_by_sector.columns if isinstance(col, int)])
+            
+            # Create 2D numpy array: rows = sectors, columns = years
+            data_array = np.array([
+                input_global_by_sector.loc[(gas_name, sector, input_global_by_sector.index.get_level_values('unit')[0]), year_columns].values
+                for sector in sectors
+            ]).T  # Transpose so years are rows, sectors are columns
+            
+            # Create xarray DataArray matching gridded_emisssions_annual_totals structure
+            input_iam_annual_totals = xr.DataArray(
+                data_array,
+                coords={
+                    'year': year_columns,
+                    'sector': sectors.values
+                },
+                dims=['year', 'sector'],
+                name=f'{gas_name}_em_anthro'
             )
-        
-        # Get input IAM emissions (already harmonised)
-        input_emissions = iam_df.loc[ # assumes that this is already harmonised
-                ismatch(gas=gas_name)
-            ]
-        SECTOR_RENAME_DOWNSCALED = {
-            "Energy Sector": "Energy",
-            "Industrial Sector": "Industrial",
-            "Residential Commercial Other": "Residential, Commercial, Other",
-            "Transportation Sector": "Transportation",
-            "Biochar": "Other Capture and Removal", 
-            "Direct Air Capture": "Other Capture and Removal", 
-            "Enhanced Weathering": "Other Capture and Removal", 
-            "Ocean": "Other Capture and Removal", 
-            "Other CDR": "Other Capture and Removal", 
-            "Soil Carbon Management": "Other Capture and Removal"
-        }
-        # rename and reaggregate (for Other Capture and Removal)
-        input_emissions = input_emissions.rename(
-            index=SECTOR_RENAME_DOWNSCALED,
-            level="sector"
-        ).groupby(level=['model', 'scenario', 'region', 'gas', 'sector', 'unit']).sum()
-        if gas_name == "CO2":
-            input_emissions = input_emissions.loc[
-                    isin(sector=SECTOR_ORDERING_DEFAULT['CO2_em_anthro'])
-                ]
+    
+            # Precondition: the extension gridded file must cover 2105-2500 at 5-year steps
+            # (2100 is owned by fast-track and aligned separately in the 2100 alignment step).
+            # The IAM proxy data must cover 2100-2500 at 5-year steps (including 2100, which
+            # is used as the anchor for the alignment step). A gap in the gridded file means
+            # there is no spatial distribution to scale; a gap in the proxy means the
+            # correction ratio cannot be computed for that year.
+            _expected_gridded_years = set(range(2105, 2501, 5))
+            _expected_proxy_years = set(range(2100, 2501, 5))
+            _gridded_years = set(gridded_emisssions_annual_totals.year.values.tolist())
+            _iam_years = set(input_iam_annual_totals.year.values.tolist())
+            missing_in_gridded = _expected_gridded_years - _gridded_years
+            assert not missing_in_gridded, (
+                f"Extension gridded file is missing expected 2105-2500 (5-year) years: "
+                f"{sorted(missing_in_gridded)}. Check the gridding step's time coverage."
+            )
+            missing_in_proxy = _expected_proxy_years - _iam_years
+            assert not missing_in_proxy, (
+                f"IAM proxy data is missing expected 2100-2500 (5-year) years: "
+                f"{sorted(missing_in_proxy)}. Check the extension IAM CSV."
+            )
+    
+            # Calculate ratios (for each sector, for one emissions species)
+            # Compare input IAM vs gridded emissions for each sector and year.
+            # Align on inner join before xr.where (xr.where uses join='exact' internally,
+            # which fails when sector or year coordinates don't match exactly).
+            gridded_aligned, iam_aligned = xr.align(
+                gridded_emisssions_annual_totals, input_iam_annual_totals, join='inner'
+            )
+            print(f"  anthro aligned: gridded {gridded_aligned.shape}, iam {iam_aligned.shape}")
+            ratio_per_sector = xr.where(
+                gridded_aligned != 0,
+                iam_aligned / gridded_aligned,
+                1.0  # No correction where gridded is zero
+            )
+
         else:
-            input_emissions = input_emissions.loc[
-                    isin(sector=SECTOR_ORDERING_DEFAULT['em_anthro'])
-                ]
-        
-        # Note: if N2O, divide by 1000 (from kt to Mt)
-        if gas_name == "N2O":
-            input_emissions = input_emissions / 1000
-        
-        # Calculate annual global totals by sector
-        # Step 1: Ensure only one model-scenario combination
-        unique_model = input_emissions.index.get_level_values('model').unique()
-        unique_scenario = input_emissions.index.get_level_values('scenario').unique()
-        assert len(unique_model) == 1, f"Expected 1 model, got {len(unique_model)}: {unique_model.tolist()}"
-        assert len(unique_scenario) == 1, f"Expected 1 scenario, got {len(unique_scenario)}: {unique_scenario.tolist()}"
-        
-        # Step 2: Sum across regions, keeping sector and year information
-        # Group by gas, sector, unit and sum (this sums across all regions)
-        input_global = input_emissions.groupby(level=['gas', 'sector', 'unit']).sum()
-        
-        # Convert to DataFrame format with years as columns for easier viewing
-        input_global_by_sector = input_global.reset_index()
-        # Replace sector integer indices with full sector names
-        input_global_by_sector['sector'] = input_global_by_sector['sector'].map(SECTOR_DICT_ANTHRO_CO2_SCENARIO_FLIPPED)
-        
-        # Convert to match gridded_emisssions_annual_totals format
-        # Pivot so we have (gas, sector, unit) as index and years as columns
-        input_global_by_sector = input_global_by_sector.set_index(['gas', 'sector', 'unit'])
-        
-        # Sort the index for consistency
-        input_global_by_sector = input_global_by_sector.sort_index()
-        
-        # Transform from pandas DataFrame to xarray DataArray format
-        # Extract sector values (should be 0, 1, ..., 7 for em_anthro and 0, 1, ..., 9 for CO2_em_anthro)
-        sectors = input_global_by_sector.index.get_level_values('sector').unique()
-        
-        # Extract year columns (all columns that are integers)
-        year_columns = sorted([int(col) for col in input_global_by_sector.columns if isinstance(col, int)])
-        
-        # Create 2D numpy array: rows = sectors, columns = years
-        data_array = np.array([
-            input_global_by_sector.loc[(gas_name, sector, input_global_by_sector.index.get_level_values('unit')[0]), year_columns].values
-            for sector in sectors
-        ]).T  # Transpose so years are rows, sectors are columns
-        
-        # Create xarray DataArray matching gridded_emisssions_annual_totals structure
-        input_iam_annual_totals = xr.DataArray(
-            data_array,
-            coords={
-                'year': year_columns,
-                'sector': sectors.values
-            },
-            dims=['year', 'sector'],
-            name=f'{gas_name}_em_anthro'
-        )
+            # identity ratio with correct shape — no data loaded into memory
+            _sectors = scen_ds[var].sector.values
+            _years = sorted([int(col) for col in iam_df.columns if isinstance(col, int)])
+            ratio_per_sector = xr.DataArray(
+                np.ones((len(_years), len(_sectors))),
+                coords={'year': _years, 'sector': _sectors},
+                dims=['year', 'sector'],
+            )
 
-        # Precondition: the extension gridded file must cover 2105-2500 at 5-year steps
-        # (2100 is owned by fast-track and aligned separately in the 2100 alignment step).
-        # The IAM proxy data must cover 2100-2500 at 5-year steps (including 2100, which
-        # is used as the anchor for the alignment step). A gap in the gridded file means
-        # there is no spatial distribution to scale; a gap in the proxy means the
-        # correction ratio cannot be computed for that year.
-        _expected_gridded_years = set(range(2105, 2501, 5))
-        _expected_proxy_years = set(range(2100, 2501, 5))
-        _gridded_years = set(gridded_emisssions_annual_totals.year.values.tolist())
-        _iam_years = set(input_iam_annual_totals.year.values.tolist())
-        missing_in_gridded = _expected_gridded_years - _gridded_years
-        assert not missing_in_gridded, (
-            f"Extension gridded file is missing expected 2105-2500 (5-year) years: "
-            f"{sorted(missing_in_gridded)}. Check the gridding step's time coverage."
-        )
-        missing_in_proxy = _expected_proxy_years - _iam_years
-        assert not missing_in_proxy, (
-            f"IAM proxy data is missing expected 2100-2500 (5-year) years: "
-            f"{sorted(missing_in_proxy)}. Check the extension IAM CSV."
-        )
-
-        # Calculate ratios (for each sector, for one emissions species)
-        # Compare input IAM vs gridded emissions for each sector and year.
-        # Align on inner join before xr.where (xr.where uses join='exact' internally,
-        # which fails when sector or year coordinates don't match exactly).
-        gridded_aligned, iam_aligned = xr.align(
-            gridded_emisssions_annual_totals, input_iam_annual_totals, join='inner'
-        )
-        print(f"  anthro aligned: gridded {gridded_aligned.shape}, iam {iam_aligned.shape}")
-        ratio_per_sector = xr.where(
-            gridded_aligned != 0,
-            iam_aligned / gridded_aligned,
-            1.0  # No correction where gridded is zero
-        )
-
+    
         # Apply this global scalar to `scen_ds`
         # Multiply the gridded data by the global scalar to match input emissions
         scen_ds_corrected = scen_ds.copy(deep=True)
@@ -2099,17 +2146,6 @@ if run_anthro_timeseries_correction:
 
         # Reorder dimensions if necessary
         scen_ds_corrected = scen_ds_corrected.pipe(reorder_dimensions, bound_var_name="bound")
-
-        # Add global sums to metadata — pass the file's actual first/last years explicitly,
-        # otherwise add_file_global_sum_totals_attrs defaults to first_year='2022' which
-        # doesn't exist in the extension file (it spans 2100..2500) and raises KeyError.
-        _file_years = sorted(set(int(t.year) for t in scen_ds_corrected.time.values))
-        scen_ds_corrected = scen_ds_corrected.pipe(
-            add_file_global_sum_totals_attrs,
-            name=var,
-            first_year=str(_file_years[0]),
-            last_year=str(_file_years[-1]),
-        )
 
         # Copy bounds variables from original dataset to ensure they exist
         copy_bounds_data_variables(source=scen_ds, target=scen_ds_corrected)
@@ -2166,108 +2202,122 @@ if run_openburning_timeseries_correction:
 
         # Open dataset with explicit engine settings to avoid caching issues
         scen_ds = xr.open_dataset(file, engine='netcdf4')
-        gridded_emisssions_annual_totals = ds_to_annual_emissions_total( # takes about 10-30 seconds
-                gridded_data=scen_ds,
-                var_name=var,
-                cell_area=cell_area,
-                keep_sectors=True
+
+        if not SKIP_TIMESERIES_CORRECTION_COMPUTATION:
+    
+            gridded_emisssions_annual_totals = ds_to_annual_emissions_total( # takes about 10-30 seconds
+                    gridded_data=scen_ds,
+                    var_name=var,
+                    cell_area=cell_area,
+                    keep_sectors=True
+                )
+            
+            # Get input IAM emissions (already harmonised)
+            input_emissions = (
+                iam_df.loc[ # assumes that this is already harmonised
+                    ismatch(gas=gas_name)
+                ].loc[
+                    isin(sector=SECTOR_ORDERING_DEFAULT['em_openburning'])
+                ]
             )
-        
-        # Get input IAM emissions (already harmonised)
-        input_emissions = (
-            iam_df.loc[ # assumes that this is already harmonised
-                ismatch(gas=gas_name)
-            ].loc[
-                isin(sector=SECTOR_ORDERING_DEFAULT['em_openburning'])
-            ]
-        )
-        
-        # Note: if N2O, divide by 1000 (from kt to Mt)
-        if gas_name == "N2O":
-            input_emissions = input_emissions / 1000
-        
-        # Calculate annual global totals by sector
-        # Step 1: Ensure only one model-scenario combination
-        unique_model = input_emissions.index.get_level_values('model').unique()
-        unique_scenario = input_emissions.index.get_level_values('scenario').unique()
-        assert len(unique_model) == 1, f"Expected 1 model, got {len(unique_model)}: {unique_model.tolist()}"
-        assert len(unique_scenario) == 1, f"Expected 1 scenario, got {len(unique_scenario)}: {unique_scenario.tolist()}"
-        
-        # Step 2: Sum across regions, keeping sector and year information
-        # Group by gas, sector, unit and sum (this sums across all regions)
-        input_global = input_emissions.groupby(level=['gas', 'sector', 'unit']).sum()
-        
-        # Convert to DataFrame format with years as columns for easier viewing
-        input_global_by_sector = input_global.reset_index()
-        # Replace sector integer indices with full sector names
-        input_global_by_sector['sector'] = input_global_by_sector['sector'].map(SECTOR_DICT_OPENBURNING_DEFAULT_FLIPPED)
-        
-        # Convert to match gridded_emisssions_annual_totals format
-        # Pivot so we have (gas, sector, unit) as index and years as columns
-        input_global_by_sector = input_global_by_sector.set_index(['gas', 'sector', 'unit'])
-        
-        # Sort the index for consistency
-        input_global_by_sector = input_global_by_sector.sort_index()
-        
-        # Transform from pandas DataFrame to xarray DataArray format
-        # Extract sector values (should be 0, 1, 2, 3 for openburning)
-        sectors = input_global_by_sector.index.get_level_values('sector').unique()
-        
-        # Extract year columns (all columns that are integers)
-        year_columns = sorted([int(col) for col in input_global_by_sector.columns if isinstance(col, int)])
-        
-        # Create 2D numpy array: rows = sectors, columns = years
-        data_array = np.array([
-            input_global_by_sector.loc[(gas_name, sector, input_global_by_sector.index.get_level_values('unit')[0]), year_columns].values
-            for sector in sectors
-        ]).T  # Transpose so years are rows, sectors are columns
-        
-        # Create xarray DataArray matching gridded_emisssions_annual_totals structure
-        input_iam_annual_totals = xr.DataArray(
-            data_array,
-            coords={
-                'year': year_columns,
-                'sector': sectors.values
-            },
-            dims=['year', 'sector'],
-            name=f'{gas_name}_em_openburning'
-        )
+            
+            # Note: if N2O, divide by 1000 (from kt to Mt)
+            if gas_name == "N2O":
+                input_emissions = input_emissions / 1000
+            
+            # Calculate annual global totals by sector
+            # Step 1: Ensure only one model-scenario combination
+            unique_model = input_emissions.index.get_level_values('model').unique()
+            unique_scenario = input_emissions.index.get_level_values('scenario').unique()
+            assert len(unique_model) == 1, f"Expected 1 model, got {len(unique_model)}: {unique_model.tolist()}"
+            assert len(unique_scenario) == 1, f"Expected 1 scenario, got {len(unique_scenario)}: {unique_scenario.tolist()}"
+            
+            # Step 2: Sum across regions, keeping sector and year information
+            # Group by gas, sector, unit and sum (this sums across all regions)
+            input_global = input_emissions.groupby(level=['gas', 'sector', 'unit']).sum()
+            
+            # Convert to DataFrame format with years as columns for easier viewing
+            input_global_by_sector = input_global.reset_index()
+            # Replace sector integer indices with full sector names
+            input_global_by_sector['sector'] = input_global_by_sector['sector'].map(SECTOR_DICT_OPENBURNING_DEFAULT_FLIPPED)
+            
+            # Convert to match gridded_emisssions_annual_totals format
+            # Pivot so we have (gas, sector, unit) as index and years as columns
+            input_global_by_sector = input_global_by_sector.set_index(['gas', 'sector', 'unit'])
+            
+            # Sort the index for consistency
+            input_global_by_sector = input_global_by_sector.sort_index()
+            
+            # Transform from pandas DataFrame to xarray DataArray format
+            # Extract sector values (should be 0, 1, 2, 3 for openburning)
+            sectors = input_global_by_sector.index.get_level_values('sector').unique()
+            
+            # Extract year columns (all columns that are integers)
+            year_columns = sorted([int(col) for col in input_global_by_sector.columns if isinstance(col, int)])
+            
+            # Create 2D numpy array: rows = sectors, columns = years
+            data_array = np.array([
+                input_global_by_sector.loc[(gas_name, sector, input_global_by_sector.index.get_level_values('unit')[0]), year_columns].values
+                for sector in sectors
+            ]).T  # Transpose so years are rows, sectors are columns
+            
+            # Create xarray DataArray matching gridded_emisssions_annual_totals structure
+            input_iam_annual_totals = xr.DataArray(
+                data_array,
+                coords={
+                    'year': year_columns,
+                    'sector': sectors.values
+                },
+                dims=['year', 'sector'],
+                name=f'{gas_name}_em_openburning'
+            )
+    
+            # Precondition: the extension gridded file must cover 2105-2500 at 5-year steps
+            # (2100 is owned by fast-track and aligned separately in the 2100 alignment step).
+            # The IAM proxy data must cover 2100-2500 at 5-year steps (including 2100, which
+            # is used as the anchor for the alignment step). A gap in the gridded file means
+            # there is no spatial distribution to scale; a gap in the proxy means the
+            # correction ratio cannot be computed for that year.
+            _expected_gridded_years = set(range(2105, 2501, 5))
+            _expected_proxy_years = set(range(2100, 2501, 5))
+            _gridded_years = set(gridded_emisssions_annual_totals.year.values.tolist())
+            _iam_years = set(input_iam_annual_totals.year.values.tolist())
+            missing_in_gridded = _expected_gridded_years - _gridded_years
+            assert not missing_in_gridded, (
+                f"Extension gridded file is missing expected 2105-2500 (5-year) years: "
+                f"{sorted(missing_in_gridded)}. Check the gridding step's time coverage."
+            )
+            missing_in_proxy = _expected_proxy_years - _iam_years
+            assert not missing_in_proxy, (
+                f"IAM proxy data is missing expected 2100-2500 (5-year) years: "
+                f"{sorted(missing_in_proxy)}. Check the extension IAM CSV."
+            )
+    
+            # Calculate ratios (for each sector, for one emissions species)
+            # Compare input IAM vs gridded emissions for each sector and year.
+            # Align on inner join before xr.where (xr.where uses join='exact' internally,
+            # which fails when sector or year coordinates don't match exactly).
+            gridded_aligned, iam_aligned = xr.align(
+                gridded_emisssions_annual_totals, input_iam_annual_totals, join='inner'
+            )
+            print(f"  openburning aligned: gridded {gridded_aligned.shape}, iam {iam_aligned.shape}")
+            ratio_per_sector = xr.where(
+                gridded_aligned != 0,
+                iam_aligned / gridded_aligned,
+                1.0  # No correction where gridded is zero
+            )
 
-        # Precondition: the extension gridded file must cover 2105-2500 at 5-year steps
-        # (2100 is owned by fast-track and aligned separately in the 2100 alignment step).
-        # The IAM proxy data must cover 2100-2500 at 5-year steps (including 2100, which
-        # is used as the anchor for the alignment step). A gap in the gridded file means
-        # there is no spatial distribution to scale; a gap in the proxy means the
-        # correction ratio cannot be computed for that year.
-        _expected_gridded_years = set(range(2105, 2501, 5))
-        _expected_proxy_years = set(range(2100, 2501, 5))
-        _gridded_years = set(gridded_emisssions_annual_totals.year.values.tolist())
-        _iam_years = set(input_iam_annual_totals.year.values.tolist())
-        missing_in_gridded = _expected_gridded_years - _gridded_years
-        assert not missing_in_gridded, (
-            f"Extension gridded file is missing expected 2105-2500 (5-year) years: "
-            f"{sorted(missing_in_gridded)}. Check the gridding step's time coverage."
-        )
-        missing_in_proxy = _expected_proxy_years - _iam_years
-        assert not missing_in_proxy, (
-            f"IAM proxy data is missing expected 2100-2500 (5-year) years: "
-            f"{sorted(missing_in_proxy)}. Check the extension IAM CSV."
-        )
 
-        # Calculate ratios (for each sector, for one emissions species)
-        # Compare input IAM vs gridded emissions for each sector and year.
-        # Align on inner join before xr.where (xr.where uses join='exact' internally,
-        # which fails when sector or year coordinates don't match exactly).
-        gridded_aligned, iam_aligned = xr.align(
-            gridded_emisssions_annual_totals, input_iam_annual_totals, join='inner'
-        )
-        print(f"  openburning aligned: gridded {gridded_aligned.shape}, iam {iam_aligned.shape}")
-        ratio_per_sector = xr.where(
-            gridded_aligned != 0,
-            iam_aligned / gridded_aligned,
-            1.0  # No correction where gridded is zero
-        )
-
+        else:
+            # identity ratio with correct shape — no data loaded into memory
+            _sectors = scen_ds[var].sector.values
+            _years = sorted([int(col) for col in iam_df.columns if isinstance(col, int)])
+            ratio_per_sector = xr.DataArray(
+                np.ones((len(_years), len(_sectors))),
+                coords={'year': _years, 'sector': _sectors},
+                dims=['year', 'sector'],
+            )
+            
         # Apply this global scalar to `scen_ds`
         # Multiply the gridded data by the global scalar to match input emissions
         scen_ds_corrected = scen_ds.copy(deep=True)
@@ -2291,17 +2341,6 @@ if run_openburning_timeseries_correction:
         
         # Reorder dimensions if necessary
         scen_ds_corrected = scen_ds_corrected.pipe(reorder_dimensions, bound_var_name="bound")
-        
-        # Add global sums to metadata — pass the file's actual first/last years explicitly,
-        # otherwise add_file_global_sum_totals_attrs defaults to first_year='2022' which
-        # doesn't exist in the extension file (it spans 2100..2500) and raises KeyError.
-        _file_years = sorted(set(int(t.year) for t in scen_ds_corrected.time.values))
-        scen_ds_corrected = scen_ds_corrected.pipe(
-            add_file_global_sum_totals_attrs,
-            name=var,
-            first_year=str(_file_years[0]),
-            last_year=str(_file_years[-1]),
-        )
         
         # Copy bounds variables from original dataset to ensure they exist
         copy_bounds_data_variables(source=scen_ds, target=scen_ds_corrected)
@@ -2336,7 +2375,6 @@ if run_openburning_timeseries_correction:
         
         print(f"\nSaved corrected {gas_name} openburning emissions timeseries to {outfile}")
 
-
 # %% [markdown]
 # # 2100 alignment to fast-track gridded (additive offset with fade-out)
 # ## *Stage 10b/13* · [↑ overview](#workflow-for-cmip7-scenariomip-emissions-harmonization--post-2100-extensions)
@@ -2353,6 +2391,8 @@ if run_openburning_timeseries_correction:
 # cleanly and fades to zero by construction.
 
 # %%
+LOCATION_FASTTRACK_GRIDDED = Path("/Users/hoegner/GitHub/concordia/results")
+
 def _match_fasttrack_file(ext_file: Path, gas: str, type_with_dashes: str,
                           fasttrack_dir: Path, marker: str, version: str) -> Path | None:
     """Locate the fast-track counterpart of an extension nc file (must end at 210012)."""
@@ -2542,7 +2582,7 @@ if run_2100_alignment_to_fasttrack:
 
         # Make sure all dataset-level attributes from the original file are preserved
         copy_attributes(source=ext_ds, target=ext_corr)
-
+        
         # Materialise any remaining lazy reads from the source netCDF (notably the bounds
         # variables) so it is safe to close and overwrite the source file below.
         ext_corr = ext_corr.load()
@@ -2572,10 +2612,13 @@ if run_2100_alignment_to_fasttrack:
         # Standard final touches (mirror the existing post-processing pattern)
         ext_corr = (
             ext_corr
+            .pipe(add_time_bounds)
             .pipe(remove_fillvalue_from_bounds)
             .pipe(ensure_float_not_int)
             .pipe(ensure_data_var_attrs)
+            .pipe(fix_time_metadata)
         )
+
         try:
             ext_corr = add_file_global_sum_totals_attrs(
                 ext_corr, name=var, first_year=first_year_str, last_year=last_year_str,
@@ -3110,6 +3153,8 @@ if run_openburning_supplemental_voc:
 
 
 # %%
+experiment_name = cmip7_utils.scenario_name_prefix(m=marker_to_run)
+
 if run_anthro_supplemental_voc:
     voc_anthro = load_voc_bulk(type="anthro")
 
