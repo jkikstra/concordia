@@ -2349,6 +2349,7 @@ if run_openburning_timeseries_correction:
         
         print(f"\nSaved corrected {gas_name} openburning emissions timeseries to {outfile}")
 
+
 # %% [markdown]
 # # 2100 alignment to fast-track gridded (additive offset with fade-out)
 # ## *Stage 10b/13* · [↑ overview](#workflow-for-cmip7-scenariomip-emissions-harmonization--post-2100-extensions)
@@ -2365,7 +2366,7 @@ if run_openburning_timeseries_correction:
 # cleanly and fades to zero by construction.
 
 # %%
-LOCATION_FASTTRACK_GRIDDED = Path("/Users/hoegner/GitHub/concordia/results")
+# LOCATION_FASTTRACK_GRIDDED = Path("/Users/hoegner/GitHub/concordia/results")
 
 def _match_fasttrack_file(ext_file: Path, gas: str, type_with_dashes: str,
                           fasttrack_dir: Path, marker: str, version: str) -> Path | None:
