@@ -111,8 +111,8 @@ run_openburning_supplemental_voc: bool = True
 
 # main: files to produce (species, sector)
 DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["CO2", "SO2"]
-DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = ["NMVOC"] # e.g. ["CO2", "SO2"]
-DO_GRIDDING_ONLY_FOR_THESE_SECTORS: list[str] | None = ['anthro'] #, 'openburning', 'AIR_anthro']
+DO_GRIDDING_ONLY_FOR_THESE_SPECIES: list[str] | None = ["NMVOCbulk"] # e.g. ["CO2", "SO2"]
+DO_GRIDDING_ONLY_FOR_THESE_SECTORS: list[str] | None = ['openburning'] #, 'openburning', 'AIR_anthro']
 # supplemental: VOC files to produce
 # - anthro
 DO_VOC_SPECIATION_ANTHRO_ONLY_FOR_THESE_SPECIES: list[str] | None = None # e.g. ["VOC01_alcohols_em_speciated_VOC_anthro"]
@@ -1770,6 +1770,10 @@ def fix_time_metadata(ds: xr.Dataset) -> xr.Dataset:
             "_FillValue": None,
         }
 
+    ds.attrs['license_id'] = "CC BY 4.0"
+    ds.attrs['time_range'] = "210501-250012"
+    ds.attrs['data_usage_tips'] = "Note that these are monthly average fluxes."
+    
     return ds
 
 # %%
