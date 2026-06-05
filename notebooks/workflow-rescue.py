@@ -76,7 +76,7 @@ settings = Settings.from_config(
     # base_path="",
     config_path="/Users/jarmo/Documents/GitHub/mozart/projects/mine/concordia/notebooks/config-rescue.yaml",
     local_config_path="/Users/jarmo/Documents/GitHub/mozart/projects/mine/concordia/notebooks/local-config-rescue.yaml",
-    version="JSK-2026-06-01-gridding-tier2",
+    version="JSK-2026-06-02-gridding-tier1",
 )
 
 # %%
@@ -223,8 +223,8 @@ def patch_model_variable(var):
 with ur.context("AR4GWP100"):
     model = (
         pd.read_csv(
-            # settings.scenario_path / "REMIND-MAgPIE-CEDS-RESCUE-Tier1-2024-10-11.csv", # as run before
-            settings.scenario_path / "REMIND-MAgPIE-CEDS-RESCUE-Tier2-2025-09-15.csv", # Jarmo runs the gridding of Tier2 (after Jarmo already ran only the downscaling on 14.10.2025)            
+            settings.scenario_path / "REMIND-MAgPIE-CEDS-RESCUE-Tier1-2024-10-11.csv", # Jarmo reruns Tier1 on 02.06.2026 (as run before)
+            # settings.scenario_path / "REMIND-MAgPIE-CEDS-RESCUE-Tier2-2025-09-15.csv", # Jarmo runs the gridding of Tier2 on 01.06.2026 (after Jarmo already ran only the downscaling on 14.10.2025)            
             index_col=list(range(5)),
             sep=";",
         )
@@ -328,7 +328,7 @@ gdp = semijoin(
 # %%
 # Test with one scenario only
 one_scenario = False
-only_direct = False
+only_direct = True
 if one_scenario:
     model = model.loc[ismatch(scenario="RESCUE-Tier1-Direct-*-PkBudg500-OAE_on")]
 elif only_direct:
@@ -539,5 +539,8 @@ version_path
 # %%
 remote_path = Path("/forcings/emissions") / settings.version
 rescue_utils.ftp_upload(settings.ftp, version_path, remote_path)
+
+# %%
+print('hw')
 
 # %%

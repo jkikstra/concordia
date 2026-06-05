@@ -410,20 +410,20 @@ class WorkflowDriver:
                     )
                 return to_skip
 
-            return dask.compute(
-                (
-                    gridded.to_netcdf(
-                        template_fn,
-                        callback,
-                        directory=directory,
-                        encoding_kwargs=encoding_kwargs,
-                        compute=False,
-                    ),
-                    gridded.verify(compute=False) if verify else None,
+            results = []
+            for gridded in pathways:
+                if skip(gridded, template_fn, directory):
+                    continue
+                netcdf_result = gridded.to_netcdf(
+                    template_fn,
+                    callback,
+                    directory=directory,
+                    encoding_kwargs=encoding_kwargs,
+                    compute=True,
                 )
-                for gridded in pathways
-                if not skip(gridded, template_fn, directory)
-            )
+                verify_result = gridded.verify() if verify else None
+                results.append((netcdf_result, verify_result))
+            return results
 
         downscaled = self.harmonize_and_downscale()
 
