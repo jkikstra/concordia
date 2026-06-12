@@ -1,5 +1,6 @@
 CONFIG = "config_cmip7_v0-4-0.yaml"
 # CONFIG = "config_cmip7_esgf_v0_alpha.yaml"
+CONFIG = "config_cmip7_v0-4-0-EXT.yaml"
 
 CMIP_ERA = "CMIP6Plus" # for file-naming; note - currently doubles with DS ATTRS from cmip7 utils 
 

@@ -6,11 +6,11 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.17.3
+#       jupytext_version: 1.19.1
 #   kernelspec:
-#     display_name: Python 3 (ipykernel)
+#     display_name: Python (concordia)
 #     language: python
-#     name: python3
+#     name: concordia
 # ---
 
 # %%
@@ -70,19 +70,20 @@ GRIDDING_HISTORY: str | None = f"{marker_to_run}_{VERSION_ESGF}"
 
 # Where the downscaled data is stored (used for reading the downscaled historical data, and also as input for the extensions gridding workflow)
 from pathlib import Path
-JARMO_PATH = "/Users/jarmo/Library/CloudStorage/OneDrive-SharedLibraries-IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/Shared emission fields data/"
-ANNIKA_PATH = "/Users/hoegner/GitHub/concordia/results"
-USE_PATH = JARMO_PATH
-LOCATION_DOWNSCALED: Path = Path(USE_PATH + "/v1_1/all_downscaled_markers_1-1-1")
-LOCATION_CMIP7_HISTORY: Path = Path(USE_PATH + "/v1_1/workflow_history_files")
+USE_PATH = "/home/zecchetto/ECE-climate/extensions/input"
+#LOCATION_DOWNSCALED: Path = Path(USE_PATH + "/v1_1/all_downscaled_markers_1-1-1")
+LOCATION_DOWNSCALED: Path = Path(USE_PATH + "/all_downscaled_markers_1-1-1")
+#LOCATION_CMIP7_HISTORY: Path = Path(USE_PATH + "/v1_1/workflow_history_files")
+LOCATION_CMIP7_HISTORY: Path = Path(USE_PATH + "/workflow_history_files")
 # Fast-track gridded outputs (already-final v1_1 vl_1-1-1 files ending at 2100-12). Used to
 # anchor the extension at 2100 — see the `run_2100_alignment_to_fasttrack` block below.
-LOCATION_FASTTRACK_GRIDDED: Path = Path(USE_PATH + "/v1_1")
+#LOCATION_FASTTRACK_GRIDDED: Path = Path(USE_PATH + "/v1_1")
+LOCATION_FASTTRACK_GRIDDED: Path = Path("/home/zecchetto/ECE-climate/results_concordia")
 
 # Which parts to run
 run_main: bool = True # skips downscaling and the saving out of data of the main workflow; can still run supplemental workflows with this set to False
 run_main_gridding: bool = True # if false, we'll not run the main gridding workflow
-SKIP_EXISTING_MAIN_WORKFLOW_FILES: bool = False # if True, it won't reproduce files already on your disk
+SKIP_EXISTING_MAIN_WORKFLOW_FILES: bool = True # if True, it won't reproduce files already on your disk
 # NOTE: the CEDS-2023 spatial harmonisation block was removed from this workflow — it was
 # fast-track-legacy code that depended on 2023 historical data the extension doesn't have,
 # and the fade-to-zero-by-2050 made the correction identically zero for all extension years
@@ -267,7 +268,7 @@ def return_emission_names(file):
         parts = file.name.replace(f"_{FILE_NAME_ENDING}", "").split("-em-")
         gas_name = parts[0]
         type_name = parts[1]
-        var = f"{gas_name.replace("-","_")}_em_{type_name.replace("-","_")}"
+        var = f"{gas_name.replace('-','_')}_em_{type_name.replace('-','_')}"
     else:
         raise ValueError(f"Unrecognized file format: {file.name}. Expected format: '{{gas}}-em-{{type}}_{{FILE_NAME_ENDING}}'")
 
@@ -404,6 +405,7 @@ scenario_hist = (
     pd.read_csv(LOCATION_DOWNSCALED / HISTORY_FILE) # like "cmip7_history_countrylevel_250721.csv" 
     .drop(columns=['model', 'region', 'scenario', 'method'])
 )
+
 scenario_hist = scenario_hist.set_index(['country', 'gas', 'sector', 'unit'])
 scenario_hist = scenario_hist.sort_index()
 
@@ -1632,7 +1634,7 @@ cmip7_areacella.attrs['comment'] = f"Research data originally produced by {origi
 cmip7_areacella = cmip7_areacella.pipe(remove_fillvalue_from_bounds)
 folder_areacella = settings.out_path / GRIDDING_VERSION / 'areacella'
 folder_areacella.mkdir(parents=True, exist_ok=True)
-cmip7_areacella.to_netcdf(folder_areacella / f'areacella_input4MIPs_emissions_{cmip7_utils.DS_ATTRS['target_mip']}_{cmip7_utils.DS_ATTRS['institution_id']}-{VERSION_ESGF}_gn.nc', encoding=encoding)
+cmip7_areacella.to_netcdf(folder_areacella / f"areacella_input4MIPs_emissions_{cmip7_utils.DS_ATTRS['target_mip']}_{cmip7_utils.DS_ATTRS['institution_id']}-{VERSION_ESGF}_gn.nc", encoding=encoding)
 
 
 # %% [markdown]
@@ -1740,6 +1742,45 @@ def ensure_data_var_attrs(ds):
     # cell_methods: "time: mean"
     # long_name: ...
     ds = clean_var(ds, name, gas, handle)
+
+    return ds
+
+# helper function to fix time and time_bnds
+def fix_time_metadata(ds: xr.Dataset) -> xr.Dataset:
+    # Fix time encoding: float64, correct units/calendar, add bounds attribute
+    # Remove units/calendar from attrs — xarray requires these only in encoding
+    ds["time"].attrs["bounds"] = "time_bnds"
+    ds["time"].attrs.pop("units", None)
+    ds["time"].attrs.pop("calendar", None)
+    # Set encoding
+    ds["time"].encoding["dtype"] = "float64"
+    ds["time"].encoding["units"] = "days since 2022-01-01"
+    ds["time"].encoding["calendar"] = "365_day"
+    # Add bounds pointer as attr (this one is fine in attrs)
+
+    # Fix time_bnds: strip all attributes and prevent xarray from
+    # re-encoding it as a time variable by storing raw numeric values
+    if "time_bnds" in ds:
+        # Decode to numeric values using the same reference units
+        import cftime
+        ref = cftime.date2num(
+            ds["time_bnds"].values,
+            units="days since 2022-01-01",
+            calendar="365_day",
+        )
+        ds["time_bnds"] = xr.DataArray(
+            ref,
+            dims=ds["time_bnds"].dims,
+        )
+        ds["time_bnds"].attrs = {}
+        ds["time_bnds"].encoding = {
+            "dtype": "float64",
+            "_FillValue": None,
+        }
+
+    ds.attrs['license_id'] = "CC BY 4.0"
+    ds.attrs['time_range'] = "210501-250012"
+    ds.attrs['data_usage_tips'] = "Note that these are monthly average fluxes."
 
     return ds
 
@@ -1894,16 +1935,16 @@ if run_AIR_anthro_timeseries_correction:
         # Reorder dimensions if necessary
         scen_ds_corrected = scen_ds_corrected.pipe(reorder_dimensions, bound_var_name="bound")
         
-        # Add global sums to metadata — pass the file's actual first/last years explicitly,
-        # otherwise add_file_global_sum_totals_attrs defaults to first_year='2022' which
-        # doesn't exist in the extension file (it spans 2100..2500) and raises KeyError.
-        _file_years = sorted(set(int(t.year) for t in scen_ds_corrected.time.values))
-        scen_ds_corrected = scen_ds_corrected.pipe(
-            add_file_global_sum_totals_attrs,
-            name=var,
-            first_year=str(_file_years[0]),
-            last_year=str(_file_years[-1]),
-        )
+       # # Add global sums to metadata — pass the file's actual first/last years explicitly,
+       # # otherwise add_file_global_sum_totals_attrs defaults to first_year='2022' which
+       # # doesn't exist in the extension file (it spans 2100..2500) and raises KeyError.
+       # _file_years = sorted(set(int(t.year) for t in scen_ds_corrected.time.values))
+       # scen_ds_corrected = scen_ds_corrected.pipe(
+       #     add_file_global_sum_totals_attrs,
+       #     name=var,
+       #     first_year=str(_file_years[0]),
+       #     last_year=str(_file_years[-1]),
+       # )
         
         # Copy bounds variables from original dataset to ensure they exist
         copy_bounds_data_variables(source=scen_ds, target=scen_ds_corrected)
@@ -2107,16 +2148,16 @@ if run_anthro_timeseries_correction:
         # Reorder dimensions if necessary
         scen_ds_corrected = scen_ds_corrected.pipe(reorder_dimensions, bound_var_name="bound")
 
-        # Add global sums to metadata — pass the file's actual first/last years explicitly,
-        # otherwise add_file_global_sum_totals_attrs defaults to first_year='2022' which
-        # doesn't exist in the extension file (it spans 2100..2500) and raises KeyError.
-        _file_years = sorted(set(int(t.year) for t in scen_ds_corrected.time.values))
-        scen_ds_corrected = scen_ds_corrected.pipe(
-            add_file_global_sum_totals_attrs,
-            name=var,
-            first_year=str(_file_years[0]),
-            last_year=str(_file_years[-1]),
-        )
+       # # Add global sums to metadata — pass the file's actual first/last years explicitly,
+       # # otherwise add_file_global_sum_totals_attrs defaults to first_year='2022' which
+       # # doesn't exist in the extension file (it spans 2100..2500) and raises KeyError.
+       # _file_years = sorted(set(int(t.year) for t in scen_ds_corrected.time.values))
+       # scen_ds_corrected = scen_ds_corrected.pipe(
+       #     add_file_global_sum_totals_attrs,
+       #     name=var,
+       #     first_year=str(_file_years[0]),
+       #     last_year=str(_file_years[-1]),
+       # )
 
         # Copy bounds variables from original dataset to ensure they exist
         copy_bounds_data_variables(source=scen_ds, target=scen_ds_corrected)
@@ -2155,7 +2196,7 @@ if run_anthro_timeseries_correction:
 # run the openburning timeseries correction (only em_openburning)
 # NOTE: should take <1min per file
 
-if run_openburning_timeseries_correction:
+if run_openburning_timeseries_correction: 
 
     # files that are produced above, that may need correction
     files = [
@@ -2299,16 +2340,16 @@ if run_openburning_timeseries_correction:
         # Reorder dimensions if necessary
         scen_ds_corrected = scen_ds_corrected.pipe(reorder_dimensions, bound_var_name="bound")
         
-        # Add global sums to metadata — pass the file's actual first/last years explicitly,
-        # otherwise add_file_global_sum_totals_attrs defaults to first_year='2022' which
-        # doesn't exist in the extension file (it spans 2100..2500) and raises KeyError.
-        _file_years = sorted(set(int(t.year) for t in scen_ds_corrected.time.values))
-        scen_ds_corrected = scen_ds_corrected.pipe(
-            add_file_global_sum_totals_attrs,
-            name=var,
-            first_year=str(_file_years[0]),
-            last_year=str(_file_years[-1]),
-        )
+       # # Add global sums to metadata — pass the file's actual first/last years explicitly,
+       # # otherwise add_file_global_sum_totals_attrs defaults to first_year='2022' which
+       # # doesn't exist in the extension file (it spans 2100..2500) and raises KeyError.
+       # _file_years = sorted(set(int(t.year) for t in scen_ds_corrected.time.values))
+       # scen_ds_corrected = scen_ds_corrected.pipe(
+       #     add_file_global_sum_totals_attrs,
+       #     name=var,
+       #     first_year=str(_file_years[0]),
+       #     last_year=str(_file_years[-1]),
+       # )
         
         # Copy bounds variables from original dataset to ensure they exist
         copy_bounds_data_variables(source=scen_ds, target=scen_ds_corrected)
@@ -2741,9 +2782,11 @@ if run_2100_alignment_to_fasttrack:
         # Standard final touches (mirror the existing post-processing pattern)
         ext_corr = (
             ext_corr
+            .pipe(add_time_bounds)
             .pipe(remove_fillvalue_from_bounds)
             .pipe(ensure_float_not_int)
             .pipe(ensure_data_var_attrs)
+            .pipe(fix_time_metadata)
         )
         try:
             ext_corr = add_file_global_sum_totals_attrs(
@@ -2855,7 +2898,7 @@ def add_sector_bounds(ds, source_ds=None):
 # 2. load translation file
 # 3 apply translation file (logic: h2_openburning = co_openburning * h2_translation)
 
-if run_openburning_h2:
+if run_openburning_h2: 
     print('Generating H2 openburning emissions from CO openburning and H2/CO emission factor ratios')
     
     # Load the CO openburning emissions
@@ -2964,7 +3007,7 @@ if run_openburning_h2:
 
     # save out
     print('Writing out H2 openburning emissions')
-    outfile = settings.out_path / GRIDDING_VERSION / f"{gas_variable_name.replace("_","-")}_{FILE_NAME_ENDING}"
+    outfile = settings.out_path / GRIDDING_VERSION / f"{gas_variable_name.replace('_','-')}_{FILE_NAME_ENDING}"
 
     encoding = {
         gas_variable_name: {
@@ -3100,8 +3143,9 @@ voc_spec_ratios_location_openburning = settings.proxy_path / "NMVOC_speciation"
 #   ii. assign sector value
 # 5. Update/set other attributes
 
+experiment_name = cmip7_utils.scenario_name_prefix(m=marker_to_run)
 # %%
-if run_openburning_supplemental_voc:
+if run_openburning_supplemental_voc: 
     voc_openburning = load_voc_bulk(type="openburning")
 
     if DO_VOC_SPECIATION_OPENBURNING_ONLY_FOR_THESE_SPECIES is None:
@@ -3232,7 +3276,7 @@ if run_openburning_supplemental_voc:
                 "complevel": 2,
             }
         }
-
+        voc_spec = voc_spec.load()
         with ProgressBar():
             voc_spec.to_netcdf(
                 outfile,
@@ -3407,7 +3451,7 @@ if run_anthro_supplemental_voc:
         outfile = settings.out_path / GRIDDING_VERSION / f"{name}_{FILE_NAME_ENDING}"
 
         encoding = {gas_variable_name: {"zlib": True, "complevel": 2,}}
-
+        voc_spec = voc_spec.load()
         with ProgressBar():
             voc_spec.to_netcdf(outfile, mode="w", encoding=encoding, compute=True,)
 
@@ -3832,7 +3876,7 @@ if save_total_emissions_as_csv:
                 cell_area=cell_area,
                 keep_sectors=True
             ).to_pandas()
-            scen_sectors_df.to_csv(folder_totals / f"{var.replace("_","-")}_{FILE_NAME_ENDING.rstrip('.nc')}_annual_totals_by_sector.csv")
+            scen_sectors_df.to_csv(folder_totals / f"{var.replace('_','-')}_{FILE_NAME_ENDING.rstrip('.nc')}_annual_totals_by_sector.csv")
 
             scen_df = ds_to_annual_emissions_total( # takes about 5-10 seconds
                 gridded_data=scen,
@@ -3840,7 +3884,7 @@ if save_total_emissions_as_csv:
                 cell_area=cell_area,
                 keep_sectors=False
             ).to_pandas().to_frame(name='emissions_Mt_year')
-            scen_df.to_csv(folder_totals / f"{var.replace("_","-")}_{FILE_NAME_ENDING.rstrip('.nc')}_annual_totals.csv")
+            scen_df.to_csv(folder_totals / f"{var.replace('_','-')}_{FILE_NAME_ENDING.rstrip('.nc')}_annual_totals.csv")
 # %% [markdown]
 # # CONTINUED POSTPROCESSING
 # ## 4. plotting

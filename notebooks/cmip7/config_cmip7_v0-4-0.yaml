@@ -3,11 +3,13 @@ local_config_path: 'config_cmip7_v0-4-0.yaml' # this file; we don't use a separa
 # ---- standard config for CMIP7 ----
 out_path: "../../results"
 #out_path: "C:/Users/kikstra/Documents/GitHub/concordia/results" # Jarmo; 19.09.2025 and later
+out_path: "/pdrive/projects/ece-climate/extensions/results"
 
 # this needs to be changed based on where you want to store your own data
 # data_path: "/Users/hoegner/Projects/CMIP7/" # Annika
 #data_path: "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0-4-0" # Jarmo; 22.10.2025 and later
 data_path: "/Users/jarmo/Library/CloudStorage/OneDrive-SharedLibraries-IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_v0-4-0" # Jarmo; 21.04.2026 and later (on Mac)
+data_path: "/pdrive/projects/ece-climate/input_data_concordia/concordia_cmip7_v0-4-0"
 
 # variabledefs_path: "$data_path/input/variabledefinitions/variabledefs-cmip7_v0-4-0.csv" 
 # variabledefs_path: "$data_path/input/variabledefinitions/variabledefs-cmip7_v0-4-0_fixSO2NMVOC.csv"

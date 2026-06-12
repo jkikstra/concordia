@@ -212,8 +212,8 @@ DS_ATTRS = dict(
     realm="atmos",
     references="See: https://github.com/IAMconsortium/concordia and https://github.com/iiasa/emissions_harmonization_historical for references",
     source="Scenarios generated as part of the ScenarioMIP-CMIP7 project, see https://wcrp-cmip.org/mips/scenariomip/",
-    further_info_url="https://doi.org/10.5281/zenodo.17981825",
-    doi="10.5281/zenodo.17981825",
+    further_info_url="https://doi.org/10.5281/zenodo.17981824",
+    doi="10.5281/zenodo.17981824",
     table_id="input4MIPs",
     target_mip="ScenarioMIP", # Should this be ScenarioMIP? what is target_mip?
     product="derived",
@@ -593,7 +593,7 @@ def ds_attrs(name, marker_scenario_name, version, date):
 
     extra_attrs = dict(
         source_version=version.split("_", 1)[1].replace("-", "."),
-        source_id=f"{DS_ATTRS['institution_id']}-{version.replace("_", "-")}",
+        source_id=f"{DS_ATTRS['institution_id']}-{version.replace('_', '-')}",
         variable_id=name,
         creation_date=date,
         title=title,
@@ -602,7 +602,8 @@ def ds_attrs(name, marker_scenario_name, version, date):
     attrs = DS_ATTRS | extra_attrs
     return attrs
 
-def return_cell_area(settings=None, GRIDDING_VERSION="cell-area", SETTINGS_FILE="config_cmip7_v0-4-0.yaml"):
+#def return_cell_area(settings=None, GRIDDING_VERSION="cell-area", SETTINGS_FILE="config_cmip7_v0-4-0.yaml"):
+def return_cell_area(settings=None, GRIDDING_VERSION="cell-area", SETTINGS_FILE="config_cmip7_v0-4-0-EXT.yaml"):
 
     if settings is None:
         try:
@@ -1327,7 +1328,7 @@ def scenario_name_prefix(m):
     return f"{m.lower()}"
 
 def filename_for_esgf(marker: str, version: str):
-    return f"{DS_ATTRS["activity_id"]}_emissions_{DS_ATTRS["target_mip"]}_{DS_ATTRS["institution_id"]}-{scenario_name_prefix(marker)}-{version}_{DS_ATTRS["grid_label"]}_{DS_ATTRS["start_date"]}-{DS_ATTRS["end_date"]}.nc"
+    return f"{DS_ATTRS['activity_id']}_emissions_{DS_ATTRS['target_mip']}_{DS_ATTRS['institution_id']}-{scenario_name_prefix(marker)}-{version}_{DS_ATTRS['grid_label']}_{DS_ATTRS['start_date']}-{DS_ATTRS['end_date']}.nc"
 
 
 # Post-processing
