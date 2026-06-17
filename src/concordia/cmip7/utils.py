@@ -602,8 +602,7 @@ def ds_attrs(name, marker_scenario_name, version, date):
     attrs = DS_ATTRS | extra_attrs
     return attrs
 
-#def return_cell_area(settings=None, GRIDDING_VERSION="cell-area", SETTINGS_FILE="config_cmip7_v0-4-0.yaml"):
-def return_cell_area(settings=None, GRIDDING_VERSION="cell-area", SETTINGS_FILE="config_cmip7_v0-4-0-EXT.yaml"):
+def return_cell_area(settings=None, GRIDDING_VERSION="cell-area", SETTINGS_FILE="config_cmip7_v0-4-0.yaml"):
 
     if settings is None:
         try:

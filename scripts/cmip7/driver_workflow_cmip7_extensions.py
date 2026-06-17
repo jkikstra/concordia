@@ -18,7 +18,6 @@ def get_notebook_parameters(notebook_name: str,
                             GRIDDING_VERSION: str,
                             # Files
                             SETTINGS_FILE: str = "config_cmip7_v0-4-0-EXT.yaml", 
-                            #HISTORY_FILE: str = "country-history_202511261223_202511040855_202512032146_202512021030_7e32405ade790677a6022ff498395bff00d9792d.csv",
                             # WORKFLOW ELEMENTS: What elements of the workflow 
                             run_main: bool = True, # argument not currently a used
                             run_main_gridding: bool =True, # produce BC-*, ..., VOC-* .nc files (AIR, anthro, openburning)
@@ -136,7 +135,7 @@ def main():  # noqa: PLR0912
         for notebook in all_notebooks:
             if any(notebook.name.startswith(np) for np in notebook_prefixes):
 
-                print(f"RUNNING: {markers}")
+                print(f"RUNNING: {marker}")
                 GRIDDING_VERSION = f"{marker}-ext_1-1-1"
 
                 parameters = get_notebook_parameters(notebook.name,
