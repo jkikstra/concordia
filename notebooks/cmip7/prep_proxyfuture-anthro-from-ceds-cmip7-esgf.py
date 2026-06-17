@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.7
+#       jupytext_version: 1.17.3
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -36,8 +36,8 @@ from concordia.cmip7.CONSTANTS import PROXY_YEARS
 lock = SerializableLock()
 
 # %%
-# grid_file_location = "/home/hoegner/Projects/CMIP7/input/gridding/"
-grid_file_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_esgf_v0_alpha/input/gridding/"
+grid_file_location = "/Users/hoegner/Projects/CMIP7/input/gridding/"
+# grid_file_location = "C:/Users/kikstra/IIASA/ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/concordia_cmip7_esgf_v0_alpha/input/gridding/"
 
 ceds_data_location = Path(grid_file_location, "esgf", "ceds", "CMIP7_anthro")
 ceds_air_data_location = Path(grid_file_location, "esgf", "ceds", "CMIP7_AIR")
@@ -232,7 +232,7 @@ for file in ceds_air_data_location.glob("*.nc"):
     ds = ds.assign_coords(year=("time", ds["time"].dt.year.data), month=("time", ds["time"].dt.month.data)).groupby(["year", "month"]).mean()
 
     # select 2023 data and project it onto future years
-    ds = ds.sel(year=2023).expand_dims({"year": years})
+    ds = ds.sel(year=2022).expand_dims({"year": years})
 
     # reorder dimensions
     ds_reordered = xr.Dataset(
@@ -241,7 +241,7 @@ for file in ceds_air_data_location.glob("*.nc"):
     coords={dim: ds[dim] for dim in ["lat", "lon", "level", "gas", "sector", "year", "month"]}
     ).chunk({"month": 12})
 
-    outfile = new_proxies_location / f"aircraft_{species}.nc"
+    outfile = new_proxies_location / f"aircraft_{species}_2022.nc"
     if outfile.exists():
         outfile.unlink()
         
