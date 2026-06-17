@@ -252,3 +252,114 @@ for file in ceds_air_data_location.glob("*.nc"):
     
     with ProgressBar():
         ds_reordered.to_netcdf(outfile, mode="w", encoding=encoding)
+
+
+# %% [markdown]
+# ### check aircraft proxy seasonality
+
+# %%
+# variant of the function in util_plotting.py with adapted time dimensions; we only use it here, so i'll just leave it here
+# only for a rough diagnostic check
+
+def ds_to_monthly_emissions_total(
+    gridded_data,
+    var_name,
+    cell_area: xr.DataArray,
+    keep_sectors=True,
+    sum_dims=("lat", "lon"),
+):
+    """
+    Convert kg/m2/s → Mt/month for data already on (year, month) grid.
+
+    NO calendar logic needed.
+    NO datetime conversion.
+    Pure spatial + temporal aggregation.
+    """
+
+    da = gridded_data[var_name]
+
+    # -----------------------------
+    # 1. unit conversion factor MUST already be monthly-integrated
+    # -----------------------------
+    # If your dataset is kg/m2/s, you still need seconds per month.
+    # BUT we assume model already provides consistent monthly structure.
+    #
+    # If NOT, you should supply a precomputed factor externally.
+
+    raise_if_missing_time = (
+        "year" not in da.dims or "month" not in da.dims
+    )
+    if raise_if_missing_time:
+        raise ValueError("Expected (year, month) dimensions")
+
+    seconds_per_month = 30 * 86400  # FIXED approximation ONLY
+
+    monthly = da * seconds_per_month
+
+    # -----------------------------
+    # 2. area weighting
+    # -----------------------------
+    area_weighted = monthly * cell_area
+
+    # -----------------------------
+    # 3. spatial reduction
+    # -----------------------------
+    dims_to_sum = list(sum_dims)
+
+    if "level" in area_weighted.dims:
+        dims_to_sum.append("level")
+
+    kg_per_month = area_weighted.sum(dim=dims_to_sum)
+
+    # -----------------------------
+    # 4. convert units
+    # -----------------------------
+    result = kg_per_month * 1e-9  # Mt/month
+
+    # -----------------------------
+    # 5. sector handling
+    # -----------------------------
+    if "sector" in result.dims and not keep_sectors:
+        result = result.sum("sector")
+
+    result.name = var_name
+
+    return result
+
+
+# %%
+old_proxy = xr.open_dataset(
+    new_proxies_location / "aircraft_NOx.nc",
+    chunks={"year": 1},
+).isel(year=slice(0, 15))
+
+new_proxy = xr.open_dataset(
+    new_proxies_location / "aircraft_NOx_2022.nc",
+    chunks={"year": 1},
+).isel(year=slice(0, 15))
+
+areacella = xr.open_dataset(Path(grid_file_location, "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc"))["areacella"]
+
+old_proxy_monthly = ds_to_monthly_emissions_total(old_proxy, "emissions", cell_area=areacella)
+new_proxy_monthly = ds_to_monthly_emissions_total(new_proxy, "emissions", cell_area=areacella)
+
+# pick a year directly (no stacking needed)
+plot_year = 2060
+
+old_year = old_proxy_monthly.sel(year=plot_year).squeeze()
+new_year = new_proxy_monthly.sel(year=plot_year).squeeze()
+
+# seasonal fraction (normalised)
+old_frac = (old_year / old_year.sum(dim="month"))*100
+new_frac = (new_year / new_year.sum(dim="month"))*100
+
+# plot
+fig, ax = plt.subplots(figsize=(12, 4))
+
+old_frac.plot(label="2023 proxy")
+new_frac.plot(label="2022 proxy")
+
+plt.legend()
+plt.ylabel("fraction of annual total")
+plt.title(f"Seasonality {plot_year}")
+plt.show()
