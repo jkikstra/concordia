@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import cftime
 import ftplib
 import logging
 from collections.abc import Sequence
@@ -33,9 +34,9 @@ from concordia.settings import Settings
 
 logger = logging.getLogger(__name__)
 
-#' TODO: check all these variable names and renamings
-#' - e.g., "Residential Commercial Other"
-#' - e.g., "Residential Commercial Other"
+# ' TODO: check all these variable names and renamings
+# ' - e.g., "Residential Commercial Other"
+# ' - e.g., "Residential Commercial Other"
 
 
 SECTOR_RENAMES = {
@@ -197,7 +198,7 @@ DS_ATTRS = dict(
     Conventions="CF-1.8",
     activity_id="input4MIPs",
     comment="Gridded emissions produced after harmonization and downscaling as part of the ScenarioMIP-CMIP7. See https://github.com/iiasa/emissions_harmonization_historical, https://github.com/IAMconsortium/concordia, and https://github.com/iiasa/aneris for documentation on the processes.",
-    contact="kikstra@iiasa.ac.at, hoegner@iiasa.ac.at, zecchetto@iiasa.ac.at",
+    contact="kikstra@iiasa.ac.at, benjamin.sanderson@cicero.oslo.no, marit.sandstad@cicero.oslo.no, hoegner@iiasa.ac.at, zecchetto@iiasa.ac.at",
     data_structure="grid",
     dataset_category="emissions",
     external_variables="gridcell_area",
@@ -217,7 +218,7 @@ DS_ATTRS = dict(
     table_id="input4MIPs",
     target_mip="ScenarioMIP", # Should this be ScenarioMIP? what is target_mip?
     product="derived",
-    start_date="210101",
+    start_date="210501",
     end_date="250012",
     creation_date=generate_creation_timestamp(),
     tracking_id=generate_tracking_id()
@@ -227,44 +228,127 @@ DS_ATTRS = dict(
 ALKALINITY_ADDITION_LONGNAME = "Alkalinity Addition as part of OAE"
 
 
+#def convert_to_datetime(ds: xr.Dataset) -> xr.Dataset:
+#    ds = ds.stack(time=("year", "month"))
+#    dates = pd.DatetimeIndex(
+#        ds.indexes["time"].map(
+#            lambda t: datetime.date(t[0], t[1], 16 if t[1] != 2 else 15)
+#        )
+#    )
+#    return (
+#        ds.drop_vars(["time", "year", "month"])
+#        .assign_coords(
+#            time=xr.IndexVariable(
+#                "time",
+#                dates,
+#                encoding=dict(
+#                    units="days since 2022-1-1 0:0:0",
+#                    calendar="365_day",
+#                    dtype=np.dtype(float),
+#                ),
+#            )
+#        )
+#        .transpose("time", ...)
+#    )
+
+
+
 def convert_to_datetime(ds: xr.Dataset) -> xr.Dataset:
     ds = ds.stack(time=("year", "month"))
-    dates = pd.DatetimeIndex(
-        ds.indexes["time"].map(
-            lambda t: datetime.date(t[0], t[1], 16 if t[1] != 2 else 15)
+    dates = xr.CFTimeIndex([
+        cftime.DatetimeNoLeap(
+            int(y),
+            int(m),
+            16 if int(m) != 2 else 15
         )
-    )
+        for y, m in ds.indexes["time"].values
+    ])
+    # assign new coordinate and clean up
     return (
-        ds.drop_vars(["time", "year", "month"])
-        .assign_coords(
-            time=xr.IndexVariable(
-                "time",
-                dates,
-                encoding=dict(
-                    units="days since 2022-1-1 0:0:0",
-                    calendar="365_day",
-                    dtype=np.dtype(float),
-                ),
-            )
-        )
+        ds
+        .drop_vars(["year", "month"], errors="ignore")
+        .assign_coords(time=dates)
         .transpose("time", ...)
     )
+
 
 
 def clean_coords(ds):
     return ds.squeeze(drop=True)
 
 
+#def add_bounds(ds, bounds=["lat", "lon", "time", "level"]):
+#    bounds = list(set(bounds) & set(ds.coords))
+#    ds = ds.cf.add_bounds(bounds, output_dim="bound")
+#    ds = ds.reset_coords([f"{b}_bounds" for b in bounds]).rename(
+#        {f"{b}_bounds": f"{b}_bnds" for b in bounds}
+#    )
+#    for b in bounds:
+#        ds.coords[b].attrs["bounds"] = f"{b}_bnds"
+#    return ds
+
+# cftime-safe version of add_bounds
 def add_bounds(ds, bounds=["lat", "lon", "time", "level"]):
     bounds = list(set(bounds) & set(ds.coords))
-    ds = ds.cf.add_bounds(bounds, output_dim="bound")
-    ds = ds.reset_coords([f"{b}_bounds" for b in bounds]).rename(
-        {f"{b}_bounds": f"{b}_bnds" for b in bounds}
-    )
-    for b in bounds:
-        ds.coords[b].attrs["bounds"] = f"{b}_bnds"
-    return ds
 
+    spatial_bounds = [b for b in bounds if b != "time"]
+    has_time = "time" in bounds and "time" in ds.coords
+
+    if spatial_bounds:
+        ds = ds.cf.add_bounds(spatial_bounds, output_dim="bound")
+        ds = ds.reset_coords([f"{b}_bounds" for b in spatial_bounds]).rename(
+            {f"{b}_bounds": f"{b}_bnds" for b in spatial_bounds}
+        )
+        for b in spatial_bounds:
+            ds.coords[b].attrs["bounds"] = f"{b}_bnds"
+
+    if has_time:
+        # taken from utils.py function add_time_bounds
+        # Add monthly time bounds (1st to 1st of next month)
+        
+        time_values = ds.time.values
+        
+        # Convert to cftime if needed
+        if hasattr(time_values[0], 'year'):
+            # Already cftime objects
+            time_cftime = time_values
+        else:
+            # Convert numpy.datetime64 to pandas DatetimeIndex, then to cftime
+            import pandas as pd
+            time_pd = pd.to_datetime(time_values)
+            time_cftime = np.array([
+                DatetimeNoLeap(t.year, t.month, t.day, t.hour, t.minute, t.second, 
+                              t.microsecond, has_year_zero=True)
+                for t in time_pd
+            ])
+        
+        # Create lower bounds: 1st of current month
+        time_lower = np.array([
+            DatetimeNoLeap(t.year, t.month, 1, 0, 0, 0, 0, has_year_zero=True)
+            for t in time_cftime
+        ])
+        
+        # Create upper bounds: 1st of next month
+        time_upper = np.array([
+            DatetimeNoLeap(
+                t.year if t.month < 12 else t.year + 1,
+                t.month + 1 if t.month < 12 else 1,
+                1, 0, 0, 0, 0, has_year_zero=True
+            )
+            for t in time_cftime
+        ])
+        
+        # Stack into shape (time, 2)
+        time_bnds_array = np.column_stack([time_lower, time_upper])
+        
+        # Assign as data variable
+        ds = ds.assign({
+            "time_bnds": (("time", "bound"), time_bnds_array),
+        })
+    
+
+    return ds
+    
 
 def rename_sectors(ds, renames: dict):
     if "sector" not in ds.indexes:
@@ -823,7 +907,7 @@ class Variants:
         return self.rename_suffix(data, f" ({self.suffix})", f"|{self.suffix}", on=on)
 
 
-### Define some useful functions
+# ## Define some useful functions
 
 # Load IAMC data
 def load_data(file_path):
@@ -1191,7 +1275,7 @@ def save_data(df, output_path):
         df.to_excel(output_path, index=False)
     else:
         raise ValueError("Unsupported file format. Use .csv or .xlsx.")
-    
+
 # create a comparison
 # Approach:
 #     Canonical Form for Comparison:

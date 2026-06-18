@@ -96,7 +96,8 @@ class Settings:
     ) -> Self:
         if base_path is not None:
             base_path = Path(base_path)
-            config_path = base_path / config_path
+            if config_path is not None:
+                config_path = base_path / config_path
 
         config = dict()
         # local config takes precedence and is therefore 
