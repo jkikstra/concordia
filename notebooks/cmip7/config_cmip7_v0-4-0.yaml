@@ -1,8 +1,7 @@
 local_config_path: 'config_cmip7_v0-4-0.yaml' # this file; we don't use a separate local file
 
 # ---- standard config for CMIP7 ----
-out_path: "../../results"
-#out_path: "C:/Users/kikstra/Documents/GitHub/concordia/results" # Jarmo; 19.09.2025 and later
+out_path: "C:/Users/kikstra/Documents/GitHub/concordia/results" # Jarmo; 19.09.2025 and later
 
 # this needs to be changed based on where you want to store your own data
 # data_path: "/Users/hoegner/Projects/CMIP7/" # Annika

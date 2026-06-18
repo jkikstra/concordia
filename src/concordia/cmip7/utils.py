@@ -593,7 +593,7 @@ def ds_attrs(name, marker_scenario_name, version, date):
 
     extra_attrs = dict(
         source_version=version.split("_", 1)[1].replace("-", "."),
-        source_id=f"{DS_ATTRS['institution_id']}-{version.replace("_", "-")}",
+        source_id=f"{DS_ATTRS['institution_id']}-{version.replace('_', '-')}",
         variable_id=name,
         creation_date=date,
         title=title,
@@ -1327,7 +1327,7 @@ def scenario_name_prefix(m):
     return f"{m.lower()}"
 
 def filename_for_esgf(marker: str, version: str):
-    return f"{DS_ATTRS["activity_id"]}_emissions_{DS_ATTRS["target_mip"]}_{DS_ATTRS["institution_id"]}-{scenario_name_prefix(marker)}-{version}_{DS_ATTRS["grid_label"]}_{DS_ATTRS["start_date"]}-{DS_ATTRS["end_date"]}.nc"
+    return f"{DS_ATTRS['activity_id']}_emissions_{DS_ATTRS['target_mip']}_{DS_ATTRS['institution_id']}-{scenario_name_prefix(marker)}-{version}_{DS_ATTRS['grid_label']}_{DS_ATTRS['start_date']}-{DS_ATTRS['end_date']}.nc"
 
 
 # Post-processing
