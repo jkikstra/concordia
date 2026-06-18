@@ -6,7 +6,12 @@ import cartopy.feature as cfeature
 import numpy as np
 import xarray as xr
 from pathlib import Path
-import nc_time_axis  # noqa: F401 — registers cftime support for matplotlib
+try:
+    import nc_time_axis  # noqa: F401 — registers cftime support for matplotlib (plotting only)
+except ModuleNotFoundError:
+    # nc_time_axis is only needed for the cftime-axis plotting helpers; the emission-total
+    # functions below work without it. Don't let its absence block importing this module.
+    nc_time_axis = None
 
 # %%
 # functions
@@ -202,8 +207,69 @@ def ds_to_annual_emissions_total(gridded_data, var_name, cell_area: xr.DataArray
 
     # make sure variable is correctly named
     da_Mt_y = da_Mt_y.rename(var_name)
-    
+
     return da_Mt_y
+
+
+# From a grid to global monthly totals
+def ds_to_monthly_emissions_total(gridded_data, var_name, cell_area: xr.DataArray | None = None, keep_sectors=True, sum_dims: list[str] | None = ["lat", "lon"]):
+    """
+    Convert gridded emissions in kg/m2/s to Mt/month (global), keeping monthly resolution.
+
+    Same as `ds_to_annual_emissions_total` but WITHOUT aggregating across months, so the
+    'time' dimension (one point per month) is preserved — used to inspect seasonality.
+    For aircraft files, integrates vertically by summing over 'level'. The input may be the
+    full file or already filtered to a single year (e.g. 2022 or 2023).
+
+    Parameters:
+    - gridded_data: xr.Dataset containing the emission variable
+    - var_name: str, name of the variable to convert
+    - cell_area: xr.DataArray of shape (lat, lon), in m2
+    - keep_sectors: bool, if True, retain sector info
+    - sum_dims: list of spatial dimensions to sum over
+
+    Returns:
+    - xr.DataArray of Mt/month, with the monthly 'time' dimension preserved
+    """
+    if cell_area is None:
+        from concordia.settings import Settings
+        from concordia.cmip7.CONSTANTS import CONFIG
+        HERE = Path(__file__).parent.parent.parent.parent / "notebooks" / "cmip7"
+        dummy_settings = Settings.from_config(local_config_path=Path(HERE, CONFIG), version=None)
+        areacella = xr.open_dataset(Path(dummy_settings.gridding_path,
+                                         "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc"))
+        cell_area = areacella["areacella"]
+
+    da = gridded_data[var_name]
+
+    # obtain the seconds in each month for which data is available
+    seconds_per_month = da.time.dt.days_in_month * 24 * 60 * 60
+
+    # kg/m2/s --> kg/m2/month
+    monthly = seconds_per_month * da
+
+    # weight with cell area: kg/m2/month --> kg/cell/month
+    area_weighted = cell_area * monthly
+
+    # Sum over spatial dimensions (+ altitude for aircraft): kg/cell/month --> kg/month (global)
+    sum_dims_to_use = sum_dims.copy() if sum_dims else []
+    if "level" in area_weighted.dims:
+        sum_dims_to_use.append("level")  # altitude: vertical integration for aircraft datasets
+    if sum_dims_to_use:
+        kg_per_month = area_weighted.sum(dim=sum_dims_to_use)
+    else:
+        kg_per_month = area_weighted
+
+    # Convert to Mt/month (NB: no groupby-year-sum, so 'time' is kept)
+    da_Mt_m = kg_per_month * 1e-9
+
+    if "sector" in da_Mt_m.dims and not keep_sectors:
+        da_Mt_m = da_Mt_m.sum(dim="sector")
+
+    # make sure variable is correctly named
+    da_Mt_m = da_Mt_m.rename(var_name)
+
+    return da_Mt_m
 
 # Plot 1 map
 # - assumes you have a dataarray, not a dataset
