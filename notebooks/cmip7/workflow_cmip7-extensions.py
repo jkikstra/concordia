@@ -89,6 +89,7 @@ SKIP_EXISTING_MAIN_WORKFLOW_FILES: bool = True # if True, it won't reproduce fil
 # and the fade-to-zero-by-2050 made the correction identically zero for all extension years
 # anyway. Spatial alignment is now handled by the 2100-anchor block at the bottom of the
 # file, which inherits fast-track's already-CEDS-2023-harmonised spatial pattern at 2100.
+
 run_anthro_timeseries_correction: bool = True
 run_AIR_anthro_timeseries_correction: bool = True
 run_openburning_timeseries_correction: bool = True
@@ -1810,6 +1811,7 @@ if run_AIR_anthro_timeseries_correction:
 
         # Open dataset with explicit engine settings to avoid caching issues
         scen_ds = xr.open_dataset(file, engine='netcdf4')
+
         gridded_emisssions_annual_totals = ds_to_annual_emissions_total( # takes about 10-30 seconds
                 gridded_data=scen_ds,
                 var_name=var,
@@ -1901,6 +1903,9 @@ if run_AIR_anthro_timeseries_correction:
         # Compare input IAM vs gridded emissions for each sector and year.
         # Align on inner join before xr.where (xr.where uses join='exact' internally,
         # which fails when sector or year coordinates don't match exactly).
+       
+        
+        
         gridded_aligned, iam_aligned = xr.align(
             gridded_emisssions_annual_totals, input_iam_annual_totals, join='inner'
         )
@@ -1934,17 +1939,6 @@ if run_AIR_anthro_timeseries_correction:
         
         # Reorder dimensions if necessary
         scen_ds_corrected = scen_ds_corrected.pipe(reorder_dimensions, bound_var_name="bound")
-        
-       # # Add global sums to metadata — pass the file's actual first/last years explicitly,
-       # # otherwise add_file_global_sum_totals_attrs defaults to first_year='2022' which
-       # # doesn't exist in the extension file (it spans 2100..2500) and raises KeyError.
-       # _file_years = sorted(set(int(t.year) for t in scen_ds_corrected.time.values))
-       # scen_ds_corrected = scen_ds_corrected.pipe(
-       #     add_file_global_sum_totals_attrs,
-       #     name=var,
-       #     first_year=str(_file_years[0]),
-       #     last_year=str(_file_years[-1]),
-       # )
         
         # Copy bounds variables from original dataset to ensure they exist
         copy_bounds_data_variables(source=scen_ds, target=scen_ds_corrected)
@@ -2001,6 +1995,7 @@ if run_anthro_timeseries_correction:
 
         # Open dataset with explicit engine settings to avoid caching issues
         scen_ds = xr.open_dataset(file, engine='netcdf4')
+        
         gridded_emisssions_annual_totals = ds_to_annual_emissions_total( # takes about 10-30 seconds
                 gridded_data=scen_ds,
                 var_name=var,
@@ -2123,7 +2118,7 @@ if run_anthro_timeseries_correction:
             iam_aligned / gridded_aligned,
             1.0  # No correction where gridded is zero
         )
-
+    
         # Apply this global scalar to `scen_ds`
         # Multiply the gridded data by the global scalar to match input emissions
         scen_ds_corrected = scen_ds.copy(deep=True)
@@ -2147,17 +2142,6 @@ if run_anthro_timeseries_correction:
 
         # Reorder dimensions if necessary
         scen_ds_corrected = scen_ds_corrected.pipe(reorder_dimensions, bound_var_name="bound")
-
-       # # Add global sums to metadata — pass the file's actual first/last years explicitly,
-       # # otherwise add_file_global_sum_totals_attrs defaults to first_year='2022' which
-       # # doesn't exist in the extension file (it spans 2100..2500) and raises KeyError.
-       # _file_years = sorted(set(int(t.year) for t in scen_ds_corrected.time.values))
-       # scen_ds_corrected = scen_ds_corrected.pipe(
-       #     add_file_global_sum_totals_attrs,
-       #     name=var,
-       #     first_year=str(_file_years[0]),
-       #     last_year=str(_file_years[-1]),
-       # )
 
         # Copy bounds variables from original dataset to ensure they exist
         copy_bounds_data_variables(source=scen_ds, target=scen_ds_corrected)
@@ -2214,6 +2198,7 @@ if run_openburning_timeseries_correction:
 
         # Open dataset with explicit engine settings to avoid caching issues
         scen_ds = xr.open_dataset(file, engine='netcdf4')
+    
         gridded_emisssions_annual_totals = ds_to_annual_emissions_total( # takes about 10-30 seconds
                 gridded_data=scen_ds,
                 var_name=var,
@@ -2315,7 +2300,7 @@ if run_openburning_timeseries_correction:
             iam_aligned / gridded_aligned,
             1.0  # No correction where gridded is zero
         )
-
+            
         # Apply this global scalar to `scen_ds`
         # Multiply the gridded data by the global scalar to match input emissions
         scen_ds_corrected = scen_ds.copy(deep=True)
@@ -2339,17 +2324,6 @@ if run_openburning_timeseries_correction:
         
         # Reorder dimensions if necessary
         scen_ds_corrected = scen_ds_corrected.pipe(reorder_dimensions, bound_var_name="bound")
-        
-       # # Add global sums to metadata — pass the file's actual first/last years explicitly,
-       # # otherwise add_file_global_sum_totals_attrs defaults to first_year='2022' which
-       # # doesn't exist in the extension file (it spans 2100..2500) and raises KeyError.
-       # _file_years = sorted(set(int(t.year) for t in scen_ds_corrected.time.values))
-       # scen_ds_corrected = scen_ds_corrected.pipe(
-       #     add_file_global_sum_totals_attrs,
-       #     name=var,
-       #     first_year=str(_file_years[0]),
-       #     last_year=str(_file_years[-1]),
-       # )
         
         # Copy bounds variables from original dataset to ensure they exist
         copy_bounds_data_variables(source=scen_ds, target=scen_ds_corrected)
@@ -2401,6 +2375,8 @@ if run_openburning_timeseries_correction:
 # cleanly and fades to zero by construction.
 
 # %%
+# LOCATION_FASTTRACK_GRIDDED = Path("/Users/hoegner/GitHub/concordia/results")
+
 def _match_fasttrack_file(ext_file: Path, gas: str, type_with_dashes: str,
                           fasttrack_dir: Path, marker: str, version: str) -> Path | None:
     """Locate the fast-track counterpart of an extension nc file (must end at 210012)."""
@@ -2752,7 +2728,7 @@ if run_2100_alignment_to_fasttrack:
 
         # Make sure all dataset-level attributes from the original file are preserved
         copy_attributes(source=ext_ds, target=ext_corr)
-
+        
         # Materialise any remaining lazy reads from the source netCDF (notably the bounds
         # variables) so it is safe to close and overwrite the source file below.
         ext_corr = ext_corr.load()
@@ -2788,6 +2764,7 @@ if run_2100_alignment_to_fasttrack:
             .pipe(ensure_data_var_attrs)
             .pipe(fix_time_metadata)
         )
+
         try:
             ext_corr = add_file_global_sum_totals_attrs(
                 ext_corr, name=var, first_year=first_year_str, last_year=last_year_str,
@@ -3323,6 +3300,8 @@ if run_openburning_supplemental_voc:
 
 
 # %%
+experiment_name = cmip7_utils.scenario_name_prefix(m=marker_to_run)
+
 if run_anthro_supplemental_voc:
     voc_anthro = load_voc_bulk(type="anthro")
 

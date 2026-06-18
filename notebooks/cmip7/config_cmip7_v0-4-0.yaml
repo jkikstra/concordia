@@ -10,7 +10,8 @@ data_path: "/Users/jarmo/Library/CloudStorage/OneDrive-SharedLibraries-IIASA/ECE
 
 # variabledefs_path: "$data_path/input/variabledefinitions/variabledefs-cmip7_v0-4-0.csv" 
 # variabledefs_path: "$data_path/input/variabledefinitions/variabledefs-cmip7_v0-4-0_fixSO2NMVOC.csv"
-variabledefs_path: "$data_path/input/variabledefinitions/variabledefs-cmip7_v0-4-0_fixSO2NMVOC_BiocharSCM.csv"
+# variabledefs_path: "$data_path/input/variabledefinitions/variabledefs-cmip7_v0-4-0_fixSO2NMVOC_BiocharSCM.csv"
+variabledefs_path: "$data_path/input/variabledefinitions/variabledefs-cmip7_v0-4-0_fixSO2NMVOC_BiocharSCM_fixAIR.csv"
 
 
 history_path: "$data_path/input/historical" # Needs to be double-checked; and now need to ensure we have GCAM 8s
