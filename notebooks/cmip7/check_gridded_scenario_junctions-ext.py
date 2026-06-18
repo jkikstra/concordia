@@ -38,6 +38,16 @@ from __future__ import annotations
 # - **Module J** — Grid-point monthly timeseries at representative locations.
 #   Shows the window [anchor − 10 yr, anchor + 60 yr] to capture both the junction
 #   and the fade-correction convergence by 2150.
+#
+# - **Module K** *(off by default)* — Reads the 2100 diagnostic netCDFs written by the
+#   main workflow (`run_2100_alignment_diagnostic=True`) and writes two CSVs into
+#   `junctions/2100_diagnostic/`:
+#     (1) `2100_diagnostic_summary.csv` — RAW extension-2100 vs fast-track-2100 agreement
+#         *before* the additive offset forces them equal (area-weighted rel diff, spatial
+#         correlation, max abs diff).
+#     (2) `2100_correction_zero_check.csv` — CORRECTED extension-2100 vs fast-track-2100
+#         *after* the offset, confirming the difference is ~0 before 2100 is dropped
+#         (max abs diff vs tolerance, PASS/FAIL per file).
 
 # %% [markdown]
 # ## Parameters
@@ -45,8 +55,8 @@ from __future__ import annotations
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
 SETTINGS_FILE: str = "config_cmip7_v0-4-0-EXT.yaml"
 VERSION_ESGF: str = "1-1-1"
-marker_to_run: str = "h"
-IAM_SCENARIO: str = "SSP3 - High Emissions"  # scenario for marker_to_run="vl" is "SSP1 - Very Low Emissions"
+marker_to_run: str = "m"
+IAM_SCENARIO: str = "SSP2 - Medium Emissions"  # scenario for marker_to_run="vl" is "SSP1 - Very Low Emissions"
 
 GRIDDING_VERSION: str = f"{marker_to_run}-ext_{VERSION_ESGF}"
 # Set to an absolute path to override auto-detection from GRIDDING_VERSION
@@ -67,10 +77,15 @@ DROP_ANCHOR_TIMESTEP: bool = True  # extension starts at FADE_ANCHOR_YEAR + 5 wh
 # Module flags
 run_global_continuity: bool = True
 run_gridpoint_continuity: bool = True
+# Module K — summarise the raw extension-2100 vs fast-track-2100 diagnostic netCDFs
+# (produced by workflow_cmip7-extensions.py when run_2100_alignment_diagnostic=True,
+# written to '<results>/<gridding_version>/diagnostics_2100/'). Off by default — only
+# useful when those diagnostic files exist.
+run_2100_diagnostic_summary: bool = True
 
 # Optional: restrict to a subset of species (None = all found in extension folder)
 species_filter: list[str] | None = None  # e.g. ["CO2", "NH3"]
-species_filter: list[str] | None = ["CO2","NH3"]
+# species_filter: list[str] | None = ["CO2","NH3","SO2"]
 
 # Optional: restrict to a subset of file type / sector files (None = all found in extension folder)
 FILE_TYPE_FILTER: list[str] | None = None  # e.g. ["anthro", "AIR-anthro", "openburning"]
@@ -976,6 +991,177 @@ def check_gridpoint_continuity(
     return df
 
 
+# ── Module K: Raw-2100 diagnostic summary ─────────────────────────────────────
+
+def _find_diagnostics_2100_dir(nc_folder: Path, ext_folder: Path, settings) -> Path | None:
+    """Locate the diagnostics_2100 folder written by the main workflow, if present."""
+    candidates = [
+        nc_folder / "diagnostics_2100",
+        ext_folder / "diagnostics_2100",
+    ]
+    try:
+        candidates.append(Path(settings.out_path) / settings.version / "diagnostics_2100")
+    except Exception:
+        pass
+    for c in candidates:
+        if c.is_dir() and any(c.glob("*_2100diagnostic_*.nc")):
+            return c
+    return None
+
+
+def summarize_2100_diagnostic(
+    nc_folder: Path,
+    ext_folder: Path,
+    qc_output_path: Path,
+    settings,
+    cell_area: xr.DataArray | None,
+    logger: logging.Logger,
+) -> dict | None:
+    """
+    Module K: read the per-file 2100 diagnostic netCDFs and write two CSVs into
+    `junctions/2100_diagnostic/`:
+      - `2100_diagnostic_summary.csv`     — RAW extension-2100 vs fast-track agreement
+      - `2100_correction_zero_check.csv`  — CORRECTED extension-2100 vs fast-track (~0 check)
+    Returns {"raw": DataFrame, "corrected": DataFrame|None}, or None if no files found.
+    """
+    t0 = time.time()
+    diag_dir = _find_diagnostics_2100_dir(nc_folder, ext_folder, settings)
+    if diag_dir is None:
+        logger.warning(
+            "[K] No diagnostics_2100/*_2100diagnostic_*.nc found — "
+            "run the main workflow with run_2100_alignment_diagnostic=True first. Skipping."
+        )
+        return None
+
+    logger.info(f"[K] Summarising 2100 diagnostics from: {diag_dir}")
+    rows: list[dict] = []        # RAW (pre-correction) extension vs fast-track
+    corr_rows: list[dict] = []   # CORRECTED (post-offset) extension vs fast-track (expect ~0)
+    for nc in sorted(diag_dir.glob("*_2100diagnostic_*.nc")):
+        try:
+            gas, file_type = _parse_nc_filename(nc.name)
+        except ValueError:
+            gas, file_type = nc.stem, ""
+        try:
+            ds = xr.open_dataset(nc, use_cftime=True)
+            ext = ds["ext_2100_raw"]
+            ft = ds["ft_2100"]
+            diff = ds["diff_ft_minus_ext"]
+
+            flat_e = ext.values.ravel()
+            flat_f = ft.values.ravel()
+            fin = np.isfinite(flat_e) & np.isfinite(flat_f)
+            spatial_corr = (
+                float(np.corrcoef(flat_e[fin], flat_f[fin])[0, 1])
+                if fin.sum() > 1 else float("nan")
+            )
+            if cell_area is not None:
+                ext_tot = float((ext * cell_area).sum().values)
+                ft_tot = float((ft * cell_area).sum().values)
+            else:
+                ext_tot = float(ext.sum().values)
+                ft_tot = float(ft.sum().values)
+            aw_rel_diff_pct = (
+                100.0 * (ext_tot - ft_tot) / ft_tot if abs(ft_tot) > 0 else float("nan")
+            )
+            rows.append({
+                "gas": gas,
+                "file_type": file_type,
+                "ext_2100_total": ext_tot,
+                "ft_2100_total": ft_tot,
+                "area_weighted_rel_diff_pct": aw_rel_diff_pct,
+                "spatial_corr": spatial_corr,
+                "max_abs_diff": float(np.nanmax(np.abs(diff.values))),
+                "file": nc.name,
+            })
+
+            # Post-correction zero-check: the corrected 2100 must equal fast-track
+            # (the alignment forces it). Confirms this BEFORE 2100 is dropped.
+            if "ext_2100_corrected" in ds:
+                if "diff_ft_minus_ext_corrected" in ds:
+                    diff_corr = ds["diff_ft_minus_ext_corrected"].values
+                else:
+                    diff_corr = ft.values - ds["ext_2100_corrected"].values
+                max_ft = float(np.nanmax(np.abs(ft.values)))
+                max_abs_diff_corr = float(np.nanmax(np.abs(diff_corr)))
+                # "zero" relative to the field magnitude (float32 grids → ~1e-6 rel noise).
+                tol = max(1e-12, 1e-5 * max_ft)
+                if cell_area is not None:
+                    corr_tot = float((ds["ext_2100_corrected"] * cell_area).sum().values)
+                else:
+                    corr_tot = float(ds["ext_2100_corrected"].sum().values)
+                corr_aw_rel_diff_pct = (
+                    100.0 * (corr_tot - ft_tot) / ft_tot if abs(ft_tot) > 0 else float("nan")
+                )
+                corr_rows.append({
+                    "gas": gas,
+                    "file_type": file_type,
+                    "max_abs_diff_corrected": max_abs_diff_corr,
+                    "tolerance": tol,
+                    "area_weighted_rel_diff_pct_corrected": corr_aw_rel_diff_pct,
+                    "zero_ok": bool(max_abs_diff_corr <= tol),
+                    "file": nc.name,
+                })
+            ds.close()
+        except Exception as e:
+            logger.warning(f"[K] Could not read {nc.name}: {e}")
+
+    if not rows:
+        logger.warning("[K] No diagnostic files could be summarised.")
+        return None
+
+    out_dir = qc_output_path / "junctions" / "2100_diagnostic"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # RAW summary
+    df = pd.DataFrame(rows).sort_values(
+        "area_weighted_rel_diff_pct", key=lambda s: s.abs(), ascending=False
+    )
+    raw_csv = out_dir / "2100_diagnostic_summary.csv"
+    df.to_csv(raw_csv, index=False)
+
+    logger.info("[K] RAW extension-2100 vs fast-track-2100 (largest |rel diff| first):")
+    logger.info(f"    {'gas':<8}{'type':<14}{'rel_diff%':>11}{'corr':>8}{'max|diff|':>13}")
+    for _, r in df.iterrows():
+        logger.info(
+            f"    {str(r['gas']):<8}{str(r['file_type']):<14}"
+            f"{r['area_weighted_rel_diff_pct']:>10.3f}%{r['spatial_corr']:>8.4f}"
+            f"{r['max_abs_diff']:>13.3e}"
+        )
+
+    # CORRECTED zero-check
+    cdf = None
+    if corr_rows:
+        cdf = pd.DataFrame(corr_rows).sort_values(
+            "max_abs_diff_corrected", ascending=False
+        )
+        check_csv = out_dir / "2100_correction_zero_check.csv"
+        cdf.to_csv(check_csv, index=False)
+        n_fail = int((~cdf["zero_ok"]).sum())
+        logger.info("[K] CORRECTED extension-2100 vs fast-track-2100 (expect ~0):")
+        logger.info(f"    {'gas':<8}{'type':<14}{'max|diff|':>13}{'tol':>13}{'ok':>5}")
+        for _, r in cdf.iterrows():
+            logger.info(
+                f"    {str(r['gas']):<8}{str(r['file_type']):<14}"
+                f"{r['max_abs_diff_corrected']:>13.3e}{r['tolerance']:>13.3e}"
+                f"{('Y' if r['zero_ok'] else 'N'):>5}"
+            )
+        if n_fail:
+            logger.warning(
+                f"[K] ⚠️  {n_fail} file(s) FAILED the corrected-2100 zero-check "
+                f"(diff exceeds tolerance) → see {check_csv}"
+            )
+        else:
+            logger.info(f"[K] ✅ all {len(cdf)} file(s) pass the corrected-2100 zero-check → {check_csv}")
+    else:
+        logger.warning(
+            "[K] No 'ext_2100_corrected' variable in the diagnostic netCDFs — "
+            "re-run the main workflow with the updated diagnostic to enable the zero-check."
+        )
+
+    logger.info(f"[K] Done ({time.time() - t0:.1f}s) → {out_dir}")
+    return {"raw": df, "corrected": cdf}
+
+
 # ── Orchestrator ──────────────────────────────────────────────────────────────
 
 def run_junction_qc(
@@ -989,6 +1175,7 @@ def run_junction_qc(
     fade_convergence_year: int = 2150,
     run_global_continuity: bool = True,
     run_gridpoint_continuity: bool = True,
+    run_2100_diagnostic_summary: bool = False,
     species_filter: list[str] | None = None,
     file_type_filter: list[str] | None = None,
     locations: dict[str, tuple[float, float]] | None = None,
@@ -1108,6 +1295,16 @@ def run_junction_qc(
             logger=log,
         )
 
+    if run_2100_diagnostic_summary:
+        results["diagnostic_2100_summary"] = summarize_2100_diagnostic(
+            nc_folder=nc_folder,
+            ext_folder=ext_folder,
+            qc_output_path=qc_output_path,
+            settings=settings,
+            cell_area=cell_area,
+            logger=log,
+        )
+
     log.info(f"=== Junction QC complete in {time.time() - t_total:.1f}s ===")
     log.info(f"  Outputs: {qc_output_path / 'junctions'}")
     return results
@@ -1135,6 +1332,7 @@ if __name__ == "__main__":
         fade_convergence_year=FADE_CONVERGENCE_YEAR,
         run_global_continuity=run_global_continuity,
         run_gridpoint_continuity=run_gridpoint_continuity,
+        run_2100_diagnostic_summary=run_2100_diagnostic_summary,
         species_filter=species_filter,
         file_type_filter=FILE_TYPE_FILTER,
         locations=LOCATIONS,
