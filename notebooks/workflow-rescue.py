@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.3
+#       jupytext_version: 1.19.1
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -76,7 +76,7 @@ settings = Settings.from_config(
     # base_path="",
     config_path="/Users/jarmo/Documents/GitHub/mozart/projects/mine/concordia/notebooks/config-rescue.yaml",
     local_config_path="/Users/jarmo/Documents/GitHub/mozart/projects/mine/concordia/notebooks/local-config-rescue.yaml",
-    version="JSK-2026-06-02-gridding-tier1",
+    version="JSK-2026-06-18-gridding-tier2-ocindustrialrerun",
 )
 
 # %%
@@ -223,8 +223,8 @@ def patch_model_variable(var):
 with ur.context("AR4GWP100"):
     model = (
         pd.read_csv(
-            settings.scenario_path / "REMIND-MAgPIE-CEDS-RESCUE-Tier1-2024-10-11.csv", # Jarmo reruns Tier1 on 02.06.2026 (as run before)
-            # settings.scenario_path / "REMIND-MAgPIE-CEDS-RESCUE-Tier2-2025-09-15.csv", # Jarmo runs the gridding of Tier2 on 01.06.2026 (after Jarmo already ran only the downscaling on 14.10.2025)            
+            # settings.scenario_path / "REMIND-MAgPIE-CEDS-RESCUE-Tier1-2024-10-11.csv", # Jarmo reruns Tier1 on 02.06.2026 (as run before)
+            settings.scenario_path / "REMIND-MAgPIE-CEDS-RESCUE-Tier2-2025-09-15.csv", # Jarmo runs the gridding of Tier2 on 01.06.2026 (after Jarmo already ran only the downscaling on 14.10.2025)            
             index_col=list(range(5)),
             sep=";",
         )
@@ -252,6 +252,13 @@ with ur.context("AR4GWP100"):
 # model = model.loc[~ismatch(scenario="*Sensitivity*")]  # remove sensitivity cases; as run before
 # model = model.loc[ismatch(scenario="*NPi*")]  # test only one scenario 
 # model = model.loc[ismatch(scenario="*highOS-ARoff*")]  # test only one scenario 
+
+
+
+model = model.loc[ismatch(scenario="*highOS-ESPoff*")] # rerun one scenario
+
+
+
 
 model.pix
 
@@ -328,7 +335,7 @@ gdp = semijoin(
 # %%
 # Test with one scenario only
 one_scenario = False
-only_direct = True
+only_direct = False
 if one_scenario:
     model = model.loc[ismatch(scenario="RESCUE-Tier1-Direct-*-PkBudg500-OAE_on")]
 elif only_direct:
