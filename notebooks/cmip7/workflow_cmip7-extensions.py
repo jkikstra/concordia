@@ -60,13 +60,6 @@ VERSION_ESGF: str = "1-1-1" # for extensions
 
 # Which scenario to run from the markers
 marker_to_run: str = "m" # options: h, hl, m, ml, l, ln, vl
-marker_name: str = f"{marker_to_run}-ext"
-HISTORY_FILE: str = f"downscaled-only-{marker_to_run}_{VERSION_ESGF}.csv"
-
-# What folder to save this run in
-# GRIDDING_VERSION: str | None = None
-GRIDDING_VERSION: str | None = f"{marker_name}_{VERSION_ESGF}"
-GRIDDING_HISTORY: str | None = f"{marker_to_run}_{VERSION_ESGF}"
 
 # Where the downscaled data is stored (used for reading the downscaled historical data, and also as input for the extensions gridding workflow)
 from pathlib import Path
@@ -195,6 +188,17 @@ if GRIDDING_VERSION is None:
 SCENARIO_FILE = f"extensions_full_emissions_timeseries_2023_2500.csv"
 
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
+# TODO: decide what to inject from the workflow and what not. 
+# Ideally all the parameters injection happens in the same cell.
+# Note that the parameters are inject after the cell execution. 
+# Therefore variables like marker_name or HISTORY_FILE shouldn't really be depended from other parameters.
+marker_name: str = f"{marker_to_run}-ext"
+HISTORY_FILE: str = f"downscaled-only-{marker_to_run}_{VERSION_ESGF}.csv"
+
+# What folder to save this run in
+# GRIDDING_VERSION: str | None = None
+GRIDDING_VERSION: str | None = f"{marker_name}_{VERSION_ESGF}"
+GRIDDING_HISTORY: str | None = f"{marker_to_run}_{VERSION_ESGF}"
 # filename template
 FILE_NAME_ENDING: str | None = cmip7_utils.filename_for_esgf(marker=marker_name, version=VERSION_ESGF)
 
