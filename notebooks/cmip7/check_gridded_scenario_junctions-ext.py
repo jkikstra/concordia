@@ -14,6 +14,7 @@
 
 # %%
 from __future__ import annotations
+from pathlib import Path
 
 # %% [markdown]
 # # Junction QC: Timeseries Continuity for CMIP7 Extensions
@@ -55,14 +56,27 @@ from __future__ import annotations
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
 SETTINGS_FILE: str = "config_cmip7_v0-4-0-EXT.yaml"
 VERSION_ESGF: str = "1-1-1"
-marker_to_run: str = "m"
-IAM_SCENARIO: str = "SSP2 - Medium Emissions"  # scenario for marker_to_run="vl" is "SSP1 - Very Low Emissions"
 
-GRIDDING_VERSION: str = f"{marker_to_run}-ext_{VERSION_ESGF}"
-# Set to an absolute path to override auto-detection from GRIDDING_VERSION
-FOLDER_WITH_EXTENSION_DATA: str = ""
+# All markers and their IAM scenarios; the run block loops over these.
+MARKER_SCENARIOS: dict[str, str] = {
+    "vl": "SSP1 - Very Low Emissions",       # i-1
+    "ln": "SSP2 - Low Overshoot_a",          # i-2
+    "l":  "SSP2 - Low Emissions",
+    "ml": "SSP2 - Medium-Low Emissions",
+    # "m":  "SSP2 - Medium Emissions",
+    "hl": "SSP5 - Medium-Low Emissions_a",
+    "h":  "SSP3 - High Emissions",
+}
+# Restrict to a subset of markers (None = run all)
+MARKERS_TO_RUN: list[str] | None = None  # e.g. ["m", "h"]
 
-from pathlib import Path
+# Parent folder holding one '{marker}-ext_{VERSION_ESGF}' subfolder per scenario.
+# QC output goes inside each subfolder as '{marker}_qc_output_junctions_ext'.
+FOLDER_WITH_EXTENSION_DATA: Path = Path(
+    "/Users/jarmo/Library/CloudStorage/OneDrive-SharedLibraries-IIASA/"
+    "ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/"
+    "Shared emission fields data/v1_1/extensions_gridded/subset_for_checking"
+)
 LOCATION_FASTTRACK_GRIDDED: Path = Path(
     "/Users/jarmo/Library/CloudStorage/OneDrive-SharedLibraries-IIASA/"
     "ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/"
@@ -85,7 +99,7 @@ run_2100_diagnostic_summary: bool = True
 
 # Optional: restrict to a subset of species (None = all found in extension folder)
 species_filter: list[str] | None = None  # e.g. ["CO2", "NH3"]
-# species_filter: list[str] | None = ["CO2","NH3","SO2"]
+species_filter: list[str] | None = ["BC"]
 
 # Optional: restrict to a subset of file type / sector files (None = all found in extension folder)
 FILE_TYPE_FILTER: list[str] | None = None  # e.g. ["anthro", "AIR-anthro", "openburning"]
@@ -108,7 +122,7 @@ IAM_CSV: str = (
     "/Users/jarmo/Library/CloudStorage/OneDrive-SharedLibraries-IIASA/"
     "ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/"
     "Shared emission fields data/v1_1/extensions_timeseries/"
-    "extensions_full_emissions_timeseries_2023_2500.csv"
+    "v1-used-in-CMIP7-v1-1-1/extensions_full_emissions_timeseries_2023_2500.csv"
 )
 
 # %% [markdown]
@@ -1184,6 +1198,7 @@ def run_junction_qc(
     iam_reference_csv: Path | None = None,
     iam_scenario: str | None = None,
     here: Path | None = None,
+    qc_output_path: Path | None = None,
 ) -> dict:
     """
     Run the full junction QC suite.
@@ -1204,6 +1219,8 @@ def run_junction_qc(
     max_workers : int
         Number of parallel worker processes for species-level parallelism.
         Automatically falls back to sequential when running in Jupyter.
+    qc_output_path : Path, optional
+        Where to write QC outputs.  Defaults to ``ext_folder / 'qc_output'``.
     """
     settings_path = Path(settings_file)
     if not settings_path.is_absolute():
@@ -1216,10 +1233,11 @@ def run_junction_qc(
         local_config_path=settings_path,
     )
 
-    qc_output_path = ext_folder / "qc_output"
+    if qc_output_path is None:
+        qc_output_path = ext_folder / "qc_output"
     qc_output_path.mkdir(parents=True, exist_ok=True)
 
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    timestamp = f"{marker_to_run}_{time.strftime('%Y%m%d_%H%M%S')}"
     log = _setup_logging(qc_output_path, timestamp)
 
     ft_folder = location_fasttrack_gridded / f"{marker_to_run}_{version_esgf}"
@@ -1315,32 +1333,71 @@ def run_junction_qc(
 
 # %%
 if __name__ == "__main__":
-    _ext_folder = (
-        Path(FOLDER_WITH_EXTENSION_DATA)
-        if FOLDER_WITH_EXTENSION_DATA
-        else _find_here().parent.parent / "results" / GRIDDING_VERSION
+    _markers = (
+        [m for m in MARKER_SCENARIOS if m in MARKERS_TO_RUN]
+        if MARKERS_TO_RUN is not None
+        else list(MARKER_SCENARIOS)
     )
+    _failed: list[str] = []
 
-    run_junction_qc(
-        ext_folder=_ext_folder,
-        settings_file=SETTINGS_FILE,
-        gridding_version=GRIDDING_VERSION,
-        marker_to_run=marker_to_run,
-        location_fasttrack_gridded=LOCATION_FASTTRACK_GRIDDED,
-        version_esgf=VERSION_ESGF,
-        fade_anchor_year=FADE_ANCHOR_YEAR,
-        fade_convergence_year=FADE_CONVERGENCE_YEAR,
-        run_global_continuity=run_global_continuity,
-        run_gridpoint_continuity=run_gridpoint_continuity,
-        run_2100_diagnostic_summary=run_2100_diagnostic_summary,
-        species_filter=species_filter,
-        file_type_filter=FILE_TYPE_FILTER,
-        locations=LOCATIONS,
-        skip_existing=skip_existing,
-        max_workers=max_workers,
-        iam_reference_csv=Path(IAM_CSV) if IAM_CSV else None,
-        iam_scenario=IAM_SCENARIO if IAM_SCENARIO else None,
-        here=_SCRIPT_DIR,
-    )
+    for _marker in _markers:
+        _iam_scenario = MARKER_SCENARIOS[_marker]
+        _gridding_version = f"{_marker}-ext_{VERSION_ESGF}"
+
+        # Folder names on OneDrive are inconsistent: some use '-ext_1-1-1',
+        # others '-ext-1-1-1' — try both.
+        _parent = (
+            Path(FOLDER_WITH_EXTENSION_DATA)
+            if FOLDER_WITH_EXTENSION_DATA
+            else _find_here().parent.parent / "results"
+        )
+        _ext_folder = next(
+            (
+                _parent / name
+                for name in (_gridding_version, f"{_marker}-ext-{VERSION_ESGF}")
+                if (_parent / name).is_dir()
+            ),
+            None,
+        )
+        if _ext_folder is None:
+            print(f"!! {_marker}: no extension folder under {_parent} — skipping")
+            _failed.append(_marker)
+            continue
+
+        _qc_output_path = _ext_folder / f"{_marker}_qc_output_junctions_ext"
+
+        print(f"\n{'=' * 70}\n=== Marker '{_marker}' — {_iam_scenario} ===\n{'=' * 70}")
+        try:
+            run_junction_qc(
+                ext_folder=_ext_folder,
+                settings_file=SETTINGS_FILE,
+                gridding_version=_gridding_version,
+                marker_to_run=_marker,
+                location_fasttrack_gridded=LOCATION_FASTTRACK_GRIDDED,
+                version_esgf=VERSION_ESGF,
+                fade_anchor_year=FADE_ANCHOR_YEAR,
+                fade_convergence_year=FADE_CONVERGENCE_YEAR,
+                run_global_continuity=run_global_continuity,
+                run_gridpoint_continuity=run_gridpoint_continuity,
+                run_2100_diagnostic_summary=run_2100_diagnostic_summary,
+                species_filter=species_filter,
+                file_type_filter=FILE_TYPE_FILTER,
+                locations=LOCATIONS,
+                skip_existing=skip_existing,
+                max_workers=max_workers,
+                iam_reference_csv=Path(IAM_CSV) if IAM_CSV else None,
+                iam_scenario=_iam_scenario,
+                here=_SCRIPT_DIR,
+                qc_output_path=_qc_output_path,
+            )
+        except Exception as e:
+            print(f"!! {_marker}: FAILED — {e}")
+            import traceback
+            traceback.print_exc()
+            _failed.append(_marker)
+
+    print(f"\n=== All markers done: {len(_markers) - len(_failed)}/{len(_markers)} OK ===")
+    if _failed:
+        print(f"    Failed/skipped: {_failed}")
 
 # %%
