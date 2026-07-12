@@ -83,6 +83,17 @@ LOCATION_FASTTRACK_GRIDDED: Path = Path(
     "Shared emission fields data/v1_1"
 )
 
+# Aircraft (AIR-anthro) fast-track override: the extensions were anchored to the
+# corrected v1-1-2 aircraft files, which live in a separate folder with one
+# '{marker}_{AIRCRAFT_FT_VERSION}' subfolder per marker.  Set to None to use the
+# regular fast-track folder ('{marker}_{VERSION_ESGF}') for aircraft too.
+AIRCRAFT_FASTTRACK_FOLDER: Path | None = Path(
+    "/Users/jarmo/Library/CloudStorage/OneDrive-SharedLibraries-IIASA/"
+    "ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/"
+    "Shared emission fields data/v1_1/all_v1-1-2_aircraft"
+)
+AIRCRAFT_FT_VERSION: str = "1-1-2"
+
 # Must match the values used when producing the extension files
 FADE_ANCHOR_YEAR: int = 2100
 FADE_CONVERGENCE_YEAR: int = 2150
@@ -417,6 +428,7 @@ def _worker_global_species(params: dict) -> dict:
     fade_convergence_year: int = params["fade_convergence_year"]
     iam_values: dict[int, float] | None = params.get("iam_values")
     iam_label: str         = params.get("iam_label", "IAM reference")
+    ft_label: str          = params.get("ft_label", SEGMENT_LABELS["fast_track"])
     logger_name: str       = params["logger_name"]
 
     log = logging.getLogger(logger_name)
@@ -520,7 +532,11 @@ def _worker_global_species(params: dict) -> dict:
         for seg in ["ceds", "fast_track", "extension", "iam"]:
             if seg in seg_series:
                 yrs, vals = seg_series[seg]
-                label = iam_label if seg == "iam" else SEGMENT_LABELS[seg]
+                label = (
+                    iam_label if seg == "iam"
+                    else ft_label if seg == "fast_track"
+                    else SEGMENT_LABELS[seg]
+                )
                 lw = 1.2 if seg == "iam" else 1.5
                 ls = "--" if seg == "iam" else "-"
                 ax.plot(yrs, vals, color=SEGMENT_COLORS[seg], linewidth=lw,
@@ -580,6 +596,8 @@ def check_global_continuity(
     max_workers: int = 4,
     iam_reference_csv: Path | None = None,
     iam_scenario: str | None = None,
+    ft_folder_air: Path | None = None,
+    ft_label_air: str | None = None,
     logger: logging.Logger | None = None,
 ) -> pd.DataFrame:
     """
@@ -637,6 +655,20 @@ def check_global_continuity(
             return None
         return _ceds_folder_for_type(settings, ft)
 
+    def _is_air(nc: Path) -> bool:
+        try:
+            return _parse_nc_filename(nc.name)[1] == "AIR-anthro"
+        except ValueError:
+            return False
+
+    def _ft_for_nc(nc: Path) -> Path:
+        return ft_folder_air if (ft_folder_air is not None and _is_air(nc)) else ft_folder
+
+    def _ft_label_for_nc(nc: Path) -> str:
+        if ft_folder_air is not None and ft_label_air and _is_air(nc):
+            return ft_label_air
+        return SEGMENT_LABELS["fast_track"]
+
     iam_totals: dict[tuple[str, str], dict[int, float]] = {}
     iam_label = "IAM reference"
     if iam_reference_csv is not None and iam_scenario is not None:
@@ -648,7 +680,8 @@ def check_global_continuity(
     work_items = [
         {
             "ext_nc": ext_nc,
-            "ft_folder": ft_folder,
+            "ft_folder": _ft_for_nc(ext_nc),
+            "ft_label": _ft_label_for_nc(ext_nc),
             "ceds_folder": _ceds_for_nc(ext_nc),
             "cell_area": cell_area,
             "plots_dir": plots_dir,
@@ -716,6 +749,7 @@ def _worker_gridpoint_species(params: dict) -> dict:
     fade_convergence_year: int = params["fade_convergence_year"]
     window_before: int        = params["window_before"]
     window_after: int         = params["window_after"]
+    ft_label: str             = params.get("ft_label", SEGMENT_LABELS["fast_track"])
     logger_name: str          = params["logger_name"]
 
     log = logging.getLogger(logger_name)
@@ -841,7 +875,7 @@ def _worker_gridpoint_species(params: dict) -> dict:
 
             ax.plot(ft_times,  ft_vals,
                     color=SEGMENT_COLORS["fast_track"], linewidth=1.3,
-                    label=SEGMENT_LABELS["fast_track"], zorder=3)
+                    label=ft_label, zorder=3)
             ax.plot(ext_times, ext_vals,
                     color=SEGMENT_COLORS["extension"], linewidth=1.3,
                     label=SEGMENT_LABELS["extension"], zorder=3)
@@ -916,6 +950,8 @@ def check_gridpoint_continuity(
     window_after: int = _GRIDPOINT_WINDOW_AFTER,
     skip_existing: bool = True,
     max_workers: int = 4,
+    ft_folder_air: Path | None = None,
+    ft_label_air: str | None = None,
     logger: logging.Logger | None = None,
 ) -> pd.DataFrame:
     """
@@ -963,9 +999,11 @@ def check_gridpoint_continuity(
         except ValueError:
             continue
 
-        ft_nc = _find_nc_file(ft_folder, gas, file_type)
+        is_air = file_type == "AIR-anthro"
+        ft_lookup = ft_folder_air if (ft_folder_air is not None and is_air) else ft_folder
+        ft_nc = _find_nc_file(ft_lookup, gas, file_type)
         if ft_nc is None:
-            log.warning(f"[J] No fast-track file for {gas} {file_type} — skipping")
+            log.warning(f"[J] No fast-track file for {gas} {file_type} in {ft_lookup} — skipping")
             continue
 
         ceds_folder = _ceds_folder_for_type(settings, file_type)
@@ -974,6 +1012,11 @@ def check_gridpoint_continuity(
         work_items.append({
             "ext_nc": ext_nc,
             "ft_nc": ft_nc,
+            "ft_label": (
+                ft_label_air
+                if (ft_folder_air is not None and ft_label_air and is_air)
+                else SEGMENT_LABELS["fast_track"]
+            ),
             "ceds_nc": ceds_nc,
             "locations": locations,
             "plots_dir": plots_dir,
@@ -1199,6 +1242,8 @@ def run_junction_qc(
     iam_scenario: str | None = None,
     here: Path | None = None,
     qc_output_path: Path | None = None,
+    aircraft_fasttrack_folder: Path | None = None,
+    aircraft_ft_version: str = "1-1-2",
 ) -> dict:
     """
     Run the full junction QC suite.
@@ -1221,6 +1266,10 @@ def run_junction_qc(
         Automatically falls back to sequential when running in Jupyter.
     qc_output_path : Path, optional
         Where to write QC outputs.  Defaults to ``ext_folder / 'qc_output'``.
+    aircraft_fasttrack_folder : Path, optional
+        Override folder for AIR-anthro fast-track files.  The per-marker files
+        live at ``aircraft_fasttrack_folder / '{marker}_{aircraft_ft_version}'``.
+        Falls back to the regular fast-track folder when None or missing.
     """
     settings_path = Path(settings_file)
     if not settings_path.is_absolute():
@@ -1242,6 +1291,20 @@ def run_junction_qc(
 
     ft_folder = location_fasttrack_gridded / f"{marker_to_run}_{version_esgf}"
 
+    # AIR-anthro fast-track override (v1-1-2 aircraft rerun)
+    ft_folder_air = None
+    ft_label_air = None
+    if aircraft_fasttrack_folder is not None:
+        cand = aircraft_fasttrack_folder / f"{marker_to_run}_{aircraft_ft_version}"
+        if cand.is_dir() and any(cand.glob("*-em-AIR-anthro_*.nc")):
+            ft_folder_air = cand
+            ft_label_air = f"Fast-track v{aircraft_ft_version} aircraft (2022–2100)"
+        else:
+            log.warning(
+                f"  Aircraft FT override folder missing/empty: {cand} — "
+                f"falling back to {ft_folder} for AIR-anthro"
+            )
+
     # NC files may live in a gridding_version subfolder (e.g. results/h-ext_1-1-1/h-ext_1-1-1/)
     nc_folder = ext_folder / gridding_version
     if not (nc_folder.is_dir() and any(nc_folder.glob("*.nc"))):
@@ -1251,6 +1314,7 @@ def run_junction_qc(
     log.info(f"  Extension folder  : {ext_folder}")
     log.info(f"  NC files folder   : {nc_folder}")
     log.info(f"  Fast-track folder : {ft_folder}")
+    log.info(f"  Aircraft FT folder: {ft_folder_air or '(no override)'}")
     log.info(f"  Gridding version  : {gridding_version}")
     log.info(f"  Marker            : {marker_to_run}")
     log.info(f"  Anchor year       : {fade_anchor_year}")
@@ -1293,6 +1357,8 @@ def run_junction_qc(
                 max_workers=max_workers,
                 iam_reference_csv=iam_reference_csv,
                 iam_scenario=iam_scenario,
+                ft_folder_air=ft_folder_air,
+                ft_label_air=ft_label_air,
                 logger=log,
             )
         else:
@@ -1310,6 +1376,8 @@ def run_junction_qc(
             fade_convergence_year=fade_convergence_year,
             skip_existing=skip_existing,
             max_workers=max_workers,
+            ft_folder_air=ft_folder_air,
+            ft_label_air=ft_label_air,
             logger=log,
         )
 
@@ -1389,6 +1457,8 @@ if __name__ == "__main__":
                 iam_scenario=_iam_scenario,
                 here=_SCRIPT_DIR,
                 qc_output_path=_qc_output_path,
+                aircraft_fasttrack_folder=AIRCRAFT_FASTTRACK_FOLDER,
+                aircraft_ft_version=AIRCRAFT_FT_VERSION,
             )
         except Exception as e:
             print(f"!! {_marker}: FAILED — {e}")
