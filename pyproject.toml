@@ -5,7 +5,7 @@ authors = [
 ]
 description = "Harmonization, downscaling and gridding pipeline"
 license = {text = "Apache License 2.0"}
-name = "concordia"
+name = "concordia_extensions"
 readme = "README.rst"
 requires-python = ">=3.9"
 
