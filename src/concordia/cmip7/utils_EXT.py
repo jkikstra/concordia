@@ -267,7 +267,17 @@ def convert_to_datetime(ds: xr.Dataset) -> xr.Dataset:
     return (
         ds
         .drop_vars(["year", "month"], errors="ignore")
-        .assign_coords(time=dates)
+        .assign_coords(
+            time=xr.IndexVariable(
+                "time",
+                dates,
+                encoding=dict(
+                    units="days since 2022-1-1 0:0:0",
+                    calendar="365_day",
+                    dtype=np.dtype(float),
+                ),
+            )
+        )
         .transpose("time", ...)
     )
 
@@ -337,7 +347,7 @@ def add_bounds(ds, bounds=["lat", "lon", "time", "level"]):
             )
             for t in time_cftime
         ])
-        
+        ds.coords["time"].attrs["bounds"] = "time_bnds"    
         # Stack into shape (time, 2)
         time_bnds_array = np.column_stack([time_lower, time_upper])
         
@@ -345,7 +355,6 @@ def add_bounds(ds, bounds=["lat", "lon", "time", "level"]):
         ds = ds.assign({
             "time_bnds": (("time", "bound"), time_bnds_array),
         })
-    
 
     return ds
     
