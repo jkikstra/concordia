@@ -14,6 +14,7 @@
 
 # %%
 from __future__ import annotations
+from pathlib import Path
 
 # %% [markdown]
 # # Junction QC: Timeseries Continuity for CMIP7 Extensions
@@ -55,19 +56,43 @@ from __future__ import annotations
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
 SETTINGS_FILE: str = "config_cmip7_v0-4-0-EXT.yaml"
 VERSION_ESGF: str = "1-1-1"
-marker_to_run: str = "m"
-IAM_SCENARIO: str = "SSP2 - Medium Emissions"  # scenario for marker_to_run="vl" is "SSP1 - Very Low Emissions"
 
-GRIDDING_VERSION: str = f"{marker_to_run}-ext_{VERSION_ESGF}"
-# Set to an absolute path to override auto-detection from GRIDDING_VERSION
-FOLDER_WITH_EXTENSION_DATA: str = ""
+# All markers and their IAM scenarios; the run block loops over these.
+MARKER_SCENARIOS: dict[str, str] = {
+    "vl": "SSP1 - Very Low Emissions",       # i-1
+    "ln": "SSP2 - Low Overshoot_a",          # i-2
+    "l":  "SSP2 - Low Emissions",
+    "ml": "SSP2 - Medium-Low Emissions",
+    # "m":  "SSP2 - Medium Emissions",
+    "hl": "SSP5 - Medium-Low Emissions_a",
+    "h":  "SSP3 - High Emissions",
+}
+# Restrict to a subset of markers (None = run all)
+MARKERS_TO_RUN: list[str] | None = None  # e.g. ["m", "h"]
 
-from pathlib import Path
+# Parent folder holding one '{marker}-ext_{VERSION_ESGF}' subfolder per scenario.
+# QC output goes inside each subfolder as '{marker}_qc_output_junctions_ext'.
+FOLDER_WITH_EXTENSION_DATA: Path = Path(
+    "/Users/jarmo/Library/CloudStorage/OneDrive-SharedLibraries-IIASA/"
+    "ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/"
+    "Shared emission fields data/v1_1/extensions_gridded/subset_for_checking"
+)
 LOCATION_FASTTRACK_GRIDDED: Path = Path(
     "/Users/jarmo/Library/CloudStorage/OneDrive-SharedLibraries-IIASA/"
     "ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/"
     "Shared emission fields data/v1_1"
 )
+
+# Aircraft (AIR-anthro) fast-track override: the extensions were anchored to the
+# corrected v1-1-2 aircraft files, which live in a separate folder with one
+# '{marker}_{AIRCRAFT_FT_VERSION}' subfolder per marker.  Set to None to use the
+# regular fast-track folder ('{marker}_{VERSION_ESGF}') for aircraft too.
+AIRCRAFT_FASTTRACK_FOLDER: Path | None = Path(
+    "/Users/jarmo/Library/CloudStorage/OneDrive-SharedLibraries-IIASA/"
+    "ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/"
+    "Shared emission fields data/v1_1/all_v1-1-2_aircraft"
+)
+AIRCRAFT_FT_VERSION: str = "1-1-2"
 
 # Must match the values used when producing the extension files
 FADE_ANCHOR_YEAR: int = 2100
@@ -85,7 +110,7 @@ run_2100_diagnostic_summary: bool = True
 
 # Optional: restrict to a subset of species (None = all found in extension folder)
 species_filter: list[str] | None = None  # e.g. ["CO2", "NH3"]
-# species_filter: list[str] | None = ["CO2","NH3","SO2"]
+species_filter: list[str] | None = ["BC"]
 
 # Optional: restrict to a subset of file type / sector files (None = all found in extension folder)
 FILE_TYPE_FILTER: list[str] | None = None  # e.g. ["anthro", "AIR-anthro", "openburning"]
@@ -108,7 +133,7 @@ IAM_CSV: str = (
     "/Users/jarmo/Library/CloudStorage/OneDrive-SharedLibraries-IIASA/"
     "ECE.prog - Documents/Projects/CMIP7/IAM Data Processing/"
     "Shared emission fields data/v1_1/extensions_timeseries/"
-    "extensions_full_emissions_timeseries_2023_2500.csv"
+    "v1-used-in-CMIP7-v1-1-1/extensions_full_emissions_timeseries_2023_2500.csv"
 )
 
 # %% [markdown]
@@ -403,6 +428,7 @@ def _worker_global_species(params: dict) -> dict:
     fade_convergence_year: int = params["fade_convergence_year"]
     iam_values: dict[int, float] | None = params.get("iam_values")
     iam_label: str         = params.get("iam_label", "IAM reference")
+    ft_label: str          = params.get("ft_label", SEGMENT_LABELS["fast_track"])
     logger_name: str       = params["logger_name"]
 
     log = logging.getLogger(logger_name)
@@ -506,7 +532,11 @@ def _worker_global_species(params: dict) -> dict:
         for seg in ["ceds", "fast_track", "extension", "iam"]:
             if seg in seg_series:
                 yrs, vals = seg_series[seg]
-                label = iam_label if seg == "iam" else SEGMENT_LABELS[seg]
+                label = (
+                    iam_label if seg == "iam"
+                    else ft_label if seg == "fast_track"
+                    else SEGMENT_LABELS[seg]
+                )
                 lw = 1.2 if seg == "iam" else 1.5
                 ls = "--" if seg == "iam" else "-"
                 ax.plot(yrs, vals, color=SEGMENT_COLORS[seg], linewidth=lw,
@@ -566,6 +596,8 @@ def check_global_continuity(
     max_workers: int = 4,
     iam_reference_csv: Path | None = None,
     iam_scenario: str | None = None,
+    ft_folder_air: Path | None = None,
+    ft_label_air: str | None = None,
     logger: logging.Logger | None = None,
 ) -> pd.DataFrame:
     """
@@ -623,6 +655,20 @@ def check_global_continuity(
             return None
         return _ceds_folder_for_type(settings, ft)
 
+    def _is_air(nc: Path) -> bool:
+        try:
+            return _parse_nc_filename(nc.name)[1] == "AIR-anthro"
+        except ValueError:
+            return False
+
+    def _ft_for_nc(nc: Path) -> Path:
+        return ft_folder_air if (ft_folder_air is not None and _is_air(nc)) else ft_folder
+
+    def _ft_label_for_nc(nc: Path) -> str:
+        if ft_folder_air is not None and ft_label_air and _is_air(nc):
+            return ft_label_air
+        return SEGMENT_LABELS["fast_track"]
+
     iam_totals: dict[tuple[str, str], dict[int, float]] = {}
     iam_label = "IAM reference"
     if iam_reference_csv is not None and iam_scenario is not None:
@@ -634,7 +680,8 @@ def check_global_continuity(
     work_items = [
         {
             "ext_nc": ext_nc,
-            "ft_folder": ft_folder,
+            "ft_folder": _ft_for_nc(ext_nc),
+            "ft_label": _ft_label_for_nc(ext_nc),
             "ceds_folder": _ceds_for_nc(ext_nc),
             "cell_area": cell_area,
             "plots_dir": plots_dir,
@@ -702,6 +749,7 @@ def _worker_gridpoint_species(params: dict) -> dict:
     fade_convergence_year: int = params["fade_convergence_year"]
     window_before: int        = params["window_before"]
     window_after: int         = params["window_after"]
+    ft_label: str             = params.get("ft_label", SEGMENT_LABELS["fast_track"])
     logger_name: str          = params["logger_name"]
 
     log = logging.getLogger(logger_name)
@@ -827,7 +875,7 @@ def _worker_gridpoint_species(params: dict) -> dict:
 
             ax.plot(ft_times,  ft_vals,
                     color=SEGMENT_COLORS["fast_track"], linewidth=1.3,
-                    label=SEGMENT_LABELS["fast_track"], zorder=3)
+                    label=ft_label, zorder=3)
             ax.plot(ext_times, ext_vals,
                     color=SEGMENT_COLORS["extension"], linewidth=1.3,
                     label=SEGMENT_LABELS["extension"], zorder=3)
@@ -902,6 +950,8 @@ def check_gridpoint_continuity(
     window_after: int = _GRIDPOINT_WINDOW_AFTER,
     skip_existing: bool = True,
     max_workers: int = 4,
+    ft_folder_air: Path | None = None,
+    ft_label_air: str | None = None,
     logger: logging.Logger | None = None,
 ) -> pd.DataFrame:
     """
@@ -949,9 +999,11 @@ def check_gridpoint_continuity(
         except ValueError:
             continue
 
-        ft_nc = _find_nc_file(ft_folder, gas, file_type)
+        is_air = file_type == "AIR-anthro"
+        ft_lookup = ft_folder_air if (ft_folder_air is not None and is_air) else ft_folder
+        ft_nc = _find_nc_file(ft_lookup, gas, file_type)
         if ft_nc is None:
-            log.warning(f"[J] No fast-track file for {gas} {file_type} — skipping")
+            log.warning(f"[J] No fast-track file for {gas} {file_type} in {ft_lookup} — skipping")
             continue
 
         ceds_folder = _ceds_folder_for_type(settings, file_type)
@@ -960,6 +1012,11 @@ def check_gridpoint_continuity(
         work_items.append({
             "ext_nc": ext_nc,
             "ft_nc": ft_nc,
+            "ft_label": (
+                ft_label_air
+                if (ft_folder_air is not None and ft_label_air and is_air)
+                else SEGMENT_LABELS["fast_track"]
+            ),
             "ceds_nc": ceds_nc,
             "locations": locations,
             "plots_dir": plots_dir,
@@ -1184,6 +1241,9 @@ def run_junction_qc(
     iam_reference_csv: Path | None = None,
     iam_scenario: str | None = None,
     here: Path | None = None,
+    qc_output_path: Path | None = None,
+    aircraft_fasttrack_folder: Path | None = None,
+    aircraft_ft_version: str = "1-1-2",
 ) -> dict:
     """
     Run the full junction QC suite.
@@ -1204,6 +1264,12 @@ def run_junction_qc(
     max_workers : int
         Number of parallel worker processes for species-level parallelism.
         Automatically falls back to sequential when running in Jupyter.
+    qc_output_path : Path, optional
+        Where to write QC outputs.  Defaults to ``ext_folder / 'qc_output'``.
+    aircraft_fasttrack_folder : Path, optional
+        Override folder for AIR-anthro fast-track files.  The per-marker files
+        live at ``aircraft_fasttrack_folder / '{marker}_{aircraft_ft_version}'``.
+        Falls back to the regular fast-track folder when None or missing.
     """
     settings_path = Path(settings_file)
     if not settings_path.is_absolute():
@@ -1216,13 +1282,28 @@ def run_junction_qc(
         local_config_path=settings_path,
     )
 
-    qc_output_path = ext_folder / "qc_output"
+    if qc_output_path is None:
+        qc_output_path = ext_folder / "qc_output"
     qc_output_path.mkdir(parents=True, exist_ok=True)
 
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    timestamp = f"{marker_to_run}_{time.strftime('%Y%m%d_%H%M%S')}"
     log = _setup_logging(qc_output_path, timestamp)
 
     ft_folder = location_fasttrack_gridded / f"{marker_to_run}_{version_esgf}"
+
+    # AIR-anthro fast-track override (v1-1-2 aircraft rerun)
+    ft_folder_air = None
+    ft_label_air = None
+    if aircraft_fasttrack_folder is not None:
+        cand = aircraft_fasttrack_folder / f"{marker_to_run}_{aircraft_ft_version}"
+        if cand.is_dir() and any(cand.glob("*-em-AIR-anthro_*.nc")):
+            ft_folder_air = cand
+            ft_label_air = f"Fast-track v{aircraft_ft_version} aircraft (2022–2100)"
+        else:
+            log.warning(
+                f"  Aircraft FT override folder missing/empty: {cand} — "
+                f"falling back to {ft_folder} for AIR-anthro"
+            )
 
     # NC files may live in a gridding_version subfolder (e.g. results/h-ext_1-1-1/h-ext_1-1-1/)
     nc_folder = ext_folder / gridding_version
@@ -1233,6 +1314,7 @@ def run_junction_qc(
     log.info(f"  Extension folder  : {ext_folder}")
     log.info(f"  NC files folder   : {nc_folder}")
     log.info(f"  Fast-track folder : {ft_folder}")
+    log.info(f"  Aircraft FT folder: {ft_folder_air or '(no override)'}")
     log.info(f"  Gridding version  : {gridding_version}")
     log.info(f"  Marker            : {marker_to_run}")
     log.info(f"  Anchor year       : {fade_anchor_year}")
@@ -1275,6 +1357,8 @@ def run_junction_qc(
                 max_workers=max_workers,
                 iam_reference_csv=iam_reference_csv,
                 iam_scenario=iam_scenario,
+                ft_folder_air=ft_folder_air,
+                ft_label_air=ft_label_air,
                 logger=log,
             )
         else:
@@ -1292,6 +1376,8 @@ def run_junction_qc(
             fade_convergence_year=fade_convergence_year,
             skip_existing=skip_existing,
             max_workers=max_workers,
+            ft_folder_air=ft_folder_air,
+            ft_label_air=ft_label_air,
             logger=log,
         )
 
@@ -1315,32 +1401,73 @@ def run_junction_qc(
 
 # %%
 if __name__ == "__main__":
-    _ext_folder = (
-        Path(FOLDER_WITH_EXTENSION_DATA)
-        if FOLDER_WITH_EXTENSION_DATA
-        else _find_here().parent.parent / "results" / GRIDDING_VERSION
+    _markers = (
+        [m for m in MARKER_SCENARIOS if m in MARKERS_TO_RUN]
+        if MARKERS_TO_RUN is not None
+        else list(MARKER_SCENARIOS)
     )
+    _failed: list[str] = []
 
-    run_junction_qc(
-        ext_folder=_ext_folder,
-        settings_file=SETTINGS_FILE,
-        gridding_version=GRIDDING_VERSION,
-        marker_to_run=marker_to_run,
-        location_fasttrack_gridded=LOCATION_FASTTRACK_GRIDDED,
-        version_esgf=VERSION_ESGF,
-        fade_anchor_year=FADE_ANCHOR_YEAR,
-        fade_convergence_year=FADE_CONVERGENCE_YEAR,
-        run_global_continuity=run_global_continuity,
-        run_gridpoint_continuity=run_gridpoint_continuity,
-        run_2100_diagnostic_summary=run_2100_diagnostic_summary,
-        species_filter=species_filter,
-        file_type_filter=FILE_TYPE_FILTER,
-        locations=LOCATIONS,
-        skip_existing=skip_existing,
-        max_workers=max_workers,
-        iam_reference_csv=Path(IAM_CSV) if IAM_CSV else None,
-        iam_scenario=IAM_SCENARIO if IAM_SCENARIO else None,
-        here=_SCRIPT_DIR,
-    )
+    for _marker in _markers:
+        _iam_scenario = MARKER_SCENARIOS[_marker]
+        _gridding_version = f"{_marker}-ext_{VERSION_ESGF}"
+
+        # Folder names on OneDrive are inconsistent: some use '-ext_1-1-1',
+        # others '-ext-1-1-1' — try both.
+        _parent = (
+            Path(FOLDER_WITH_EXTENSION_DATA)
+            if FOLDER_WITH_EXTENSION_DATA
+            else _find_here().parent.parent / "results"
+        )
+        _ext_folder = next(
+            (
+                _parent / name
+                for name in (_gridding_version, f"{_marker}-ext-{VERSION_ESGF}")
+                if (_parent / name).is_dir()
+            ),
+            None,
+        )
+        if _ext_folder is None:
+            print(f"!! {_marker}: no extension folder under {_parent} — skipping")
+            _failed.append(_marker)
+            continue
+
+        _qc_output_path = _ext_folder / f"{_marker}_qc_output_junctions_ext"
+
+        print(f"\n{'=' * 70}\n=== Marker '{_marker}' — {_iam_scenario} ===\n{'=' * 70}")
+        try:
+            run_junction_qc(
+                ext_folder=_ext_folder,
+                settings_file=SETTINGS_FILE,
+                gridding_version=_gridding_version,
+                marker_to_run=_marker,
+                location_fasttrack_gridded=LOCATION_FASTTRACK_GRIDDED,
+                version_esgf=VERSION_ESGF,
+                fade_anchor_year=FADE_ANCHOR_YEAR,
+                fade_convergence_year=FADE_CONVERGENCE_YEAR,
+                run_global_continuity=run_global_continuity,
+                run_gridpoint_continuity=run_gridpoint_continuity,
+                run_2100_diagnostic_summary=run_2100_diagnostic_summary,
+                species_filter=species_filter,
+                file_type_filter=FILE_TYPE_FILTER,
+                locations=LOCATIONS,
+                skip_existing=skip_existing,
+                max_workers=max_workers,
+                iam_reference_csv=Path(IAM_CSV) if IAM_CSV else None,
+                iam_scenario=_iam_scenario,
+                here=_SCRIPT_DIR,
+                qc_output_path=_qc_output_path,
+                aircraft_fasttrack_folder=AIRCRAFT_FASTTRACK_FOLDER,
+                aircraft_ft_version=AIRCRAFT_FT_VERSION,
+            )
+        except Exception as e:
+            print(f"!! {_marker}: FAILED — {e}")
+            import traceback
+            traceback.print_exc()
+            _failed.append(_marker)
+
+    print(f"\n=== All markers done: {len(_markers) - len(_failed)}/{len(_markers)} OK ===")
+    if _failed:
+        print(f"    Failed/skipped: {_failed}")
 
 # %%
