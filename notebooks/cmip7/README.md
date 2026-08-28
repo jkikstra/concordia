@@ -1,18 +1,17 @@
 # CMIP7 workflow for emissions gridding
 
-This describes how to produce emissions grids for CMIP7 ScenarioMIP: a **fast-track** pipeline
+This describes how to produce gridded emissions for the CMIP7 ScenarioMIP experiments: a **fast-track** pipeline
 (producing data for 2022–2100) followed by an **extensions** pipeline (producing data for 2105–2500) that continues from the fast-track
 output. All files are in this folder unless noted otherwise; scripts are jupytext-paired
 `.py`/`.ipynb` — edit the `.py`.
 
-**Starting point:** a pre-harmonised scenario emissions data is assumed as input. Harmonisation itself happens
-upstream, in `iiasa/emissions_harmonization_historical`.
+**Starting point:** pre-harmonised scenario emissions data, prepared in <https://github.com/iiasa/emissions_harmonization_historical>.
 
 ## Fast-track pipeline (2022–2100)
 
-Config: `config_cmip7_v0-4-0.yaml`
+Final config for CMIP7: `config_cmip7_v0-4-0.yaml`
 
-### 1. Pre-processing
+### 1. Prepare proxy files
 
 Run once per config version, in this order where a dependency applies:
 
@@ -20,12 +19,12 @@ Run once per config version, in this order where a dependency applies:
    (`ssp_comb_indexraster_splitsudankosovopalestine.nc`) used throughout both pipelines to
    aggregate gridded data to country level.
 2. `prep_proxyfuture-anthro-from-ceds-cmip7-esgf.py` — spatial proxies for anthropogenic,
-   shipping, and aircraft emissions, from ESGF CEDS files.
+   shipping, and aircraft emissions, from CEDS gridded historical emission files available via ESGF.
 3. `prep_proxyfuture-openburning-from-dres-cmip7-esgf.py` — spatial proxies for openburning
-   emissions, from ESGF BB4CMIP7 files.
+   emissions, from BB4CMIP7 historical openburning emissions files available via ESGF.
 4. `prep_proxyfuture-cdr-from-rescue.py` — CDR proxy (`CDR_CO2.nc`).
 5. `prep_proxyfuture-cdr-erw.py` — Enhanced Weathering CO2 proxy; reads the `CDR_CO2.nc`
-   template from step 4, so run after it.
+   template from step 4.
 6. `prep_h2openburning_foresttypespergridcell.py` — H2/CO emission-factor proxy
    (`EF_h2_div_EF_co.nc`), used to derive H2 openburning emissions from CO.
 7. `prep_proxyfuture-anthro-from-ceds-cmip7-esgf-VOCspeciation.py` — VOC speciation share
@@ -35,11 +34,12 @@ Run once per config version, in this order where a dependency applies:
 
 ### 2. Workflow
 
-- `workflow_cmip7-fast-track.py` — harmonises, downscales, and grids one scenario marker at a
+- `workflow_cmip7-fast-track.py` — harmonises, downscales, and grids one marker scenario at a
   time: main species (anthro, AIR-anthro, openburning), H2 openburning, and VOC speciation
-  (anthro + openburning). Includes built-in QC (spatial harmonisation vs. CEDS 2023, timeseries
-  corrections, VOC-sum checks). Run via `scripts/cmip7/driver_workflow_cmip7-fast-track.py`
-  (papermill) for one or more markers.
+  (anthro + openburning). This happens in two steps: downscaling to country-level, using the country index raster,
+  then downscaling to the gridded level using the spatial proxies. Includes subsequent spatial harmonisation of patterns
+  against CEDS 2023, as well as timeseries corrections and a number of built-in checks for QC.
+  Run via `scripts/cmip7/driver_workflow_cmip7-fast-track.py` (papermill) for one or more markers.
 
 ### 3. Checking
 
@@ -47,13 +47,8 @@ Run once per config version, in this order where a dependency applies:
   downscaled-data QC, annual totals compared across input/harmonised/gridded, sectoral totals,
   animated grid maps, documentation plots, and per-location timeseries vs. CEDS/BB4CMIP7 history.
   Modules can be toggled on/off.
-- `check_gridded-scenarios-compare-to-ceds-esgf.py` — detailed sector-by-sector comparison of
-  gridded output to CEDS reference grids in the harmonisation year, plus timeseries plots for
-  specific points/areas (slow).
-- `check_plot-global-total-timeseries.py` — simple global annual-total timeseries plots per
-  species/sector, with historical data overlaid.
 - `check_VOCspeciation_share_proxies.py` — validates the VOC-speciation share proxy files
-  (output of steps 7–8 above) before they're used for gridding.
+  (output of steps 1.7 and 1.8 above) before they're used for gridding.
 
 ## Extensions pipeline (2105–2500)
 
@@ -99,4 +94,3 @@ final gridded NetCDFs to anchor its 2100 boundary correction.
 - `archive/` — scripts superseded by the current workflow, or tied to old config versions; kept
   for reference, not part of the live pipeline.
 - `investigate/` — exploratory notebooks that don't feed or check the workflow.
-- `untracked/` — personal work-in-progress scripts (gitignored).
