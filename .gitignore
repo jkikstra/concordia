@@ -20,6 +20,12 @@ notebooks/gridding_data/*
 !/notebooks/gridding_data/*.py
 notebooks/Jarmo_files
 
+# scratch/WIP notebooks and scripts not meant to be tracked
+notebooks/cmip7/untracked/
+
+# local-only script, not meant for the shared repo
+src/concordia/cmip7/utils_Ref1p5.py
+
 # Ignore output files
 data/out
 data/rescue
