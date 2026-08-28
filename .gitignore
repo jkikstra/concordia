@@ -20,6 +20,9 @@ notebooks/gridding_data/*
 !/notebooks/gridding_data/*.py
 notebooks/Jarmo_files
 
+# scratch/WIP notebooks and scripts not meant to be tracked
+notebooks/cmip7/untracked/
+
 # Ignore output files
 data/out
 data/rescue
