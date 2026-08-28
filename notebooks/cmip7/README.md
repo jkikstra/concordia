@@ -5,6 +5,8 @@ This describes how to produce gridded emissions for the CMIP7 ScenarioMIP experi
 output. All files are in this folder unless noted otherwise; scripts are jupytext-paired
 `.py`/`.ipynb` — edit the `.py`.
 
+Some paths in the scripts are currently hardwired and may need manual adaptation if re-running.
+
 **Starting point:** pre-harmonised scenario emissions data, prepared in <https://github.com/iiasa/emissions_harmonization_historical>.
 
 ## Fast-track pipeline (2022–2100)
@@ -94,3 +96,7 @@ final gridded NetCDFs to anchor its 2100 boundary correction.
 - `archive/` — scripts superseded by the current workflow, or tied to old config versions; kept
   for reference, not part of the live pipeline.
 - `investigate/` — exploratory notebooks that don't feed or check the workflow.
+
+### Further documentation and links to data
+
+<https://zenodo.org/records/19730076>
