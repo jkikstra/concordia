@@ -19,8 +19,31 @@
 # %autoreload 2
 
 # %% [markdown]
-# # Workflow for CMIP7 ScenarioMIP emissions harmonization 
-# **Note:** currently built allowing for running only one scenario at a time.
+# # Workflow for CMIP7 ScenarioMIP emissions harmonization — fast-track (2022–2100)
+#
+# End-to-end harmonization, downscaling, and gridding of CMIP7 ScenarioMIP emissions for
+# 2022–2100. Runs one scenario marker at a time; drive multiple markers from a
+# papermill/subprocess wrapper.
+#
+# **Processing stages:**
+#
+# | Step | Section | Notes |
+# |------|---------|-------|
+# | 1 | [Configuration](#specify-input-scenario-data-and-project-settings) | Marker, version, which sub-workflows to run |
+# | 2 | [Imports & settings](#importing-packages) | Packages + settings YAML |
+# | 3 | [Read definitions](#read-definitions) | Variable defs, region mappings |
+# | 4 | [Read history](#history-read-and-process-historical-data) | Country-level CEDS/BB4CMIP history through 2022 |
+# | 5 | [Read IAM data](#iam-read-and-process-iam-data) | Harmonized scenario trajectories |
+# | 6 | [GDP proxy](#prepare-gdp-proxy) | SSP-based GDP for downscaling |
+# | 7 | [Coverage checks](#country-coverage) | Country, sector, and harmonization consistency |
+# | 8 | [Harmonize & downscale](#harmonize-downscale-and-grid-everything) | aneris-based downscaling to country level |
+# | 9 | [Grid](#run-full-processing-and-create-netcdf-files) | concordia `workflow.grid()` → NetCDF per species/sector |
+# | 10 | [Post-processing](#1-spatial-harmonization) | Spatial harmonization with CEDS 2023; anthro/AIR/openburning timeseries corrections |
+# | 11 | [H2 openburning](#start-of-h2-openburning-data) | Derived H2 from openburning CO |
+# | 12 | [Supplemental VOC](#voc-speciation) | VOC speciation for anthro and openburning |
+# | 13 | [QC & diagnostics](#4-plotting) | Maps, timeseries comparisons, NMVOC/VOC sum consistency checks |
+#
+# **Note:** currently built for running one scenario at a time.
 
 # %% [markdown]
 # ## Specify input scenario data and project settings
