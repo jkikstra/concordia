@@ -27,23 +27,23 @@ from matplotlib import colors
 import cartopy.crs as ccrs
 
 # %%
-from concordia.cmip7.CONSTANTS import CONFIG
+from concordia.cmip7.CONSTANTS import CONFIG_FASTTRACK
 import concordia.cmip7.utils_futureproxy_ceds_bb4cmip as uprox
-VERSION = CONFIG
+VERSION = CONFIG_FASTTRACK
 
 try:
     # when running the script from a terminal or otherwise
     cmip7_dir = Path(__file__).resolve()
-    settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+    settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG_FASTTRACK)
 except (FileNotFoundError, NameError):
     try:
         # when running the script from a terminal or otherwise
         cmip7_dir = Path(__file__).resolve().parent
-        settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+        settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG_FASTTRACK)
     except (FileNotFoundError, NameError):
         # Fallback for interactive/Jupyter mode, where 'file location' does not exist
         cmip7_dir = Path().resolve()  # one up
-        settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+        settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG_FASTTRACK)
 
 # %% [markdown]
 # **Documentation:**

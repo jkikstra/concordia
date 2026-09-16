@@ -13,8 +13,8 @@ from pathlib import Path
 from concordia.settings import Settings
 
 # %%
-def get_settings(base_path: Path, 
-                 file: str = "config_cmip7_v0_2.yaml"):
+def get_settings(base_path: Path,
+                 file: str):
     settings = Settings.from_config(
         file, 
         base_path=base_path,

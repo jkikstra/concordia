@@ -31,11 +31,11 @@ import cartopy.feature as cfeature
 
 # %%
 from concordia.settings import Settings
-from concordia.cmip7.CONSTANTS import CONFIG
+from concordia.cmip7.CONSTANTS import CONFIG_FASTTRACK
 
 # %%
 def get_settings(base_path: Path, 
-                 file = CONFIG):
+                 file = CONFIG_FASTTRACK):
     settings = Settings.from_config(
         file, 
         base_path=base_path,

@@ -154,10 +154,10 @@ def ds_to_annual_emissions_total(gridded_data, var_name, cell_area: xr.DataArray
     if cell_area is None:
 
         from concordia.settings import Settings
-        from concordia.cmip7.CONSTANTS import CONFIG
+        from concordia.cmip7.CONSTANTS import CONFIG_FASTTRACK
         HERE = Path(__file__).parent.parent.parent.parent / "notebooks" / "cmip7"
         dummy_settings = Settings.from_config(local_config_path=Path(HERE,
-                                                            CONFIG),
+                                                            CONFIG_FASTTRACK),
                                                             version=None)
         
         areacella = xr.open_dataset(Path(dummy_settings.gridding_path, 
@@ -233,9 +233,9 @@ def ds_to_monthly_emissions_total(gridded_data, var_name, cell_area: xr.DataArra
     """
     if cell_area is None:
         from concordia.settings import Settings
-        from concordia.cmip7.CONSTANTS import CONFIG
+        from concordia.cmip7.CONSTANTS import CONFIG_FASTTRACK
         HERE = Path(__file__).parent.parent.parent.parent / "notebooks" / "cmip7"
-        dummy_settings = Settings.from_config(local_config_path=Path(HERE, CONFIG), version=None)
+        dummy_settings = Settings.from_config(local_config_path=Path(HERE, CONFIG_FASTTRACK), version=None)
         areacella = xr.open_dataset(Path(dummy_settings.gridding_path,
                                          "areacella_input4MIPs_emissions_CMIP_CEDS-CMIP-2025-04-18_gn.nc"))
         cell_area = areacella["areacella"]
