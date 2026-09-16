@@ -76,7 +76,7 @@ from __future__ import annotations
 # ## Parameters
 
 # %% editable=true slideshow={"slide_type": ""} tags=["parameters"]
-SETTINGS_FILE: str = "config_cmip7_v0-4-0.yaml"
+SETTINGS_FILE: str = "config_cmip7_v0-4-0-EXT.yaml"
 VERSION_ESGF: str = "1-1-1"
 marker_to_run: str = "vl"
 GRIDDING_VERSION: str = f"{marker_to_run}-ext_{VERSION_ESGF}"
