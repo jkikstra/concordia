@@ -31,7 +31,7 @@ HISTORY_FILE: str = "country-history_202511261223_202511040855_202512032146_2025
 # Settings
 # SETTINGS_FILE: str = "config_cmip7_esgf_v0_alpha.yaml" # was used for preparing for first upload to ESGF
 SETTINGS_FILE: str = "config_cmip7_v0-4-0.yaml" # CMIP7 version
-VERSION_ESGF: str = "1-1-1"
+VERSION_ESGF: str = "1-1-2"
 
 # Which scenario to run from the markers
 marker_to_run: str = "vl" # options: h, hl, m, ml, l, ln, vl
@@ -46,14 +46,14 @@ run_main: bool = True # skips downscaling and the saving out of data of the main
 run_main_gridding: bool = True # if false, we'll not run the main gridding workflow
 SKIP_EXISTING_MAIN_WORKFLOW_FILES: bool = False # if True, it won't reproduce files already on your disk
 run_spatial_harmonisation: bool = True # provides spatial harmonization with CEDS anthro in 2023 (requires having raw CEDS files locally)
-run_anthro_timeseries_correction: bool = True
+run_anthro_timeseries_correction: bool = False
 run_AIR_anthro_timeseries_correction: bool = True
-run_openburning_timeseries_correction: bool = True
+run_openburning_timeseries_correction: bool = False
 
-run_openburning_h2: bool = True # produced based on openburning_co
+run_openburning_h2: bool = False # produced based on openburning_co
 
-run_anthro_supplemental_voc: bool = True
-run_openburning_supplemental_voc: bool = True
+run_anthro_supplemental_voc: bool = False
+run_openburning_supplemental_voc: bool = False
 
 # run_anthro_supplemental_solidbiofuel: bool = False # not yet implemented, for the future
 
@@ -196,7 +196,7 @@ def return_emission_names(file):
         parts = file.name.replace(f"_{FILE_NAME_ENDING}", "").split("-em-")
         gas_name = parts[0]
         type_name = parts[1]
-        var = f"{gas_name.replace("-","_")}_em_{type_name.replace("-","_")}"
+        var = f"{gas_name.replace('-','_')}_em_{type_name.replace('-','_')}"
     else:
         raise ValueError(f"Unrecognized file format: {file.name}. Expected format: '{{gas}}-em-{{type}}_{{FILE_NAME_ENDING}}'")
 
@@ -1555,7 +1555,7 @@ cmip7_areacella.attrs['comment'] = f"Research data originally produced by {origi
 cmip7_areacella = cmip7_areacella.pipe(remove_fillvalue_from_bounds)
 folder_areacella = settings.out_path / GRIDDING_VERSION / 'areacella'
 folder_areacella.mkdir(parents=True, exist_ok=True)
-cmip7_areacella.to_netcdf(folder_areacella / f'areacella_input4MIPs_emissions_{cmip7_utils.DS_ATTRS['target_mip']}_{cmip7_utils.DS_ATTRS['institution_id']}-{VERSION_ESGF}_gn.nc', encoding=encoding)
+cmip7_areacella.to_netcdf(folder_areacella / f"areacella_input4MIPs_emissions_{cmip7_utils.DS_ATTRS['target_mip']}_{cmip7_utils.DS_ATTRS['institution_id']}-{VERSION_ESGF}_gn.nc", encoding=encoding)
 
 
 # %% [markdown]
@@ -2659,7 +2659,7 @@ if run_openburning_h2:
 
     # save out
     print('Writing out H2 openburning emissions')
-    outfile = settings.out_path / GRIDDING_VERSION / f"{gas_variable_name.replace("_","-")}_{FILE_NAME_ENDING}"
+    outfile = settings.out_path / GRIDDING_VERSION / f"{gas_variable_name.replace('_','-')}_{FILE_NAME_ENDING}"
 
     encoding = {
         gas_variable_name: {
@@ -3510,7 +3510,7 @@ if save_total_emissions_as_csv:
                 cell_area=cell_area,
                 keep_sectors=True
             ).to_pandas()
-            scen_sectors_df.to_csv(folder_totals / f"{var.replace("_","-")}_{FILE_NAME_ENDING.rstrip('.nc')}_annual_totals_by_sector.csv")
+            scen_sectors_df.to_csv(folder_totals / f"{var.replace('_','-')}_{FILE_NAME_ENDING.rstrip('.nc')}_annual_totals_by_sector.csv")
 
             scen_df = ds_to_annual_emissions_total( # takes about 5-10 seconds
                 gridded_data=scen,
@@ -3518,7 +3518,7 @@ if save_total_emissions_as_csv:
                 cell_area=cell_area,
                 keep_sectors=False
             ).to_pandas().to_frame(name='emissions_Mt_year')
-            scen_df.to_csv(folder_totals / f"{var.replace("_","-")}_{FILE_NAME_ENDING.rstrip('.nc')}_annual_totals.csv")
+            scen_df.to_csv(folder_totals / f"{var.replace('_','-')}_{FILE_NAME_ENDING.rstrip('.nc')}_annual_totals.csv")
 
 # %% [markdown]
 # # CONTINUED POSTPROCESSING
