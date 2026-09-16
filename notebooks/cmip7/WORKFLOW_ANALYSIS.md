@@ -1,6 +1,15 @@
 # Workflow Analysis: `workflow_cmip7-fast-track.py`
 
-Analysis of the ~4200-line CMIP7 ScenarioMIP emissions workflow notebook.
+> **⚠️ SUPERSEDED — do not use this file's status claims.**
+> This is the original audit. Its line numbers and its resolved/unresolved status are both out of
+> date. [`WORKFLOW_ANALYSIS_update.md`](WORKFLOW_ANALYSIS_update.md) re-checks every point below
+> against the current file and is the authoritative status.
+>
+> Short version: of the 20 points tracked here, **2 are fixed** (B3 and I10) and **18 still
+> stand**, including five crash-or-silent-failure bugs (B4, B5, B6, B7, B8). This file is kept
+> only for the workflow outline in section 1 and the original descriptions.
+
+Analysis of the roughly 4200-line CMIP7 ScenarioMIP emissions workflow notebook.
 Covers: (1) README outline for the workflow, (2) potential critical bugs, (3) improvement opportunities.
 
 ---

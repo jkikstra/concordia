@@ -1,4 +1,46 @@
-local_config_path: 'config_cmip7_v0-4-0.yaml' # this file; we don't use a separate local file
+local_config_path: 'config_cmip7_v0-4-0.yaml' # NB: names the fast-track config, not this file.
+                                              # Vestigial - callers pass local_config_path to
+                                              # Settings.from_config() explicitly, so this key is
+                                              # not what selects the config. Left as-is rather
+                                              # than "fixed" so nothing changes behaviour; see
+                                              # the repository issues.
+
+# =============================================================================
+# EXTENSIONS config (2100-2500). The fast-track pipeline uses
+# config_cmip7_v0-4-0.yaml instead.
+#
+# The extensions pipeline REQUIRES the fast-track to have been run for the same
+# marker and version: it reads fast-track's downscaled-only-*.csv as history and
+# fast-track's final gridded NetCDFs to anchor the 2100 boundary.
+#
+# What must exist on disk under each path, and where it comes from:
+#   docs/inputs.md
+# Where to download a version's input bundle, and who to ask:
+#   docs/versions.md
+#
+# --- HOW THIS FILE SWITCHES BETWEEN MACHINES -------------------------------
+# Several keys below are deliberately declared MORE THAN ONCE (out_path,
+# data_path). YAML keeps the LAST occurrence, so the active value is the last
+# uncommented line for that key - not the first, and not the one nearest a
+# matching comment. Commenting out the bottom line silently promotes the one
+# above it.
+#
+# Before a run, check the effective value of every duplicated key rather than
+# reading top-down. As currently committed, the effective values are the
+# /pdrive cluster paths.
+#
+# --- KEYS -------------------------------------------------------------------
+# Same meanings as the fast-track config, which documents each key in full.
+# The two differences that matter here:
+#   proxy_path      -> proxy_rasters_extensions/ (built by
+#                      prep_proxyfuture-extensions.py, which freezes the 2100
+#                      spatial pattern and repeats it across extension years),
+#                      NOT the fast-track proxy_rasters/.
+#   scenario_path   -> the extensions scenario set, separate from the
+#                      fast-track scenario set.
+# Note that data_path, history_path, regionmappings_path and gridding_path
+# intentionally point at the SAME version bundle as the fast-track config.
+# =============================================================================
 
 # ---- standard config for CMIP7 ----
 out_path: "../../results"

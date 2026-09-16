@@ -264,13 +264,11 @@ def main():  # noqa: PLR0912
     # 3. PLOTTING
     # ------------------------------------
 
-    # tbd.
-
-    # - [ ] should include:
-    #   - [ ] notebooks\cmip7\check_gridded-scenarios-compare-to-ceds-esgf.py
-    #   - [ ] notebooks\cmip7\check_gridded-scenarios-global-sectoral-aggregation-compared-to-input.py
-    #   - [ ] notebooks\cmip7\check_plot-animated-grids.py
-    #   - [ ] notebooks\cmip7\check_plot-global-total-timeseries.py
+    # Superseded. This used to list four standalone plotting scripts to fold in; three are now
+    # covered by modules of notebooks/cmip7/check_gridded_scenario_qc.py (G: comparison to CEDS
+    # ESGF, D: global sectoral aggregation vs input, E: animated grid maps) and the fourth was an
+    # unfinished global-total timeseries script whose working part module D also covers.
+    # Run check_gridded_scenario_qc.py via driver_check_gridded_scenario_qc.py instead.
 
 
 

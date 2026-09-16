@@ -1,5 +1,60 @@
 local_config_path: 'config_cmip7_v0-4-0.yaml' # this file; we don't use a separate local file
 
+# =============================================================================
+# Fast-track config (2022-2100). The extensions pipeline uses
+# config_cmip7_v0-4-0-EXT.yaml instead.
+#
+# What must exist on disk under each of these paths, and where it comes from:
+#   docs/inputs.md
+# Where to download a version's input bundle, and who to ask:
+#   docs/versions.md
+#
+# --- HOW THIS FILE SWITCHES BETWEEN MACHINES -------------------------------
+# Several keys below are deliberately declared MORE THAN ONCE (out_path,
+# data_path, scenario_path). YAML keeps the LAST occurrence, so the active
+# value is the last uncommented line for that key - not the first, and not
+# the one nearest a matching comment. Commenting out the bottom line silently
+# promotes the one above it.
+#
+# Before a run, check the effective value of every duplicated key rather than
+# reading top-down. As currently committed, the effective values are the
+# /pdrive cluster paths.
+#
+# --- KEYS -------------------------------------------------------------------
+# out_path            Where gridded results are written (results/{GRIDDING_VERSION}/).
+# data_path           Root of the input bundle for this version; every path
+#                     below is expressed relative to it via "$data_path".
+# variabledefs_path   CSV listing every species-sector combination produced:
+#                     the method (global vs country), which proxy file and
+#                     proxy variable, and the output variable/file
+#                     (column "output_var"). If a species or sector is missing
+#                     from the output, look here first. Note the three
+#                     commented-out alternatives - the uncommented one is live.
+# history_path        Country-level CEDS + GFED history, produced in
+#                     iiasa/emissions_harmonization_historical. MUST match the
+#                     history used in harmonisation upstream; a mismatch is
+#                     silent, not an error. See docs/inputs.md.
+# scenario_path       The (already harmonised) IAM scenarios to downscale,
+#                     plus SSP GDP drivers and the harmonisation-overrides file.
+# regionmappings_path Directory of per-model country-to-region mappings,
+#                     generally pinned to a specific commit hash.
+# regionmappings      Per-model mapping files. Model names including version
+#                     numbers are matched exactly - check these when a model
+#                     version changes upstream.
+# gridding_path       Raw inputs from which spatial proxies are derived
+#                     (ESGF CEDS/BB4CMIP7, CDR proxies, iso masks, areacella).
+# proxy_path          Spatial proxies, CREATED by the prep_ scripts. Not an
+#                     input you download.
+# postprocess_path    CEDS anthro files used for spatial harmonisation of
+#                     patterns (see the inline note below).
+# variable_template   IAMC variable naming pattern for the harmonised input.
+# base_year           Harmonisation year (see inline note - 2022 vs 2023).
+# country_combinations  Countries merged before downscaling; null when unused.
+# luc_sectors         Sectors treated as land-use-change for gridding.
+# encoding            netCDF compression settings - don't change.
+# ftp                 Placeholder; uploading is manual, see docs/esgf-upload.md.
+# =============================================================================
+
 # ---- standard config for CMIP7 ----
 out_path: "C:/Users/kikstra/Documents/GitHub/concordia/results" # Jarmo; 19.09.2025 and later
 out_path: "/pdrive/projects/ece-climate/extensions/results"

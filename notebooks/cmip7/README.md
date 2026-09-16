@@ -8,6 +8,25 @@ output. All files are in this folder unless noted otherwise; scripts are jupytex
 Some paths in the scripts are currently hardwired and may need manual adaptation if re-running.
 
 **Starting point:** pre-harmonised scenario emissions data, prepared in <https://github.com/iiasa/emissions_harmonization_historical>.
+This repository does contain harmonisation functionality — used for the RESCUE project — but it
+is not used for CMIP7.
+
+## Before you run anything
+
+| You need to know | Read |
+| --- | --- |
+| What must exist on disk, and where each input comes from | [`docs/inputs.md`](docs/inputs.md) |
+| Where to download a version's input bundle, and who to ask | [`docs/versions.md`](docs/versions.md) |
+| What each config key means | comments at the top of `config_cmip7_v0-4-0.yaml` |
+| How to validate and publish finished output | [`docs/esgf-upload.md`](docs/esgf-upload.md) |
+| What changed between published versions | the Zenodo record — see below |
+
+The two workflow scripts run through papermill and pin the jupytext kernel to `concordia`.
+Register it once per machine:
+
+```bash
+python -m ipykernel install --user --name concordia
+```
 
 ## Fast-track pipeline (2022–2100)
 
@@ -91,12 +110,62 @@ final gridded NetCDFs to anchor its 2100 boundary correction.
   (exact-equality checks + attribute diffs); not scenario-specific. Run via
   `scripts/cmip7/driver_compare_gridded_versions.py`.
 
+## Naming conventions
+
+Filenames in this folder follow `{type-of-file}_{description-of-purpose-or-action}`, and the
+prefix tells you what a script is for. This is also what decides which folder a script lives in.
+
+| Prefix | Meaning |
+| --- | --- |
+| `config_*` | Main configuration file; can serve any type of script |
+| `prep_*` | Runs **before** `workflow_*`; builds proxies and masks (includes `prep_proxy_*`) |
+| `workflow_*` | Input (harmonised IAM emissions) → downscaled and gridded data products |
+| `check_*` | Checks on data produced by `prep_*` and `workflow_*`; numerical or visual |
+| `investigate_*` | Looks into input files. Produces nothing the workflow needs, and analyses no workflow output — hence `investigate/` |
+
+Two conventions worth stating explicitly:
+
+- A `{project-name}` folder is only needed when a script is *not* reusable unchanged across
+  projects. Generic scripts stay in the root `notebooks/` folder. Moving a script back out to the
+  root later, once it has been generalised, is expected.
+- Avoid `{version}` in filenames. Add one only when multiple versions genuinely must coexist —
+  for example to run the same workflow under several configurations. Never end a filename with `_`.
+
+RESCUE-project filenames predate CMIP7 and deliberately do not follow this structure.
+
+A `workflow-postprocess_*` prefix also exists in `archive/`: it did additional processing on grid
+files after `workflow_*`. That work is now folded into the workflow scripts themselves, so the
+prefix should not be used for new scripts.
+
+## Known issues in the fast-track workflow
+
+[`WORKFLOW_ANALYSIS_update.md`](WORKFLOW_ANALYSIS_update.md) is the **current** audit of
+`workflow_cmip7-fast-track.py`; [`WORKFLOW_ANALYSIS.md`](WORKFLOW_ANALYSIS.md) is the superseded
+original, kept for its workflow outline.
+
+Five bugs are open, and two of them will crash a legitimate run:
+
+| | Effect |
+| --- | --- |
+| **B4** | `assert remainder_diff_2023 < 50` has no `abs()`, so a scenario much *larger* than the CEDS reference passes silently |
+| **B5** | `NameError` when `run_main_gridding=False` and `run_openburning_h2=True` |
+| **B6** | `check_harmonization_consistency` called twice identically; doubles that stage's runtime |
+| **B7** | `new_stem` read from a loop variable after the loop, in three places |
+| **B8** | `_what_emissions_variable_type` raises `UnboundLocalError` for an unclassifiable file |
+
+Read that file before debugging a failed run — the failure may already be known.
+
 ## Other folders
 
 - `archive/` — scripts superseded by the current workflow, or tied to old config versions; kept
   for reference, not part of the live pipeline.
 - `investigate/` — exploratory notebooks that don't feed or check the workflow.
+- `docs/` — input-data layout, version/data locations and contacts, and the ESGF publishing
+  procedure.
 
-### Further documentation and links to data
+## Further documentation and published data
 
-<https://zenodo.org/records/19730076>
+**<https://zenodo.org/records/19730076>** — the published datasets and the canonical record of
+what changed between versions. This repository does not duplicate that changelog.
+
+Contacts and per-version input-data locations: [`docs/versions.md`](docs/versions.md).
