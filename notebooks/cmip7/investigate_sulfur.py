@@ -21,13 +21,13 @@ import cartopy.crs as ccrs
 
 # %%
 from concordia.settings import Settings
-from concordia.cmip7.CONSTANTS import CONFIG
+from concordia.cmip7.CONSTANTS import CONFIG_FASTTRACK
 
 from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total, plot_map
 
 # %%
 def get_settings(base_path: Path,
-                 file = CONFIG):
+                 file = CONFIG_FASTTRACK):
     settings = Settings.from_config(
         file, 
         base_path=base_path,

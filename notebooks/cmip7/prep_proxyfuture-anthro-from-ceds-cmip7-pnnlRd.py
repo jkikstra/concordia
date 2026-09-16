@@ -38,10 +38,10 @@ from concordia.cmip7.utils_rpy2 import save_da_as_rd
 # %% 
 import concordia.cmip7.utils_futureproxy_ceds_bb4cmip as uprox
 from concordia.cmip7.utils_futureproxy_ceds_bb4cmip import dim_order
-from concordia.cmip7.CONSTANTS import CONFIG
+from concordia.cmip7.CONSTANTS import CONFIG_FASTTRACK
 
 # %%
-config_file_name = CONFIG
+config_file_name = CONFIG_FASTTRACK
 
 # %%
 try:

@@ -23,7 +23,7 @@
 # emissions: "D:\ESGF\DRES-CMIP-BB4CMIP7-2-1\atmos\mon\BC\gn\v20250612\BC_input4MIPs_emissions_CMIP_DRES-CMIP-BB4CMIP7-2-1_gn_190001-202312.nc"
 # percentages: "D:\ESGF\DRES-CMIP-BB4CMIP7-2-1\atmos\mon\BCpercentageTEMF\gn\v20250612\BCpercentageTEMF_input4MIPs_emissions_CMIP_DRES-CMIP-BB4CMIP7-2-1_gn_175001-202312.nc"
 
-from concordia.cmip7.CONSTANTS import GASES, GASES_ESGF_BB4CMIP, CONFIG, PROXY_YEARS
+from concordia.cmip7.CONSTANTS import GASES, GASES_ESGF_BB4CMIP, CONFIG_FASTTRACK, PROXY_YEARS
 
 # %%
 # check later if we need all these imports 
@@ -48,7 +48,7 @@ import concordia.cmip7.utils_futureproxy_ceds_bb4cmip as uprox
 from concordia.cmip7.utils_futureproxy_ceds_bb4cmip import _normalize_time_slice
 
 # %%
-VERSION = CONFIG
+VERSION = CONFIG_FASTTRACK
 
 # %%
 # Select time windows to average over here. 
@@ -76,16 +76,16 @@ PROXY_TIME_RANGES = [
 try:
     # when running the script from a terminal or otherwise
     cmip7_dir = Path(__file__).resolve()
-    settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+    settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG_FASTTRACK)
 except (FileNotFoundError, NameError):
     try:
         # when running the script from a terminal or otherwise
         cmip7_dir = Path(__file__).resolve().parent
-        settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+        settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG_FASTTRACK)
     except (FileNotFoundError, NameError):
         # Fallback for interactive/Jupyter mode, where 'file location' does not exist
         cmip7_dir = Path().resolve()  # one up
-        settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+        settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG_FASTTRACK)
 
 # %% [markdown]
 # ### Unsmoothed data

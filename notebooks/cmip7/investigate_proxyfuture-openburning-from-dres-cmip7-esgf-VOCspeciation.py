@@ -31,25 +31,25 @@ import concordia.cmip7.utils_futureproxy_ceds_bb4cmip as uprox
 from concordia.cmip7.utils_futureproxy_ceds_bb4cmip import _normalize_time_slice
 
 # %%
-from concordia.cmip7.CONSTANTS import GASES_ESGF_BB4CMIP_VOC, CONFIG, PROXY_YEARS
+from concordia.cmip7.CONSTANTS import GASES_ESGF_BB4CMIP_VOC, CONFIG_FASTTRACK, PROXY_YEARS
 
 # %%
-VERSION = CONFIG
+VERSION = CONFIG_FASTTRACK
 
 # %%
 try:
     # when running the script from a terminal or otherwise
     cmip7_dir = Path(__file__).resolve()
-    settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+    settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG_FASTTRACK)
 except (FileNotFoundError, NameError):
     try:
         # when running the script from a terminal or otherwise
         cmip7_dir = Path(__file__).resolve().parent
-        settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+        settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG_FASTTRACK)
     except (FileNotFoundError, NameError):
         # Fallback for interactive/Jupyter mode, where 'file location' does not exist
         cmip7_dir = Path().resolve()  # one up
-        settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG)
+        settings = uprox.get_settings(base_path=cmip7_dir, file = CONFIG_FASTTRACK)
 
 # %%
 #cmip7_dir = "/Users/hoegner/Projects/CMIP7/concordia_cmip7_esgf_v0_alpha/input/gridding/esgf/bb4cmip7_voc"
