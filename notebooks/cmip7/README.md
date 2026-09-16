@@ -104,6 +104,23 @@ final gridded NetCDFs to anchor its 2100 boundary correction.
 - `check_gridded_scenario_junctions-ext.py` — verifies continuity across the three segments
   (CEDS historical 2000–2023, fast-track 2022–2100, extension 2105–2500) at their boundaries.
 
+## Outputs
+
+Everything lands under `{out_path}/results/{GRIDDING_VERSION}/`, where `GRIDDING_VERSION` is
+`{marker}_{VERSION_ESGF}` for the fast-track and `{marker}-ext_{VERSION_ESGF}` for the extensions.
+`out_path` is set in the config — note it is one of the keys declared more than once, so check the
+effective value before hunting for missing files.
+
+| Output | What it is |
+| --- | --- |
+| `harmonization-{version}.csv` | Harmonised IAMC-format data |
+| `downscaled-only-{version}.csv` | Country-level downscaled data. Also the **history input to the extensions pipeline** |
+| `{gas}-em-{sector}_{FILE_NAME_ENDING}.nc` | The gridded NetCDFs — main species, H2, and VOC speciation |
+| `areacella_*.nc` | Grid-cell area file with updated metadata |
+| `plots/` | PNG maps and timeseries comparison plots |
+| `check_annual_totals/`, `check_annual_totals_ext/`, `check_NMVOC_sums/`, `check_VOC_sums/` | QC CSVs and plots from the built-in checks |
+| `debug_{version}.log` | Run log |
+
 ## Other tools
 
 - `compare_gridded_versions.py` — generic diff between any two gridded output folders
@@ -139,9 +156,12 @@ prefix should not be used for new scripts.
 
 ## Known issues in the fast-track workflow
 
-[`WORKFLOW_ANALYSIS_update.md`](WORKFLOW_ANALYSIS_update.md) is the **current** audit of
-`workflow_cmip7-fast-track.py`; [`WORKFLOW_ANALYSIS.md`](WORKFLOW_ANALYSIS.md) is the superseded
-original, kept for its workflow outline.
+Tracked upstream, in the issue tracker the team uses for CMIP7 work:
+
+- [IAMconsortium/concordia#94](https://github.com/IAMconsortium/concordia/issues/94) — the five
+  open bugs below, with line numbers and suggested fixes.
+- [IAMconsortium/concordia#87](https://github.com/IAMconsortium/concordia/issues/87) — the
+  improvement backlog for this file (code quality, performance, robustness, structure).
 
 Five bugs are open, and two of them will crash a legitimate run:
 
@@ -153,7 +173,7 @@ Five bugs are open, and two of them will crash a legitimate run:
 | **B7** | `new_stem` read from a loop variable after the loop, in three places |
 | **B8** | `_what_emissions_variable_type` raises `UnboundLocalError` for an unclassifiable file |
 
-Read that file before debugging a failed run — the failure may already be known.
+Check those issues before debugging a failed run — the failure may already be known.
 
 ## Other folders
 
