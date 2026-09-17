@@ -97,20 +97,20 @@ def main():  # noqa: PLR0912
     # DO_GRIDDING_ONLY_FOR_THESE_SPECIES = ["BC", "SO2", "NMVOC", "NMVOCbulk"] # test just one/some species
 
     DO_GRIDDING_ONLY_FOR_THESE_SECTORS = None # all: i.e, same as doing ['anthro', 'openburning', 'AIR_anthro']
-    # DO_GRIDDING_ONLY_FOR_THESE_SECTORS = ["openburning", "anthro"] # test just one/some sectors
+    DO_GRIDDING_ONLY_FOR_THESE_SECTORS = ["AIR_anthro"] # test just one/some sectors
 
     SKIP_EXISTING_MAIN_WORKFLOW_FILES = True
     FILE_NAME_ENDING = None # specify in the workflow notebook file itself
 
     # All
     markers = [
-        # "VL",
-        # "LN",
-        # "L",
-        # "ML",
-        # "M",
-        "H",
-        # "HL",
+        # "vl",
+     #    "ln",
+         "l",
+        # "ml",
+        #  "m",
+         # "h",
+      #   "hl",
     ]
     # # High priority markers:
     # markers = [
@@ -135,7 +135,7 @@ def main():  # noqa: PLR0912
 
     # processing: run the notebook
     notebook_prefixes = [
-        "workflow_cmip7-fast-track"
+        "workflow_cmip7-fast-track.py"
     ]
     # # Skip this step
     # notebook_prefixes = []
@@ -145,6 +145,7 @@ def main():  # noqa: PLR0912
                             desc="Running full workflow"):
         
         GRIDDING_VERSION = f"{GRIDDING_VERSION_PREFIX}{marker}" # folder name of outputs in results folder
+        GRIDDING_VERSION = f"{marker}_1-1-2"
 
         for notebook in all_notebooks:
             if any(notebook.name.startswith(np) for np in notebook_prefixes):
@@ -263,13 +264,11 @@ def main():  # noqa: PLR0912
     # 3. PLOTTING
     # ------------------------------------
 
-    # tbd.
-
-    # - [ ] should include:
-    #   - [ ] notebooks\cmip7\check_gridded-scenarios-compare-to-ceds-esgf.py
-    #   - [ ] notebooks\cmip7\check_gridded-scenarios-global-sectoral-aggregation-compared-to-input.py
-    #   - [ ] notebooks\cmip7\check_plot-animated-grids.py
-    #   - [ ] notebooks\cmip7\check_plot-global-total-timeseries.py
+    # Superseded. This used to list four standalone plotting scripts to fold in; three are now
+    # covered by modules of notebooks/cmip7/check_gridded_scenario_qc.py (G: comparison to CEDS
+    # ESGF, D: global sectoral aggregation vs input, E: animated grid maps) and the fourth was an
+    # unfinished global-total timeseries script whose working part module D also covers.
+    # Run check_gridded_scenario_qc.py via driver_check_gridded_scenario_qc.py instead.
 
 
 
