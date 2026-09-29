@@ -21,4 +21,4 @@ def run_notebook(notebook: Path, run_notebooks_dir: Path, parameters: dict[str, 
 
     print(f"Executing {notebook.name=} with {parameters=} from {in_notebook=}. " f"Writing to {output_notebook=}")
     # Execute to specific directory
-    pm.execute_notebook(in_notebook, output_notebook, parameters=parameters)
+    pm.execute_notebook(in_notebook, output_notebook, parameters=parameters,)

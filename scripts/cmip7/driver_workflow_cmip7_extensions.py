@@ -111,17 +111,17 @@ def main():  # noqa: PLR0912
 
     # All
     markers = [
-        # "vl",
-        # "ln",
-        # "l",
-        # "ml",
-       #  "m",
-       #  "h",
-         "hl",
+       #  "vl",
+      #   "ln",
+      #   "l",
+        "ml",
+      #   "m",
+      #   "h",
+       #  "hl",
     ]
     # processing: run the notebook
     notebook_prefixes = [
-        "workflow_cmip7-extensions"
+        "workflow_cmip7-extensions.py"
     ]
     # # Skip this step
     # notebook_prefixes = []
