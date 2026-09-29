@@ -56,24 +56,21 @@
 # Settings
 # SETTINGS_FILE: str = "config_cmip7_esgf_v0_alpha.yaml" # was used for preparing for first upload to ESGF
 SETTINGS_FILE: str = "config_cmip7_v0-4-0-EXT.yaml"
-VERSION_ESGF: str = "1-1-1" # for extensions
+VERSION_ESGF: str = "1-1-2" # for extensions
 
 # Which scenario to run from the markers
 marker_to_run: str = "m" # options: h, hl, m, ml, l, ln, vl
 
-GRIDDING_VERSION: str | None 
+GRIDDING_VERSION: str | None = None
 
 # Where the downscaled data is stored (used for reading the downscaled historical data, and also as input for the extensions gridding workflow)
 from pathlib import Path
 USE_PATH = "/home/zecchetto/ECE-climate/extensions/input"
-#LOCATION_DOWNSCALED: Path = Path(USE_PATH + "/v1_1/all_downscaled_markers_1-1-1")
-LOCATION_DOWNSCALED: Path = Path(USE_PATH + "/all_downscaled_markers_1-1-1")
-#LOCATION_CMIP7_HISTORY: Path = Path(USE_PATH + "/v1_1/workflow_history_files")
-LOCATION_CMIP7_HISTORY: Path = Path(USE_PATH + "/workflow_history_files")
+LOCATION_DOWNSCALED: str = USE_PATH + "/all_downscaled_markers_1-1-1"
+LOCATION_CMIP7_HISTORY: str = USE_PATH + "/workflow_history_files"
 # Fast-track gridded outputs (already-final v1_1 vl_1-1-1 files ending at 2100-12). Used to
 # anchor the extension at 2100 — see the `run_2100_alignment_to_fasttrack` block below.
-#LOCATION_FASTTRACK_GRIDDED: Path = Path(USE_PATH + "/v1_1")
-LOCATION_FASTTRACK_GRIDDED: Path = Path("/home/zecchetto/ECE-climate/results_concordia")
+LOCATION_FASTTRACK_GRIDDED: str = "/home/zecchetto/ECE-climate/extensions/results"
 
 # Which parts to run
 run_main: bool = True # skips downscaling and the saving out of data of the main workflow; can still run supplemental workflows with this set to False
@@ -129,6 +126,12 @@ DO_VOC_SPECIATION_OPENBURNING_ONLY_FOR_THESE_SPECIES: list[str] | None = None # 
 # validate that we're receiving what we're expecting
 print(f"\n\nGRIDDING_VERSION received: {GRIDDING_VERSION}\n\n")
 print(f"\n\nDO_GRIDDING_ONLY_FOR_THESE_SPECIES received: {DO_GRIDDING_ONLY_FOR_THESE_SPECIES}\n\n")
+
+# papermill flattens Path parameters to plain strings, so re-wrap them here.
+# (this is a normalisation, not a re-assignment: an injected value survives)
+LOCATION_DOWNSCALED = Path(LOCATION_DOWNSCALED)
+LOCATION_CMIP7_HISTORY = Path(LOCATION_CMIP7_HISTORY)
+LOCATION_FASTTRACK_GRIDDED = Path(LOCATION_FASTTRACK_GRIDDED)
 
 # %% [markdown]
 # ## Step 2: Imports
@@ -4219,10 +4222,8 @@ for gas in CALCULATE_TOTALS_GASES:
 # ## 4.3. make sure NMVOC adds up to NMVOCbulk openburning, compare to downscaled
 
 # %%
-save_total_emissions_as_csv = True
-
-# %%
-if save_total_emissions_as_csv: # TODO: @Jarmo, you may want to introduce a different hook for this in the driver script?
+check_openburning_voc = save_total_emissions_as_csv and run_openburning_supplemental_voc
+if check_openburning_voc: # TODO: @Jarmo, you may want to introduce a different hook for this in the driver script?
     from concordia.cmip7.utils_plotting import ds_to_annual_emissions_total
     import seaborn as sns
     from concordia.cmip7.CONSTANTS import GASES_ESGF_BB4CMIP_VOC
@@ -4283,96 +4284,91 @@ if save_total_emissions_as_csv: # TODO: @Jarmo, you may want to introduce a diff
     combined_df.to_csv(folder_totals / f"{new_stem}_combined-annual-totals.csv")
 
 # %%
-new_stem
+if check_openburning_voc:
+    folder_totals = settings.out_path / GRIDDING_VERSION / "check_NMVOC_sums"
+    file_totals = folder_totals / f"{new_stem}_combined-annual-totals.csv"
 
-# %%
-folder_totals = settings.out_path / GRIDDING_VERSION / "check_NMVOC_sums"
+    combined_df = pd.read_csv(file_totals, index_col=["gas", "sector"])
 
-# %%
-combined_df = pd.read_csv(folder_totals / f"{new_stem}_combined-annual-totals.csv", index_col=["gas", "sector"])
-combined_df
+    # test that the speciated NMVOC species add up to the bulk NMVOC
 
-# %%
-# test that the speciated NMVOC species add up to the bulk NMVOC
+    # drop the bulk from the df
+    combined_df_filtered = combined_df.loc[combined_df.index.get_level_values("gas") != "NMVOCbulk"]
+    # add the speciated up by sector
+    speciated_totals = combined_df_filtered.groupby(level=["sector"]).sum()
+    # isolate the bulk and process similarly to get df in same format
+    bulk_totals = combined_df.loc[combined_df.index.get_level_values("gas") == "NMVOCbulk"].groupby(level=["sector"]).sum()
 
-# drop the bulk from the df
-combined_df_filtered = combined_df.loc[combined_df.index.get_level_values("gas") != "NMVOCbulk"]
-# add the speciated up by sector
-speciated_totals = combined_df_filtered.groupby(level=["sector"]).sum()
-# isolate the bulk and process similarly to get df in same format
-bulk_totals = combined_df.loc[combined_df.index.get_level_values("gas") == "NMVOCbulk"].groupby(level=["sector"]).sum()
+    # test that they are equal
+    pd.testing.assert_frame_equal(speciated_totals,
+        bulk_totals,
+        check_exact=False,
+        rtol=1e-3)
 
-# test that they are equal
-pd.testing.assert_frame_equal(speciated_totals,
-    bulk_totals,
-    check_exact=False,
-    rtol=1e-3)
+    # select NMVOCbulk from downscaled data
+    downscaled_bulk = downscaled.loc[downscaled.index.get_level_values("gas") == "NMVOCbulk"]
+    downscaled_bulk_totals = downscaled_bulk.groupby(level=["sector"]).sum()
 
-# %%
-# select NMVOCbulk from downscaled data
-downscaled_bulk = downscaled.loc[downscaled.index.get_level_values("gas") == "NMVOCbulk"]
-downscaled_bulk_totals = downscaled_bulk.groupby(level=["sector"]).sum()
-
-# reformat for plotting
-downscaled_long = (
-    downscaled_bulk_totals
-    .reset_index()
-    .melt(
-        id_vars=["sector"],
-        var_name="year",
-        value_name="emissions"
+    # reformat for plotting
+    downscaled_long = (
+        downscaled_bulk_totals
+        .reset_index()
+        .melt(
+            id_vars=["sector"],
+            var_name="year",
+            value_name="emissions"
+        )
     )
-)
 
-bulk_long = (
-    bulk_totals
-    .reset_index()
-    .melt(
-        id_vars=["sector"],
-        var_name="year",
-        value_name="emissions"
+    bulk_long = (
+        bulk_totals
+        .reset_index()
+        .melt(
+            id_vars=["sector"],
+            var_name="year",
+            value_name="emissions"
+        )
     )
-)
 
-# make sure year is numeric
-downscaled_long["year"] = downscaled_long["year"].astype(int)
-bulk_long["year"] = bulk_long["year"].astype(int)
+    # make sure year is numeric
+    downscaled_long["year"] = downscaled_long["year"].astype(int)
+    bulk_long["year"] = bulk_long["year"].astype(int)
 
-downscaled_long["variant"] = "downscaled"
-bulk_long["variant"] = "gridded"
+    downscaled_long["variant"] = "downscaled"
+    bulk_long["variant"] = "gridded"
 
-plot_df = pd.concat([bulk_long, downscaled_long], ignore_index=True)
+    plot_df = pd.concat([bulk_long, downscaled_long], ignore_index=True)
 
-# %%
-gas = "NMVOCbulk"
+    gas = "NMVOCbulk"
 
-g = sns.FacetGrid(
-    plot_df,
-    col="sector",
-    col_wrap=2,
-    height=4,
-    aspect=1.6,
-    sharey=False
-)
-    
-g.map_dataframe(
-    sns.lineplot,
-    x="year",
-    y="emissions",
-    hue="variant"
-)
+    g = sns.FacetGrid(
+        plot_df,
+        col="sector",
+        col_wrap=2,
+        height=4,
+        aspect=1.6,
+        sharey=False
+    )
+        
+    g.map_dataframe(
+        sns.lineplot,
+        x="year",
+        y="emissions",
+        hue="variant"
+    )
 
-g.add_legend(title="Variant")
-g.fig.suptitle("Openburning NMVOC", y=1.02)
+    g.add_legend(title="Variant")
+    g.fig.suptitle("Openburning NMVOC", y=1.02)
 
-g.savefig(folder_totals / f"{gas}_{new_stem}_reaggregated-comparison.png")
-plt.show()
+    g.savefig(folder_totals / f"{gas}_{new_stem}_reaggregated-comparison.png")
+    plt.show()
 
 # %% [markdown]
 # ## 4.4. make sure anthro VOC adds up to NMVOC-em-anthro, compare to downscaled
 
 # %%
-if save_total_emissions_as_csv: # TODO: @Jarmo, you may want to introduce a different hook for this in the driver script?
+check_anthro_voc = save_total_emissions_as_csv and run_anthro_supplemental_voc
+if check_anthro_voc: # TODO: @Jarmo, you may want to introduce a different hook for this in the driver script?
     
     GASES_VOC = [item.removesuffix("_em_speciated_VOC_anthro") for item in GASES_ESGF_CEDS_VOC]
     GASES_VOC = [item.replace("_", "-") for item in GASES_VOC]
@@ -4430,114 +4426,115 @@ if save_total_emissions_as_csv: # TODO: @Jarmo, you may want to introduce a diff
     combined_df.to_csv(folder_totals / f"{new_stem}_combined-annual-totals.csv")
 
 # %%
-for file in tqdm((settings.out_path / GRIDDING_VERSION).glob("NMVOC-em-anthro*"),
-                     desc="Calculating total annual emissions from the gridded files"):
-    
-    scen = xr.open_dataset(file)
-    var = "NMVOC_em_anthro"
-    da = ds_to_annual_emissions_total(
-        gridded_data=scen,
-        var_name=var,
-        cell_area=cell_area,
-        keep_sectors=True
-    )
+if check_anthro_voc:
+    for file in tqdm((settings.out_path / GRIDDING_VERSION).glob("NMVOC-em-anthro*"),
+                         desc="Calculating total annual emissions from the gridded files"):
+        
+        scen = xr.open_dataset(file)
+        var = "NMVOC_em_anthro"
+        da = ds_to_annual_emissions_total(
+            gridded_data=scen,
+            var_name=var,
+            cell_area=cell_area,
+            keep_sectors=True
+        )
 
-    if isinstance(da, xr.DataArray):
-        df = da.to_dataframe(name="emissions").reset_index()
-    elif isinstance(da, pd.Series):
-        df = da.reset_index(name="emissions")
-    else:
-        raise TypeError(f"Unexpected type: {type(da)}")
+        if isinstance(da, xr.DataArray):
+            df = da.to_dataframe(name="emissions").reset_index()
+        elif isinstance(da, pd.Series):
+            df = da.reset_index(name="emissions")
+        else:
+            raise TypeError(f"Unexpected type: {type(da)}")
 
-    df["gas"] = gas_name
-    df["sector"] = df["sector"].map(SECTOR_DICT_ANTHRO_DEFAULT)
+        df["gas"] = gas_name
+        df["sector"] = df["sector"].map(SECTOR_DICT_ANTHRO_DEFAULT)
 
-    # Pivot to wide format: years as columns
-    df_wide = df.pivot(index=["gas", "sector"], columns="year", values="emissions")
-
-# %%
-# test that the speciated NMVOC species add up to the bulk NMVOC
-
-speciated_totals = combined_df.groupby(level=["sector"]).sum()
-
-# isolate the bulk and process similarly to get df in same format
-bulk_totals = df_wide.groupby(level=["sector"]).sum()
-
-# test that structure is equal
-pd.testing.assert_index_equal(speciated_totals.index, bulk_totals.index)
-pd.testing.assert_index_equal(speciated_totals.columns, bulk_totals.columns)
-
-# Approximate value check
-pd.testing.assert_frame_equal(
-    speciated_totals,
-    bulk_totals,
-    check_exact=False,
-    rtol=1e-3
-)
+        # Pivot to wide format: years as columns
+        df_wide = df.pivot(index=["gas", "sector"], columns="year", values="emissions")
 
 # %%
-# select NMVOCbulk from downscaled data
-downscaled_bulk = downscaled.loc[downscaled.index.get_level_values("gas") == "NMVOC"]
-downscaled_bulk_totals = downscaled_bulk.groupby(level=["sector"]).sum()
+if check_anthro_voc:
+    if combined_df is not None and not combined_df.empty:
+        # test that the speciated NMVOC species add up to the bulk NMVOC
 
-SECTOR_RENAME_DOWNSCALED = {
-    "Energy Sector": "Energy",
-    "Industrial Sector": "Industrial",
-    "Residential Commercial Other": "Residential, Commercial, Other",
-    "Transportation Sector": "Transportation",
-}
+        speciated_totals = combined_df.groupby(level=["sector"]).sum()
 
-downscaled_bulk_totals = downscaled_bulk_totals.rename(index=SECTOR_RENAME_DOWNSCALED, level='sector')
+        # isolate the bulk and process similarly to get df in same format
+        bulk_totals = df_wide.groupby(level=["sector"]).sum()
 
-# reformat for plotting
-downscaled_long = (
-    downscaled_bulk_totals
-    .reset_index()
-    .melt(
-        id_vars=["sector"],
-        var_name="year",
-        value_name="emissions"
-    )
-)
+        # test that structure is equal
+        pd.testing.assert_index_equal(speciated_totals.index, bulk_totals.index)
+        pd.testing.assert_index_equal(speciated_totals.columns, bulk_totals.columns)
 
-bulk_long = (
-    speciated_totals
-    .reset_index()
-    .melt(
-        id_vars=["sector"],
-        var_name="year",
-        value_name="emissions"
-    )
-)
-
-# make sure year is numeric
-downscaled_long["year"] = downscaled_long["year"].astype(int)
-bulk_long["year"] = bulk_long["year"].astype(int)
-
-downscaled_long["variant"] = "downscaled"
-bulk_long["variant"] = "gridded"
-
-plot_df = pd.concat([bulk_long, downscaled_long], ignore_index=True)
+        # Approximate value check
+        pd.testing.assert_frame_equal(
+            speciated_totals,
+            bulk_totals,
+            check_exact=False,
+            rtol=1e-3
+        )
 
 # %%
-gas = "NMVOC"
+if check_anthro_voc:
+    # select NMVOCbulk from downscaled data
+    downscaled_bulk = downscaled.loc[downscaled.index.get_level_values("gas") == "NMVOC"]
+    downscaled_bulk_totals = downscaled_bulk.groupby(level=["sector"]).sum()
 
-g = sns.relplot(
-    data=plot_df,
-    x="year",
-    y="emissions",
-    hue="variant",
-    col="sector",
-    col_wrap=3,
-    kind="line",    height=4,
-    aspect=1.6,
-    facet_kws={"sharey": False}
-)
+    SECTOR_RENAME_DOWNSCALED = {
+        "Energy Sector": "Energy",
+        "Industrial Sector": "Industrial",
+        "Residential Commercial Other": "Residential, Commercial, Other",
+        "Transportation Sector": "Transportation",
+    }
 
-g.savefig(folder_totals / f"{gas}_{new_stem}_reaggregated-comparison.png")
-plt.show()
+    downscaled_bulk_totals = downscaled_bulk_totals.rename(index=SECTOR_RENAME_DOWNSCALED, level='sector')
+
+    # reformat for plotting
+    downscaled_long = (
+        downscaled_bulk_totals
+        .reset_index()
+        .melt(
+            id_vars=["sector"],
+            var_name="year",
+            value_name="emissions"
+        )
+    )
+
+    bulk_long = (
+        speciated_totals
+        .reset_index()
+        .melt(
+            id_vars=["sector"],
+            var_name="year",
+            value_name="emissions"
+        )
+    )
+
+    # make sure year is numeric
+    downscaled_long["year"] = downscaled_long["year"].astype(int)
+    bulk_long["year"] = bulk_long["year"].astype(int)
+
+    downscaled_long["variant"] = "downscaled"
+    bulk_long["variant"] = "gridded"
+
+    plot_df = pd.concat([bulk_long, downscaled_long], ignore_index=True)
+
+    gas = "NMVOC"
+
+    g = sns.relplot(
+        data=plot_df,
+        x="year",
+        y="emissions",
+        hue="variant",
+        col="sector",
+        col_wrap=3,
+        kind="line",    height=4,
+        aspect=1.6,
+        facet_kws={"sharey": False}
+    )
+
+    g.savefig(folder_totals / f"{gas}_{new_stem}_reaggregated-comparison.png")
+    plt.show()
 
 # %% [markdown]
 # # END OF POSTPROCESSING
-
-# %%
