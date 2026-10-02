@@ -1843,7 +1843,7 @@ if run_spatial_harmonisation:
                 var_name=var,
                 cell_area=cell_area,
                 keep_sectors=False
-            )
+            ).sel(year=2023)
             )
         assert remainder_diff_2023 < 50 # Mt / year
         # apply scaler (zero in 2050 and after)
@@ -1864,7 +1864,7 @@ if run_spatial_harmonisation:
                 var_name=var,
                 cell_area=cell_area,
                 keep_sectors=False
-            )
+            ).sel(year=2023)
             )
         ref2023 = float(
                 ds_to_annual_emissions_total( # takes about 10-30 seconds
@@ -1872,7 +1872,7 @@ if run_spatial_harmonisation:
                 var_name=var,
                 cell_area=cell_area,
                 keep_sectors=False
-            )
+            ).sel(year=2023)
             )
         diff_mt = ref2023 - gridded2023
         diff_perc = (diff_mt / gridded2023) * 100
